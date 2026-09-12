@@ -1,5 +1,7 @@
 # Copy/adapt this file into .github/workflows/release.yml in an application repository.
 # Replace MyApp values and the build command/path with application-specific values.
+# Apple signing/notarization credentials are read by the reusable workflow from
+# the protected `release` Environment; they are intentionally not passed here.
 
 name: Release
 
@@ -55,12 +57,6 @@ jobs:
       signing_identity: "Developer ID Application: Example Developer (TEAMID1234)"
       entitlements_path: MyApp/MyApp.entitlements
       publish_github_release: true
-    secrets:
-      certificate_p12_base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-      certificate_password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-      app_store_connect_api_key_p8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-      app_store_connect_key_id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      app_store_connect_issuer_id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 
   homebrew:
     name: Propose Homebrew Cask update
