@@ -1,0 +1,9 @@
+# Replace or extend owners when this template is adopted by another project.
+* @Lamy210
+
+# Release/security-sensitive areas
+/.github/workflows/ @Lamy210
+/scripts/release/ @Lamy210
+/docs/SECRETS.md @Lamy210
+/docs/RELEASE.md @Lamy210
+*.entitlements @Lamy210
