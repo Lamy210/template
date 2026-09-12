@@ -81,6 +81,28 @@ jobs:
           grep -F 'version "1.2.3"' "${OUTPUT_CASK}" >/dev/null
           grep -F 'app "ExampleApp.app"' "${OUTPUT_CASK}" >/dev/null
 
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install verified Gitleaks CLI
+        shell: bash
+        run: bash scripts/ci/install-gitleaks.sh
+
+      - name: Scan repository history for secrets
+        shell: bash
+        run: gitleaks git --redact --verbose .
+
   actions-security:
     name: GitHub Actions security
     runs-on: ubuntu-latest
