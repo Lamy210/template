@@ -44,8 +44,18 @@ keys = (
     "BUNDLE_ID",
 )
 
+
+def ruby_string(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
+    )
+
+
 for key in keys:
-    text = text.replace("{{" + key + "}}", os.environ[key])
+    text = text.replace("{{" + key + "}}", ruby_string(os.environ[key]))
 
 if "{{" in text or "}}" in text:
     raise SystemExit("Unresolved placeholder remains in rendered Cask")
