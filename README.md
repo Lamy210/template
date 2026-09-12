@@ -73,6 +73,7 @@ docs/
   QUALITY.md
   RELEASE.md
   SECRETS.md
+  SETUP.md
 examples/
   app-release.yml
 scripts/
@@ -95,14 +96,14 @@ templates/
 ## Adoption
 
 1. Create a repository from this template or copy the relevant files into an existing macOS app.
-2. Keep application-specific build/test commands in the application repository's secret-free CI job.
-3. Upload the unsigned `.app` as a GitHub Actions artifact.
-4. Configure a protected `release` GitHub Environment and only place release credentials there.
-5. Call `reusable-macos-release.yml` after the build artifact is available.
+2. Apply the one-time GitHub settings in [`docs/SETUP.md`](docs/SETUP.md): Rulesets, the protected `release` Environment, secrets, and security features.
+3. Keep application-specific build/test commands in the application repository's secret-free CI job.
+4. Upload the unsigned `.app` as a GitHub Actions artifact.
+5. Call `reusable-macos-release.yml` after the build artifact is available. Apple credentials are read directly from the protected `release` Environment.
 6. Optionally call `reusable-homebrew-update.yml` after the GitHub Release is published.
-7. Configure repository Rulesets according to [`docs/BRANCHING.md`](docs/BRANCHING.md).
+7. Configure branch policy according to [`docs/BRANCHING.md`](docs/BRANCHING.md).
 8. Configure formatter/linter policy according to [`docs/QUALITY.md`](docs/QUALITY.md).
-9. Configure release credentials according to [`docs/SECRETS.md`](docs/SECRETS.md).
+9. Review credential handling in [`docs/SECRETS.md`](docs/SECRETS.md).
 10. Use [`examples/app-release.yml`](examples/app-release.yml) as the end-to-end caller example.
 
 Homebrew-specific operation is documented in [`docs/HOMEBREW.md`](docs/HOMEBREW.md).
@@ -113,9 +114,10 @@ The following are design requirements, not recommendations:
 
 - Pull-request CI must complete without Apple signing/notarization secrets.
 - Do not execute pull-request-controlled build scripts in a job that has release secrets.
+- Apple release credentials live only in the protected `release` Environment and are read by the job that declares that Environment.
 - Do not use `pull_request_target` to check out and execute untrusted pull-request code.
 - Default `GITHUB_TOKEN` permissions should be read-only; grant write permissions per job only when required.
-- Do not use `secrets: inherit` for privileged reusable workflows. Pass only named secrets.
+- Do not use `secrets: inherit` at privileged workflow boundaries; non-Environment credentials such as the Homebrew tap token use narrow named-secret interfaces.
 - Pin third-party GitHub Actions to full commit SHAs and update them through Dependabot.
 - A published SemVer tag is immutable; fix a release with a new version instead of moving the tag.
 
