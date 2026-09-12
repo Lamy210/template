@@ -65,7 +65,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      security-events: write
 
     steps:
       - name: Checkout
@@ -75,3 +74,7 @@ jobs:
 
       - name: zizmor
         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+          annotations: true
+          version: 1.30.1
