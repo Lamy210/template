@@ -24,6 +24,25 @@ Recommended tools:
 
 CI should use check/lint modes and fail on drift. Local developer tooling may run auto-fix commands before commit.
 
+### Tool reproducibility
+
+The reusable Swift quality workflow does not run `brew install` against moving formula versions. `scripts/ci/install-swift-quality-tools.sh` downloads upstream release artifacts, verifies SHA-256, checks the reported tool versions, and then adds the verified binaries to `PATH`.
+
+Current template pins:
+
+- SwiftFormat `0.63.0`
+- SwiftLint `0.65.1`
+
+When upgrading either tool:
+
+1. review upstream release notes and changed/default rules
+2. update the version and upstream asset SHA-256 together
+3. run format/lint against representative repositories
+4. review any new violations instead of globally disabling the new rules
+5. merge the tool bump as an explicit dependency/quality-policy change
+
+This prevents a Homebrew update from silently changing CI behavior for an unchanged application commit.
+
 ## Repository hygiene
 
 The template also checks the infrastructure around the application:
@@ -32,6 +51,7 @@ The template also checks the infrastructure around the application:
 - `zizmor` for GitHub Actions security issues
 - `ShellCheck` for shell correctness
 - `shfmt` for shell formatting
+- Homebrew Cask renderer smoke/syntax validation
 - Markdown linting may be enabled when documentation volume justifies it
 
 ## Baseline and ratchet
