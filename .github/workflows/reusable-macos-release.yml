@@ -37,17 +37,6 @@ on:
         required: false
         default: true
         type: boolean
-    secrets:
-      certificate_p12_base64:
-        required: true
-      certificate_password:
-        required: true
-      app_store_connect_api_key_p8:
-        required: true
-      app_store_connect_key_id:
-        required: true
-      app_store_connect_issuer_id:
-        required: true
 
 permissions: {}
 
@@ -126,8 +115,8 @@ jobs:
         id: certificate
         shell: bash
         env:
-          CERTIFICATE_P12_BASE64: ${{ secrets.certificate_p12_base64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.certificate_password }}
+          CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: bash scripts/release/import-certificate.sh
 
       - name: Sign application
@@ -165,9 +154,9 @@ jobs:
         shell: bash
         env:
           DMG_PATH: release-output/${{ inputs.dmg_name }}
-          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.app_store_connect_api_key_p8 }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.app_store_connect_key_id }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.app_store_connect_issuer_id }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: bash scripts/release/notarize.sh
 
       - name: Verify release
