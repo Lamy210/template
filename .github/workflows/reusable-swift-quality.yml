@@ -1,0 +1,57 @@
+name: Reusable Swift Quality
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory containing Swift source/configuration.
+        required: false
+        default: .
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  swift-quality:
+    name: Swift format and lint
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Detect Swift sources
+        id: swift
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          if find . -type f -name '*.swift' \
+            -not -path './.build/*' \
+            -not -path './DerivedData/*' \
+            -print -quit | grep -q .; then
+            echo 'present=true' >> "${GITHUB_OUTPUT}"
+          else
+            echo 'present=false' >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install Swift quality tools
+        if: ${{ steps.swift.outputs.present == 'true' }}
+        shell: bash
+        run: brew install swiftformat swiftlint
+
+      - name: SwiftFormat check
+        if: ${{ steps.swift.outputs.present == 'true' }}
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: swiftformat --lint .
+
+      - name: SwiftLint
+        if: ${{ steps.swift.outputs.present == 'true' }}
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: swiftlint lint --strict
