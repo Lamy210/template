@@ -1,14 +1,15 @@
 # macOS App Development & Release Template
 
-Reusable baseline for developing and distributing macOS applications with GitHub Actions, Developer ID signing, Apple notarization, DMG packaging, and Homebrew Cask distribution.
+Reusable baseline for developing and distributing macOS applications with GitHub Actions, code-quality gates, Developer ID signing, Apple notarization, DMG packaging, and Homebrew Cask distribution.
 
 ## Goals
 
 This repository standardizes the parts that should not be redesigned for every macOS application:
 
 - short-lived branch and pull-request workflow
+- explicit coding standards and contribution rules
 - secret-free CI for untrusted pull requests
-- formatter, linter, workflow, shell, and security quality gates
+- formatter, linter, complexity, workflow, shell, and security quality gates
 - separation of build jobs from privileged signing/release jobs
 - Developer ID signing and Apple notarization
 - deterministic DMG packaging and release verification
@@ -25,7 +26,9 @@ feat/* / fix/* / refactor/*
           v
      Pull Request
           |
-          +-- formatting / lint
+          +-- SwiftFormat
+          +-- SwiftLint conventions / correctness
+          +-- Swift complexity gate
           +-- tests / build
           +-- actionlint / zizmor
           +-- ShellCheck / shfmt
@@ -62,13 +65,16 @@ feat/* / fix/* / refactor/*
 .github/
   CODEOWNERS
   dependabot.yml
+  pull_request_template.md
   workflows/
     quality.yml
+    swift-quality.yml
     reusable-homebrew-update.yml
     reusable-macos-release.yml
     reusable-swift-quality.yml
 docs/
   BRANCHING.md
+  CODING_STANDARDS.md
   HOMEBREW.md
   QUALITY.md
   RELEASE.md
@@ -77,6 +83,8 @@ docs/
 examples/
   app-release.yml
 scripts/
+  ci/
+    install-swift-quality-tools.sh
   homebrew/
     render-cask.sh
   release/
@@ -88,23 +96,36 @@ scripts/
 templates/
   homebrew/
     Cask.rb.template
+CONTRIBUTING.md
 .editorconfig
 .swiftformat
 .swiftlint.yml
 ```
 
+## Quality policy
+
+The default Swift profile makes code-quality failures visible as separate concerns:
+
+- **formatting** — SwiftFormat
+- **coding-standard/correctness violations** — SwiftLint
+- **complexity** — dedicated SwiftLint metrics gate covering cyclomatic complexity, function/closure/type/file size, parameter count, nesting, and tuple size
+- **optional semantic analysis** — `swiftlint analyze` when the caller provides a clean compiler log
+- **repository automation** — actionlint, zizmor, ShellCheck, and shfmt
+
+The thresholds and exception policy are documented in [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md) and [`docs/QUALITY.md`](docs/QUALITY.md). CI uses strict linting, so warning-level quality thresholds are blocking by default.
+
 ## Adoption
 
 1. Create a repository from this template or copy the relevant files into an existing macOS app.
-2. Apply the one-time GitHub settings in [`docs/SETUP.md`](docs/SETUP.md): Rulesets, the protected `release` Environment, secrets, and security features.
-3. Keep application-specific build/test commands in the application repository's secret-free CI job.
-4. Upload the unsigned `.app` as a GitHub Actions artifact.
-5. Call `reusable-macos-release.yml` after the build artifact is available. Apple credentials are read directly from the protected `release` Environment.
-6. Optionally call `reusable-homebrew-update.yml` after the GitHub Release is published.
-7. Configure branch policy according to [`docs/BRANCHING.md`](docs/BRANCHING.md).
-8. Configure formatter/linter policy according to [`docs/QUALITY.md`](docs/QUALITY.md).
+2. Apply the one-time GitHub settings in [`docs/SETUP.md`](docs/SETUP.md): Rulesets, the protected `release` Environment, secrets, security features, and required status checks.
+3. Review [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md) and adapt thresholds only through an intentional policy change.
+4. Keep application-specific build/test commands in the application repository's secret-free CI job.
+5. Upload the unsigned `.app` as a GitHub Actions artifact.
+6. Call `reusable-macos-release.yml` after the build artifact is available. Apple credentials are read directly from the protected `release` Environment.
+7. Optionally call `reusable-homebrew-update.yml` after the GitHub Release is published.
+8. Configure branch policy according to [`docs/BRANCHING.md`](docs/BRANCHING.md).
 9. Review credential handling in [`docs/SECRETS.md`](docs/SECRETS.md).
-10. Use [`examples/app-release.yml`](examples/app-release.yml) as the end-to-end caller example.
+10. Use [`examples/app-release.yml`](examples/app-release.yml) as the end-to-end caller example and [`CONTRIBUTING.md`](CONTRIBUTING.md) as the contributor workflow.
 
 Homebrew-specific operation is documented in [`docs/HOMEBREW.md`](docs/HOMEBREW.md).
 
