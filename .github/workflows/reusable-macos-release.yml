@@ -3,54 +3,53 @@ name: Reusable macOS Release
 on:
   workflow_call:
     inputs:
-      artifact-name:
+      artifact_name:
         description: Name of the unsigned .app artifact uploaded by the secret-free build job.
         required: true
         type: string
-      app-name:
+      app_name:
         description: Application display/bundle directory name without .app.
         required: true
         type: string
-      app-path:
+      app_path:
         description: Relative path to the .app inside the downloaded artifact.
         required: true
         type: string
-      bundle-id:
+      bundle_id:
         description: Expected CFBundleIdentifier.
         required: true
         type: string
-      dmg-name:
+      dmg_name:
         description: Final DMG filename, for example MyApp-1.2.3.dmg.
         required: true
         type: string
-      signing-identity:
+      signing_identity:
         description: Full Developer ID Application signing identity.
         required: true
         type: string
-      entitlements-path:
+      entitlements_path:
         description: Optional entitlements file path in the caller repository.
         required: false
         default: ""
         type: string
-      publish-github-release:
+      publish_github_release:
         description: Publish/update a GitHub Release after notarization and verification.
         required: false
         default: true
         type: boolean
     secrets:
-      certificate-p12-base64:
+      certificate_p12_base64:
         required: true
-      certificate-password:
+      certificate_password:
         required: true
-      app-store-connect-api-key-p8:
+      app_store_connect_api_key_p8:
         required: true
-      app-store-connect-key-id:
+      app_store_connect_key_id:
         required: true
-      app-store-connect-issuer-id:
+      app_store_connect_issuer_id:
         required: true
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
@@ -58,10 +57,15 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     environment: release
+    permissions:
+      contents: write
 
     steps:
-      - name: Validate trusted release ref
+      - name: Validate trusted release context
         shell: bash
+        env:
+          APP_PATH_INPUT: ${{ inputs.app_path }}
+          DMG_NAME: ${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
           if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
@@ -70,6 +74,14 @@ jobs:
           fi
           if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Only stable SemVer tags in the form vX.Y.Z are accepted." >&2
+            exit 1
+          fi
+          if [[ "${APP_PATH_INPUT}" == /* || "${APP_PATH_INPUT}" == *".."* ]]; then
+            echo "app_path must be a safe relative path." >&2
+            exit 1
+          fi
+          if [[ "${DMG_NAME}" == */* || "${DMG_NAME}" != *.dmg ]]; then
+            echo "dmg_name must be a DMG basename, not a path." >&2
             exit 1
           fi
 
@@ -81,14 +93,14 @@ jobs:
       - name: Download unsigned application artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.artifact-name }}
+          name: ${{ inputs.artifact_name }}
           path: release-input
 
       - name: Validate application metadata
         shell: bash
         env:
-          APP_PATH: release-input/${{ inputs.app-path }}
-          EXPECTED_BUNDLE_ID: ${{ inputs.bundle-id }}
+          APP_PATH: release-input/${{ inputs.app_path }}
+          EXPECTED_BUNDLE_ID: ${{ inputs.bundle_id }}
         run: |
           set -euo pipefail
           if [[ ! -d "${APP_PATH}" ]]; then
@@ -114,32 +126,32 @@ jobs:
         id: certificate
         shell: bash
         env:
-          CERTIFICATE_P12_BASE64: ${{ secrets.certificate-p12-base64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.certificate-password }}
+          CERTIFICATE_P12_BASE64: ${{ secrets.certificate_p12_base64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.certificate_password }}
         run: bash scripts/release/import-certificate.sh
 
       - name: Sign application
         shell: bash
         env:
-          APP_PATH: release-input/${{ inputs.app-path }}
-          SIGNING_IDENTITY: ${{ inputs.signing-identity }}
+          APP_PATH: release-input/${{ inputs.app_path }}
+          SIGNING_IDENTITY: ${{ inputs.signing_identity }}
           KEYCHAIN_PATH: ${{ steps.certificate.outputs.keychain-path }}
-          ENTITLEMENTS_PATH: ${{ inputs.entitlements-path }}
+          ENTITLEMENTS_PATH: ${{ inputs.entitlements_path }}
         run: bash scripts/release/sign-app.sh
 
       - name: Create DMG
         shell: bash
         env:
-          APP_PATH: release-input/${{ inputs.app-path }}
-          APP_NAME: ${{ inputs.app-name }}
-          OUTPUT_DMG: release-output/${{ inputs.dmg-name }}
+          APP_PATH: release-input/${{ inputs.app_path }}
+          APP_NAME: ${{ inputs.app_name }}
+          OUTPUT_DMG: release-output/${{ inputs.dmg_name }}
         run: bash scripts/release/create-dmg.sh
 
       - name: Sign DMG
         shell: bash
         env:
-          DMG_PATH: release-output/${{ inputs.dmg-name }}
-          SIGNING_IDENTITY: ${{ inputs.signing-identity }}
+          DMG_PATH: release-output/${{ inputs.dmg_name }}
+          SIGNING_IDENTITY: ${{ inputs.signing_identity }}
           KEYCHAIN_PATH: ${{ steps.certificate.outputs.keychain-path }}
         run: |
           set -euo pipefail
@@ -152,17 +164,17 @@ jobs:
       - name: Notarize and staple
         shell: bash
         env:
-          DMG_PATH: release-output/${{ inputs.dmg-name }}
-          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.app-store-connect-api-key-p8 }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.app-store-connect-key-id }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.app-store-connect-issuer-id }}
+          DMG_PATH: release-output/${{ inputs.dmg_name }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.app_store_connect_api_key_p8 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.app_store_connect_key_id }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.app_store_connect_issuer_id }}
         run: bash scripts/release/notarize.sh
 
       - name: Verify release
         shell: bash
         env:
-          APP_PATH: release-input/${{ inputs.app-path }}
-          DMG_PATH: release-output/${{ inputs.dmg-name }}
+          APP_PATH: release-input/${{ inputs.app_path }}
+          DMG_PATH: release-output/${{ inputs.dmg_name }}
         run: bash scripts/release/verify-release.sh
 
       - name: Upload verified release artifacts
@@ -170,17 +182,17 @@ jobs:
         with:
           name: verified-macos-release
           path: |
-            release-output/${{ inputs.dmg-name }}
-            release-output/${{ inputs.dmg-name }}.sha256
+            release-output/${{ inputs.dmg_name }}
+            release-output/${{ inputs.dmg_name }}.sha256
           if-no-files-found: error
           retention-days: 14
 
       - name: Publish GitHub Release
-        if: ${{ inputs.publish-github-release }}
+        if: ${{ inputs.publish_github_release }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          DMG_PATH: release-output/${{ inputs.dmg-name }}
+          DMG_PATH: release-output/${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
           checksum="${DMG_PATH}.sha256"
