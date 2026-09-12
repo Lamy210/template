@@ -15,7 +15,14 @@ final class PixelImageTests: XCTestCase {
     }
 
     func testPNGRoundTripPreservesNormalizedPixels() throws {
-        let image = try TestImageFactory.solid(width: 2, height: 1, rgba: [25, 50, 75, 255])
+        let image = try PixelImage(
+            width: 1,
+            height: 2,
+            rgba: [
+                255, 0, 0, 255,
+                0, 0, 255, 255,
+            ]
+        )
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
