@@ -29,7 +29,7 @@ The privileged job must not execute arbitrary build/test commands supplied by th
 
 ## Caller workflow pattern
 
-The application repository should have a workflow structured like this:
+When this repository is used as a template, the application repository contains the reusable workflows and release scripts locally. A typical release job is:
 
 ```yaml
 jobs:
@@ -39,33 +39,56 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@<full-commit-sha>
+        with:
+          persist-credentials: false
       - name: Build and test
         run: ./scripts/ci/build-release-artifact.sh
       - uses: actions/upload-artifact@<full-commit-sha>
         with:
           name: unsigned-macos-app
-          path: path/to/MyApp.app
+          path: build/MyApp.app
 
   release:
     needs: build
-    uses: Lamy210/template/.github/workflows/reusable-macos-release.yml@<pinned-ref>
+    permissions:
+      contents: write
+    uses: ./.github/workflows/reusable-macos-release.yml
     with:
-      artifact-name: unsigned-macos-app
-      app-name: MyApp
-      bundle-id: com.example.MyApp
+      artifact_name: unsigned-macos-app
+      app_name: MyApp
+      app_path: MyApp.app
+      bundle_id: com.example.MyApp
+      dmg_name: MyApp-${{ github.ref_name }}.dmg
+      signing_identity: "Developer ID Application: Example Developer (TEAMID1234)"
+      entitlements_path: MyApp/MyApp.entitlements
     secrets:
-      certificate-p12-base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-      certificate-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-      app-store-connect-api-key-p8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-      app-store-connect-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      app-store-connect-issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      certificate_p12_base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+      certificate_password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      app_store_connect_api_key_p8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      app_store_connect_key_id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      app_store_connect_issuer_id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 ```
 
-The example is intentionally explicit about each secret. Do not replace the secret mapping with `secrets: inherit`.
+See `examples/app-release.yml` for an end-to-end build → signed release → Homebrew update example.
+
+The secret mapping is intentionally explicit. Do not replace it with `secrets: inherit`.
+
+## Trusted release context
+
+The reusable release workflow accepts only a stable `vX.Y.Z` tag context. Configure a Ruleset for `v*` so published release tags cannot be moved or deleted casually.
+
+The workflow additionally verifies:
+
+- `app_path` is relative
+- `dmg_name` is a basename ending in `.dmg`
+- `CFBundleIdentifier` matches the configured bundle ID
+- `CFBundleShortVersionString` matches the release tag without the leading `v`
+
+Any mismatch blocks release before signing.
 
 ## Versioning
 
-Use SemVer tags:
+Use stable SemVer tags initially:
 
 ```text
 v1.0.0
@@ -80,11 +103,16 @@ The following values must agree before publishing:
 - release title/version
 - Homebrew Cask `version`
 
-A mismatch is a release blocker.
+Prerelease tags can be added later as a separate policy profile because Apple bundle-version rules and Homebrew prerelease behavior should be defined intentionally rather than inferred.
 
 ## DMG layout
 
 The default packaging path uses Apple's built-in `hdiutil` to minimize third-party dependencies in the trusted release boundary.
+
+The generated image contains:
+
+- `<AppName>.app`
+- an `/Applications` symlink
 
 A styled DMG can be added later as an opt-in profile, but visual layout tooling must not weaken signing/notarization verification.
 
@@ -94,7 +122,8 @@ The expected order is:
 
 ```text
 unsigned .app
-  -> sign nested code/app
+  -> sign nested code if the project requires it
+  -> sign root .app
   -> verify app signature
   -> create DMG
   -> sign DMG
@@ -103,7 +132,7 @@ unsigned .app
   -> verify DMG/ticket/Gatekeeper
 ```
 
-Applications with helpers, XPC services, frameworks, login items, system extensions, or privileged helpers may require project-specific nested signing logic. Such cases should extend the signing step rather than disabling verification.
+The shared `sign-app.sh` intentionally does **not** use `codesign --deep` for signing. Applications with frameworks, helpers, XPC services, login items, system extensions, privileged helpers, or other nested code should add a project-specific inside-out signing adapter before the shared root-bundle signing step.
 
 ## Entitlements
 
@@ -130,15 +159,9 @@ Never bypass Gatekeeper/notarization checks to make a release green.
 
 Use a separate tap repository such as `Lamy210/homebrew-tap`.
 
-Release automation should generate/update a Cask using the final notarized DMG URL and SHA-256, then open a PR to the tap. Prefer PR + CI over direct push to the tap default branch.
+`reusable-homebrew-update.yml` consumes the `.sha256` asset from the published GitHub Release, renders a Cask, pushes an automation branch to the tap, and opens a PR. It never receives Apple signing credentials.
 
-The Cask pipeline should verify at minimum:
-
-- Cask syntax
-- `brew audit`
-- download checksum
-- installability
-- app artifact name
+See [`HOMEBREW.md`](HOMEBREW.md) for the tap CI and credential model.
 
 ## Rollback
 
