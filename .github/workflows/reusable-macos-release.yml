@@ -102,7 +102,7 @@ jobs:
             exit 1
           fi
 
-          release_commit="$(git rev-parse HEAD^{commit})"
+          release_commit="$(git rev-parse 'HEAD^{commit}')"
           if ! git merge-base --is-ancestor "${release_commit}" "${trusted_ref}"; then
             echo "Release tag ${GITHUB_REF_NAME} points to ${release_commit}, which is not contained in ${RELEASE_BRANCH}." >&2
             exit 1
