@@ -39,17 +39,21 @@ Store only in GitHub Secrets / protected Environments:
 - App Store Connect API private key (`.p8`)
 - credentials capable of writing to another repository
 
-## Recommended `release` Environment
+## Required `release` Environment
 
-Create a GitHub Environment named `release` and place all signing/notarization secrets there. Release jobs must explicitly declare:
+Create a GitHub Environment named exactly `release` and place all Apple signing/notarization secrets there. The reusable macOS release workflow declares:
 
 ```yaml
 environment: release
 ```
 
-Where account features permit, add deployment protection/reviewer requirements.
+The release job therefore receives these secrets from that Environment only after the Environment's protection rules are satisfied.
 
-## Suggested secret names
+Where account features permit, add deployment protection/reviewer requirements and restrict which protected tags may deploy to the Environment.
+
+## Required Apple secret names
+
+The reusable release workflow reads the following names directly from the `release` Environment:
 
 - `MACOS_CERTIFICATE_P12_BASE64`
 - `MACOS_CERTIFICATE_PASSWORD`
@@ -57,7 +61,9 @@ Where account features permit, add deployment protection/reviewer requirements.
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
 
-Do not use repository-wide secret names such as `PASSWORD`, `KEY`, or `TOKEN` when a narrower name is possible.
+Do not also create repository-level copies of these Apple release credentials. Keeping one protected source avoids accidentally making the credentials available to ordinary repository jobs.
+
+Do not use broad names such as `PASSWORD`, `KEY`, or `TOKEN` when a narrower name is possible.
 
 ## GitHub Actions permissions
 
@@ -72,17 +78,15 @@ permissions:
 
 Only a release-publishing job should receive `contents: write`. Artifact attestation additionally requires its documented attestation/OIDC permissions.
 
-## Reusable workflows
+## Reusable workflow and Environment caveat
 
-Privileged reusable workflows must declare named secrets. Do **not** use:
+GitHub does not allow Environment secrets to be passed from a caller via `on.workflow_call`. If the called workflow declares an Environment at job level, that Environment's secrets are used instead of same-named caller-passed secrets.
 
-```yaml
-secrets: inherit
-```
+For that reason this template deliberately does **not** pass Apple credentials through the reusable workflow's `secrets:` interface. The privileged job references the fixed Environment secret names directly.
 
-for the release boundary.
+Do not work around this by moving the Apple keys to repository secrets or by using `secrets: inherit`.
 
-Each secret should be passed explicitly so adding a new caller secret cannot silently widen the reusable workflow's credential set.
+A different reusable workflow that handles non-Environment credentials, such as the Homebrew tap updater, may use a narrow named-secret interface because it is a separate privilege domain.
 
 ## Fork pull requests
 
@@ -100,6 +104,18 @@ The release scripts create a temporary keychain, import the certificate, use it 
 
 Prefer ephemeral GitHub-hosted macOS runners for the privileged release job unless a self-hosted runner has been intentionally hardened for signing.
 
+## Release-script trust
+
+The privileged release job executes the repository's shared release scripts, so changes to these paths are security-sensitive:
+
+```text
+.github/workflows/reusable-macos-release.yml
+scripts/release/**
+*.entitlements
+```
+
+Protect them through PR-only changes and CODEOWNERS review in multi-maintainer repositories. A contributor-controlled PR must never be able to modify and execute these files with release credentials before the change is reviewed and merged into the trusted release ref.
+
 ## Log safety
 
 - never enable shell tracing (`set -x`) in secret-handling scripts
@@ -115,7 +131,7 @@ The repository-scoped `GITHUB_TOKEN` must not be treated as a general cross-repo
 Preferred design:
 
 1. a GitHub App has minimal write permission to the Homebrew tap repository
-2. the release workflow obtains a short-lived installation token
+2. the Homebrew update workflow obtains a short-lived installation token
 3. only the Homebrew update job receives that token
 
 A fine-grained PAT may be used as a temporary fallback, but should be scoped only to the tap repository and required permissions.
