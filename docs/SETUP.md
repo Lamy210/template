@@ -106,30 +106,51 @@ For a public OSS repository, enable where available:
 - dependency graph / dependency review
 - CodeQL default setup when the application's language/build model is supported
 
-The repository-level `quality.yml` already covers GitHub Actions security with `zizmor` and workflow/shell correctness with `actionlint`, ShellCheck, and shfmt.
+The repository-level `quality.yml` covers GitHub Actions security with `zizmor` and workflow/shell correctness with `actionlint`, ShellCheck, and shfmt. The `swift-quality.yml` workflow enforces Swift formatting, coding standards, and complexity limits.
 
 ## 9. Required status checks
 
-After the first pull request runs successfully, select the stable checks from the `Quality` workflow as required checks in the `main` Ruleset.
+After the first pull request runs successfully, select stable check names from GitHub's Ruleset UI. Do not type a guessed check name before it has run at least once.
 
-At minimum require:
+For this template itself, require at minimum the jobs produced by:
 
 ```text
-Repository hygiene
-GitHub Actions security
+Quality / Repository hygiene
+Quality / GitHub Actions security
+Swift Quality / Swift quality
 ```
 
-Application repositories should additionally require their build, unit-test, integration-test, and Swift quality jobs.
+The exact UI label can vary with GitHub's workflow/job presentation; select the observed checks from a successful pull request.
 
-Avoid renaming required job names casually because Rulesets refer to the resulting status-check names.
+Application repositories should additionally require their application build and unit/integration test jobs. If an application does not use Swift, remove or replace the Swift profile rather than keeping a permanently skipped/irrelevant required check.
 
-## 10. Template repository setting
+The Swift quality job includes:
+
+- SwiftFormat drift detection
+- a dedicated complexity gate
+- the full SwiftLint coding-standard/correctness pass
+- optional SwiftLint analyzer rules when a clean compiler log is provided
+
+Avoid renaming required workflow/job names casually because Rulesets refer to the resulting status-check names.
+
+## 10. Coding and complexity policy
+
+Review these files before the first application PR:
+
+- `docs/CODING_STANDARDS.md`
+- `docs/QUALITY.md`
+- `.swiftformat`
+- `.swiftlint.yml`
+
+The default complexity limits are intentionally moderate and CI runs SwiftLint with `--strict`, so warning thresholds are blocking. Do not raise thresholds merely to get the first feature merged. For an existing codebase with known debt, define an explicit baseline/ratchet migration instead.
+
+## 11. Template repository setting
 
 For the central reusable starter repository, enable GitHub's **Template repository** setting. New applications can then be created from the template while keeping their own independent history.
 
 After creating a project from the template, replace project-specific placeholders and review/remove files that do not apply to that application.
 
-## 11. First-release verification
+## 12. First-release verification
 
 Before the first production release, run a controlled test release and verify all of the following end to end:
 
