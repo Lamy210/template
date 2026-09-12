@@ -5,12 +5,16 @@ excluded:
   - DerivedData
   - vendor
 
+# Analyzer rules require `swiftlint analyze` with a clean compiler log.
+# They are intentionally documented here even though the default reusable
+# workflow runs `swiftlint lint`; see docs/QUALITY.md for enabling analysis.
 analyzer_rules:
   - unused_declaration
   - unused_import
 
 opt_in_rules:
   - array_init
+  - closure_body_length
   - closure_spacing
   - contains_over_filter_count
   - empty_count
@@ -39,6 +43,8 @@ line_length:
   ignores_comments: true
   ignores_urls: true
 
+# Complexity / maintainability policy. CI runs these rules in a dedicated
+# complexity gate before the full SwiftLint pass so failures are easy to triage.
 file_length:
   warning: 500
   error: 800
@@ -47,13 +53,34 @@ function_body_length:
   warning: 60
   error: 100
 
+closure_body_length:
+  warning: 40
+  error: 80
+
 cyclomatic_complexity:
   warning: 12
   error: 20
+  ignores_case_statements: false
 
 type_body_length:
   warning: 300
   error: 500
+
+function_parameter_count:
+  warning: 6
+  error: 8
+  ignores_default_parameters: true
+
+large_tuple:
+  warning: 3
+  error: 4
+
+nesting:
+  type_level:
+    warning: 2
+  function_level:
+    warning: 2
+  ignore_coding_keys: true
 
 identifier_name:
   min_length:
