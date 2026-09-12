@@ -32,7 +32,8 @@ xcrun notarytool submit "${DMG_PATH}" \
   --wait \
   --output-format json >"${RESULT_PATH}"
 
-submission_id="$(python3 - "${RESULT_PATH}" <<'PY'
+submission_id="$(
+  python3 - "${RESULT_PATH}" <<'PY'
 import json
 import sys
 
@@ -40,7 +41,8 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     print(json.load(handle).get("id", ""))
 PY
 )"
-status="$(python3 - "${RESULT_PATH}" <<'PY'
+status="$(
+  python3 - "${RESULT_PATH}" <<'PY'
 import json
 import sys
 
