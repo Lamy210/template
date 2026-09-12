@@ -22,14 +22,14 @@ cleanup() {
 trap cleanup EXIT
 
 umask 077
-printf '%s' "${APP_STORE_CONNECT_API_KEY_P8}" > "${KEY_PATH}"
+printf '%s' "${APP_STORE_CONNECT_API_KEY_P8}" >"${KEY_PATH}"
 
 xcrun notarytool submit "${DMG_PATH}" \
   --key "${KEY_PATH}" \
   --key-id "${APP_STORE_CONNECT_KEY_ID}" \
   --issuer "${APP_STORE_CONNECT_ISSUER_ID}" \
   --wait \
-  --output-format json > "${RESULT_PATH}"
+  --output-format json >"${RESULT_PATH}"
 
 python3 - "${RESULT_PATH}" <<'PY'
 import json
