@@ -34,15 +34,15 @@ jobs:
             -not -path './.build/*' \
             -not -path './DerivedData/*' \
             -print -quit | grep -q .; then
-            echo 'present=true' >> "${GITHUB_OUTPUT}"
+            echo 'present=true' >>"${GITHUB_OUTPUT}"
           else
-            echo 'present=false' >> "${GITHUB_OUTPUT}"
+            echo 'present=false' >>"${GITHUB_OUTPUT}"
           fi
 
-      - name: Install Swift quality tools
+      - name: Install pinned Swift quality tools
         if: ${{ steps.swift.outputs.present == 'true' }}
         shell: bash
-        run: brew install swiftformat swiftlint
+        run: bash scripts/ci/install-swift-quality-tools.sh
 
       - name: SwiftFormat check
         if: ${{ steps.swift.outputs.present == 'true' }}
