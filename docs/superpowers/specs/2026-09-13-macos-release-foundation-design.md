@@ -1,7 +1,7 @@
 # macOS Release Foundation Design
 
 Date: 2026-09-13
-Status: Approved direction, implementation hardening in progress
+Status: Draft for review
 
 ## 1. Purpose
 
