@@ -26,4 +26,5 @@ permissions:
 
 jobs:
   swift-quality:
-    uses: $/.github/workflows/reusable-swift-quality.yml
+    # actionlint 1.7.12 still requires GitHub's workspace-relative reusable-workflow syntax.
+    uses: ./.github/workflows/reusable-swift-quality.yml # zizmor: ignore[self-repository]
