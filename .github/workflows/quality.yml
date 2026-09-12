@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.1
-          printf '%s\n' "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
+          printf '%s\n' "$(go env GOPATH)/bin" >>"${GITHUB_PATH}"
 
           if ! command -v shellcheck >/dev/null 2>&1; then
             sudo apt-get update
@@ -59,6 +59,27 @@ jobs:
           if [[ -d scripts ]]; then
             shfmt -d -i 2 -ci scripts
           fi
+
+      - name: Homebrew Cask renderer smoke test
+        shell: bash
+        env:
+          CASK_TOKEN: example-app
+          VERSION: 1.2.3
+          SHA256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          GITHUB_OWNER: example
+          GITHUB_REPO: example-app
+          DMG_BASENAME: ExampleApp-v#{version}.dmg
+          APP_NAME: ExampleApp
+          DESCRIPTION: Example macOS application
+          HOMEPAGE: https://example.com
+          BUNDLE_ID: com.example.ExampleApp
+          OUTPUT_CASK: ${{ runner.temp }}/example-app.rb
+        run: |
+          set -euo pipefail
+          bash scripts/homebrew/render-cask.sh
+          ruby -c "${OUTPUT_CASK}"
+          grep -F 'version "1.2.3"' "${OUTPUT_CASK}" >/dev/null
+          grep -F 'app "ExampleApp.app"' "${OUTPUT_CASK}" >/dev/null
 
   actions-security:
     name: GitHub Actions security
