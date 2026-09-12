@@ -1,0 +1,16 @@
+cask "{{CASK_TOKEN}}" do
+  version "{{VERSION}}"
+  sha256 "{{SHA256}}"
+
+  url "https://github.com/{{GITHUB_OWNER}}/{{GITHUB_REPO}}/releases/download/v#{version}/{{DMG_BASENAME}}",
+      verified: "github.com/{{GITHUB_OWNER}}/{{GITHUB_REPO}}/"
+  name "{{APP_NAME}}"
+  desc "{{DESCRIPTION}}"
+  homepage "{{HOMEPAGE}}"
+
+  app "{{APP_NAME}}.app"
+
+  zap trash: [
+    "~/Library/Preferences/{{BUNDLE_ID}}.plist",
+  ]
+end
