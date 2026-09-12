@@ -3,7 +3,7 @@ name: Reusable Swift Quality
 on:
   workflow_call:
     inputs:
-      working-directory:
+      working_directory:
         description: Directory containing Swift source/configuration.
         required: false
         default: .
@@ -27,7 +27,7 @@ jobs:
       - name: Detect Swift sources
         id: swift
         shell: bash
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ${{ inputs.working_directory }}
         run: |
           set -euo pipefail
           if find . -type f -name '*.swift' \
@@ -47,11 +47,11 @@ jobs:
       - name: SwiftFormat check
         if: ${{ steps.swift.outputs.present == 'true' }}
         shell: bash
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ${{ inputs.working_directory }}
         run: swiftformat --lint .
 
       - name: SwiftLint
         if: ${{ steps.swift.outputs.present == 'true' }}
         shell: bash
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ${{ inputs.working_directory }}
         run: swiftlint lint --strict
