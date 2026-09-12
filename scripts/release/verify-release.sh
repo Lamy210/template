@@ -23,7 +23,7 @@ hdiutil verify "${DMG_PATH}"
 CHECKSUM_PATH="${DMG_PATH}.sha256"
 (
   cd "$(dirname "${DMG_PATH}")"
-  shasum -a 256 "$(basename "${DMG_PATH}")" > "$(basename "${CHECKSUM_PATH}")"
+  shasum -a 256 "$(basename "${DMG_PATH}")" >"$(basename "${CHECKSUM_PATH}")"
 )
 
 cat "${CHECKSUM_PATH}"
