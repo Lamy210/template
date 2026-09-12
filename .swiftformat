@@ -1,0 +1,10 @@
+--swiftversion 6.0
+--indent 4
+--linebreaks lf
+--semicolons never
+--commas inline
+--trimwhitespace always
+
+--exclude .build
+--exclude DerivedData
+--exclude vendor
