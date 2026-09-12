@@ -3,23 +3,23 @@ name: Reusable Homebrew Update
 on:
   workflow_call:
     inputs:
-      tap-repository:
+      tap_repository:
         description: Homebrew tap repository in owner/repo form.
         required: true
         type: string
-      tap-default-branch:
+      tap_default_branch:
         description: Default branch of the tap repository.
         required: false
         default: main
         type: string
-      cask-token:
+      cask_token:
         description: Homebrew Cask token, for example schnee-bar.
         required: true
         type: string
-      app-name:
+      app_name:
         required: true
         type: string
-      bundle-id:
+      bundle_id:
         required: true
         type: string
       description:
@@ -28,16 +28,16 @@ on:
       homepage:
         required: true
         type: string
-      dmg-name:
+      dmg_name:
         description: Actual release asset filename for this version.
         required: true
         type: string
-      dmg-basename-template:
+      dmg_basename_template:
         description: Cask filename expression, for example MyApp-#{version}.dmg.
         required: true
         type: string
     secrets:
-      tap-token:
+      tap_token:
         description: Short-lived GitHub App installation token preferred; fine-grained PAT is a fallback.
         required: true
 
@@ -51,10 +51,12 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Validate release context and Cask token
+      - name: Validate release context and inputs
         shell: bash
         env:
-          CASK_TOKEN: ${{ inputs.cask-token }}
+          CASK_TOKEN: ${{ inputs.cask_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          DMG_NAME: ${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
           if [[ "${GITHUB_REF_TYPE}" != "tag" || ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -63,6 +65,14 @@ jobs:
           fi
           if [[ ! "${CASK_TOKEN}" =~ ^[a-z0-9][a-z0-9._+-]*$ ]]; then
             echo "Unsafe or unsupported Cask token: ${CASK_TOKEN}" >&2
+            exit 1
+          fi
+          if [[ ! "${TAP_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "tap_repository must use owner/repo form." >&2
+            exit 1
+          fi
+          if [[ "${DMG_NAME}" == */* || "${DMG_NAME}" != *.dmg ]]; then
+            echo "dmg_name must be a DMG basename, not a path." >&2
             exit 1
           fi
 
@@ -76,7 +86,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          DMG_NAME: ${{ inputs.dmg-name }}
+          DMG_NAME: ${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
           mkdir -p release-assets
@@ -96,47 +106,24 @@ jobs:
             echo "Invalid SHA-256 value in ${checksum_file}" >&2
             exit 1
           fi
-          echo "sha256=${sha256,,}" >> "${GITHUB_ENV}"
+          echo "SHA256=${sha256,,}" >> "${GITHUB_ENV}"
 
       - name: Clone tap repository
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.tap-token }}
-          TAP_REPOSITORY: ${{ inputs.tap-repository }}
+          GH_TOKEN: ${{ secrets.tap_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
         run: |
           set -euo pipefail
           gh auth setup-git
           gh repo clone "${TAP_REPOSITORY}" tap
 
-      - name: Render Cask
+      - name: Prepare tap update branch
+        id: branch
         shell: bash
         env:
-          CASK_TEMPLATE: source/templates/homebrew/Cask.rb.template
-          CASK_TOKEN: ${{ inputs.cask-token }}
-          VERSION: ${{ github.ref_name }}
-          SHA256: ${{ env.sha256 }}
-          GITHUB_OWNER: ${{ github.repository_owner }}
-          GITHUB_REPO: ${{ github.event.repository.name }}
-          DMG_BASENAME: ${{ inputs.dmg-basename-template }}
-          APP_NAME: ${{ inputs.app-name }}
-          DESCRIPTION: ${{ inputs.description }}
-          HOMEPAGE: ${{ inputs.homepage }}
-          BUNDLE_ID: ${{ inputs.bundle-id }}
-          OUTPUT_CASK: tap/Casks/${{ inputs.cask-token }}.rb
-        run: |
-          set -euo pipefail
-          VERSION="${VERSION#v}"
-          export VERSION
-          bash source/scripts/homebrew/render-cask.sh
-
-      - name: Commit and push Cask branch
-        id: push
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.tap-token }}
-          TAP_REPOSITORY: ${{ inputs.tap-repository }}
-          TAP_DEFAULT_BRANCH: ${{ inputs.tap-default-branch }}
-          CASK_TOKEN: ${{ inputs.cask-token }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
+          CASK_TOKEN: ${{ inputs.cask_token }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
@@ -145,35 +132,79 @@ jobs:
           cd tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch "${TAP_DEFAULT_BRANCH}"
-          git pull --ff-only origin "${TAP_DEFAULT_BRANCH}"
-          git switch -c "${branch}"
+          git fetch origin
+
+          if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
+            git fetch origin "${branch}"
+            git switch -C "${branch}" "origin/${branch}"
+          else
+            git switch "${TAP_DEFAULT_BRANCH}"
+            git pull --ff-only origin "${TAP_DEFAULT_BRANCH}"
+            git switch -c "${branch}"
+          fi
+
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+
+      - name: Render Cask
+        shell: bash
+        env:
+          CASK_TEMPLATE: source/templates/homebrew/Cask.rb.template
+          CASK_TOKEN: ${{ inputs.cask_token }}
+          VERSION: ${{ github.ref_name }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          DMG_BASENAME: ${{ inputs.dmg_basename_template }}
+          APP_NAME: ${{ inputs.app_name }}
+          DESCRIPTION: ${{ inputs.description }}
+          HOMEPAGE: ${{ inputs.homepage }}
+          BUNDLE_ID: ${{ inputs.bundle_id }}
+          OUTPUT_CASK: tap/Casks/${{ inputs.cask_token }}.rb
+        run: |
+          set -euo pipefail
+          VERSION="${VERSION#v}"
+          GITHUB_OWNER="${SOURCE_REPOSITORY%%/*}"
+          GITHUB_REPO="${SOURCE_REPOSITORY#*/}"
+          export VERSION GITHUB_OWNER GITHUB_REPO
+          bash source/scripts/homebrew/render-cask.sh
+
+      - name: Commit and push Cask branch
+        id: push
+        shell: bash
+        env:
+          CASK_TOKEN: ${{ inputs.cask_token }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          cd tap
           git add "Casks/${CASK_TOKEN}.rb"
 
           if git diff --cached --quiet; then
             echo "changed=false" >> "${GITHUB_OUTPUT}"
           else
             git commit -m "chore(cask): update ${CASK_TOKEN} to ${version}"
-            git push --set-upstream origin "${branch}"
+            git push --set-upstream origin "${BRANCH}"
             echo "changed=true" >> "${GITHUB_OUTPUT}"
           fi
-          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
 
-      - name: Open tap pull request
+      - name: Open or reuse tap pull request
         if: ${{ steps.push.outputs.changed == 'true' }}
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.tap-token }}
-          TAP_REPOSITORY: ${{ inputs.tap-repository }}
-          TAP_DEFAULT_BRANCH: ${{ inputs.tap-default-branch }}
-          CASK_TOKEN: ${{ inputs.cask-token }}
-          BRANCH: ${{ steps.push.outputs.branch }}
+          GH_TOKEN: ${{ secrets.tap_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
+          CASK_TOKEN: ${{ inputs.cask_token }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          gh pr create \
-            --repo "${TAP_REPOSITORY}" \
-            --base "${TAP_DEFAULT_BRANCH}" \
-            --head "${BRANCH}" \
-            --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
-            --body "Automated Cask update for ${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}. Verify tap CI before merging."
+          if gh pr view "${BRANCH}" --repo "${TAP_REPOSITORY}" >/dev/null 2>&1; then
+            gh pr view "${BRANCH}" --repo "${TAP_REPOSITORY}" --web=false
+          else
+            gh pr create \
+              --repo "${TAP_REPOSITORY}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --head "${BRANCH}" \
+              --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
+              --body "Automated Cask update for ${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}. Verify tap CI before merging."
+          fi
