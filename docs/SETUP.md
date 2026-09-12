@@ -65,7 +65,7 @@ release
 
 The reusable macOS release workflow references this name.
 
-Where supported and useful, configure environment protection such as required reviewers. Keep privileged release secrets in this Environment rather than exposing them to ordinary PR jobs.
+Where supported and useful, configure environment protection such as required reviewers and deployment tag restrictions. Keep privileged release secrets in this Environment rather than exposing them to ordinary PR jobs.
 
 ## 6. Release secrets
 
@@ -79,7 +79,7 @@ APP_STORE_CONNECT_KEY_ID
 APP_STORE_CONNECT_ISSUER_ID
 ```
 
-The application caller workflow maps these repository/environment secret names explicitly into the reusable workflow's named secret interface.
+The reusable release job reads these names directly after entering the protected `release` Environment. Do not duplicate them as repository-level secrets and do not attempt to pass them through `workflow_call`.
 
 Do not add Apple release credentials to workflows triggered by untrusted pull requests.
 
