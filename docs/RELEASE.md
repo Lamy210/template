@@ -61,17 +61,11 @@ jobs:
       dmg_name: MyApp-${{ github.ref_name }}.dmg
       signing_identity: "Developer ID Application: Example Developer (TEAMID1234)"
       entitlements_path: MyApp/MyApp.entitlements
-    secrets:
-      certificate_p12_base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-      certificate_password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-      app_store_connect_api_key_p8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-      app_store_connect_key_id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      app_store_connect_issuer_id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
 ```
 
 See `examples/app-release.yml` for an end-to-end build → signed release → Homebrew update example.
 
-The secret mapping is intentionally explicit. Do not replace it with `secrets: inherit`.
+The called workflow's privileged job declares `environment: release` and reads Apple credentials directly from that protected Environment. GitHub does not support passing Environment secrets through `on.workflow_call`, so the caller intentionally has no Apple `secrets:` block. See [`SECRETS.md`](SECRETS.md).
 
 ## Trusted release context
 
@@ -85,6 +79,8 @@ The workflow additionally verifies:
 - `CFBundleShortVersionString` matches the release tag without the leading `v`
 
 Any mismatch blocks release before signing.
+
+The `release` Environment should additionally restrict deployments to the intended protected release tags where supported.
 
 ## Versioning
 
