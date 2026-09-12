@@ -51,9 +51,9 @@ feat/* / fix/* / refactor/*
           +-- create and sign DMG
           +-- notarize + staple
           +-- verify signature / ticket / Gatekeeper
-          +-- SHA-256 / provenance
+          +-- SHA-256
           +-- GitHub Release
-          +-- Homebrew Cask update
+          +-- Homebrew Cask update PR
 ```
 
 ## Repository layout
@@ -64,21 +64,29 @@ feat/* / fix/* / refactor/*
   dependabot.yml
   workflows/
     quality.yml
+    reusable-homebrew-update.yml
     reusable-macos-release.yml
-configs/
-  release.example.env
+    reusable-swift-quality.yml
 docs/
   BRANCHING.md
+  HOMEBREW.md
   QUALITY.md
   RELEASE.md
   SECRETS.md
+examples/
+  app-release.yml
 scripts/
+  homebrew/
+    render-cask.sh
   release/
     create-dmg.sh
     import-certificate.sh
     notarize.sh
     sign-app.sh
     verify-release.sh
+templates/
+  homebrew/
+    Cask.rb.template
 .editorconfig
 .swiftformat
 .swiftlint.yml
@@ -91,9 +99,13 @@ scripts/
 3. Upload the unsigned `.app` as a GitHub Actions artifact.
 4. Configure a protected `release` GitHub Environment and only place release credentials there.
 5. Call `reusable-macos-release.yml` after the build artifact is available.
-6. Configure repository Rulesets according to [`docs/BRANCHING.md`](docs/BRANCHING.md).
-7. Configure formatter/linter policy according to [`docs/QUALITY.md`](docs/QUALITY.md).
-8. Configure release credentials according to [`docs/SECRETS.md`](docs/SECRETS.md).
+6. Optionally call `reusable-homebrew-update.yml` after the GitHub Release is published.
+7. Configure repository Rulesets according to [`docs/BRANCHING.md`](docs/BRANCHING.md).
+8. Configure formatter/linter policy according to [`docs/QUALITY.md`](docs/QUALITY.md).
+9. Configure release credentials according to [`docs/SECRETS.md`](docs/SECRETS.md).
+10. Use [`examples/app-release.yml`](examples/app-release.yml) as the end-to-end caller example.
+
+Homebrew-specific operation is documented in [`docs/HOMEBREW.md`](docs/HOMEBREW.md).
 
 ## Security invariants
 
