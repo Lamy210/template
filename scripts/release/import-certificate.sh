@@ -15,7 +15,7 @@ cleanup_certificate() {
 trap cleanup_certificate EXIT
 
 # macOS base64 uses -D for decode.
-printf '%s' "${CERTIFICATE_P12_BASE64}" | base64 -D > "${CERTIFICATE_PATH}"
+printf '%s' "${CERTIFICATE_P12_BASE64}" | base64 -D >"${CERTIFICATE_PATH}"
 
 security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
 security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
@@ -36,7 +36,7 @@ security set-key-partition-list \
 security list-keychains -d user -s "${KEYCHAIN_PATH}"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-  printf 'keychain-path=%s\n' "${KEYCHAIN_PATH}" >> "${GITHUB_OUTPUT}"
+  printf 'keychain-path=%s\n' "${KEYCHAIN_PATH}" >>"${GITHUB_OUTPUT}"
 else
   printf '%s\n' "${KEYCHAIN_PATH}"
 fi
