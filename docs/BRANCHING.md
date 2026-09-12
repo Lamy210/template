@@ -23,11 +23,15 @@ Every change to `main` should arrive through a pull request. Prefer squash merge
 Recommended PR requirements:
 
 - all required CI checks pass
+- Swift coding-standard and complexity gates pass when Swift is used
+- application build/tests pass
 - branch is current with `main` before merge
 - all review conversations are resolved
 - no force push to `main`
 - no direct push to `main`
 - linear history
+
+The default coding expectations are defined in [`CODING_STANDARDS.md`](CODING_STANDARDS.md) and the executable quality policy in [`QUALITY.md`](QUALITY.md).
 
 ## Solo OSS profile
 
@@ -59,11 +63,13 @@ Recommended `main` Ruleset:
 1. Restrict deletion.
 2. Block force pushes.
 3. Require a pull request before merging.
-4. Require status checks.
+4. Require stable status checks from the successful CI workflows.
 5. Require conversation resolution.
 6. Require linear history.
 7. Require the branch to be up to date before merging when merge queue is unavailable.
 8. Keep bypass permissions minimal.
+
+For Swift projects, the required checks should include the Swift quality job in addition to repository hygiene/security and application build/tests. Select observed status-check names from GitHub after the workflow has run successfully; do not guess names in advance.
 
 Recommended `v*` tag Ruleset:
 
