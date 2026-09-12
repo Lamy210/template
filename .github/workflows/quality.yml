@@ -32,6 +32,7 @@ jobs:
           set -euo pipefail
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.1
+          printf '%s\n' "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
 
           if ! command -v shellcheck >/dev/null 2>&1; then
             sudo apt-get update
