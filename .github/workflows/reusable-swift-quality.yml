@@ -44,19 +44,29 @@ jobs:
             echo 'present=false' >>"${GITHUB_OUTPUT}"
           fi
 
+      - name: Create policy smoke source when repository has no Swift yet
+        if: ${{ steps.swift.outputs.present != 'true' }}
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          mkdir -p .swift-quality-smoke
+          cat >.swift-quality-smoke/QualitySmoke.swift <<'SWIFT'
+          struct QualitySmoke {
+              let value: Int
+          }
+          SWIFT
+
       - name: Install pinned Swift quality tools
-        if: ${{ steps.swift.outputs.present == 'true' }}
         shell: bash
         run: bash scripts/ci/install-swift-quality-tools.sh
 
       - name: SwiftFormat check
-        if: ${{ steps.swift.outputs.present == 'true' }}
         shell: bash
         working-directory: ${{ inputs.working_directory }}
         run: swiftformat --lint .
 
       - name: Swift complexity gate
-        if: ${{ steps.swift.outputs.present == 'true' }}
         shell: bash
         working-directory: ${{ inputs.working_directory }}
         run: |
@@ -72,13 +82,12 @@ jobs:
             --only-rule large_tuple
 
       - name: SwiftLint conventions and correctness
-        if: ${{ steps.swift.outputs.present == 'true' }}
         shell: bash
         working-directory: ${{ inputs.working_directory }}
         run: swiftlint lint --strict
 
       - name: SwiftLint analyzer rules
-        if: ${{ steps.swift.outputs.present == 'true' && inputs.analyzer_compiler_log_path != '' }}
+        if: ${{ inputs.analyzer_compiler_log_path != '' }}
         shell: bash
         working-directory: ${{ inputs.working_directory }}
         env:
@@ -97,3 +106,9 @@ jobs:
           fi
 
           swiftlint analyze --strict --compiler-log-path "${log_path}"
+
+      - name: Remove policy smoke source
+        if: ${{ always() && steps.swift.outputs.present != 'true' }}
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: rm -rf .swift-quality-smoke
