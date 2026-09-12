@@ -1,0 +1,30 @@
+name: Swift Quality
+
+on:
+  pull_request:
+    paths:
+      - "**/*.swift"
+      - ".swiftformat"
+      - ".swiftlint.yml"
+      - ".github/workflows/swift-quality.yml"
+      - ".github/workflows/reusable-swift-quality.yml"
+      - "scripts/ci/install-swift-quality-tools.sh"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.swift"
+      - ".swiftformat"
+      - ".swiftlint.yml"
+      - ".github/workflows/swift-quality.yml"
+      - ".github/workflows/reusable-swift-quality.yml"
+      - "scripts/ci/install-swift-quality-tools.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  swift-quality:
+    # actionlint 1.7.12 still requires GitHub's workspace-relative reusable-workflow syntax.
+    uses: ./.github/workflows/reusable-swift-quality.yml # zizmor: ignore[self-repository]

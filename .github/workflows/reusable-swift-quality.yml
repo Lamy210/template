@@ -1,0 +1,114 @@
+name: Reusable Swift Quality
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: Directory containing Swift source/configuration.
+        required: false
+        default: .
+        type: string
+      analyzer_compiler_log_path:
+        description: Optional repository-relative clean compiler log for `swiftlint analyze`.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  swift-quality:
+    name: Swift quality
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Detect Swift sources
+        id: swift
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          if find . -type f -name '*.swift' \
+            -not -path './.build/*' \
+            -not -path './DerivedData/*' \
+            -print -quit | grep -q .; then
+            echo 'present=true' >>"${GITHUB_OUTPUT}"
+          else
+            echo 'present=false' >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Create policy smoke source when repository has no Swift yet
+        if: ${{ steps.swift.outputs.present != 'true' }}
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          mkdir -p .swift-quality-smoke
+          cat >.swift-quality-smoke/QualitySmoke.swift <<'SWIFT'
+          struct QualitySmoke {
+              let value: Int
+          }
+          SWIFT
+
+      - name: Install pinned Swift quality tools
+        shell: bash
+        run: bash scripts/ci/install-swift-quality-tools.sh
+
+      - name: SwiftFormat check
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: swiftformat --lint .
+
+      - name: Swift complexity gate
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          swiftlint lint --strict \
+            --only-rule cyclomatic_complexity \
+            --only-rule function_body_length \
+            --only-rule closure_body_length \
+            --only-rule type_body_length \
+            --only-rule file_length \
+            --only-rule function_parameter_count \
+            --only-rule nesting \
+            --only-rule large_tuple
+
+      - name: SwiftLint conventions and correctness
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: swiftlint lint --strict
+
+      - name: SwiftLint analyzer rules
+        if: ${{ inputs.analyzer_compiler_log_path != '' }}
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          COMPILER_LOG_PATH: ${{ inputs.analyzer_compiler_log_path }}
+        run: |
+          set -euo pipefail
+          if [[ "${COMPILER_LOG_PATH}" == /* || "${COMPILER_LOG_PATH}" == *".."* ]]; then
+            echo "analyzer_compiler_log_path must be a safe repository-relative path." >&2
+            exit 1
+          fi
+
+          log_path="${GITHUB_WORKSPACE}/${COMPILER_LOG_PATH}"
+          if [[ ! -f "${log_path}" ]]; then
+            echo "Swift compiler log not found: ${COMPILER_LOG_PATH}" >&2
+            exit 1
+          fi
+
+          swiftlint analyze --strict --compiler-log-path "${log_path}"
+
+      - name: Remove policy smoke source
+        if: ${{ always() && steps.swift.outputs.present != 'true' }}
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+        run: rm -rf .swift-quality-smoke

@@ -1,0 +1,78 @@
+# Copy/adapt this file into .github/workflows/release.yml in an application repository.
+# Replace MyApp values and the build command/path with application-specific values.
+# Apple signing/notarization credentials are read by the reusable workflow from
+# the protected `release` Environment; they are intentionally not passed here.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Secret-free release build
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and test unsigned application
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Replace this with the application's deterministic build/test entrypoint.
+          ./scripts/ci/build-release-artifact.sh
+
+      - name: Upload unsigned application
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned-macos-app
+          path: build/MyApp.app
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Privileged macOS release
+    needs: build
+    permissions:
+      contents: write
+    uses: ./.github/workflows/reusable-macos-release.yml
+    with:
+      artifact_name: unsigned-macos-app
+      app_name: MyApp
+      app_path: MyApp.app
+      bundle_id: com.example.MyApp
+      dmg_name: MyApp-${{ github.ref_name }}.dmg
+      signing_identity: "Developer ID Application: Example Developer (TEAMID1234)"
+      entitlements_path: MyApp/MyApp.entitlements
+      publish_github_release: true
+
+  homebrew:
+    name: Propose Homebrew Cask update
+    needs: release
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-homebrew-update.yml
+    with:
+      tap_repository: Lamy210/homebrew-tap
+      tap_default_branch: main
+      cask_token: my-app
+      app_name: MyApp
+      bundle_id: com.example.MyApp
+      description: Example macOS application
+      homepage: https://github.com/example/MyApp
+      dmg_name: MyApp-${{ github.ref_name }}.dmg
+      dmg_basename_template: MyApp-v#{version}.dmg
+    secrets:
+      tap_token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

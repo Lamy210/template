@@ -1,0 +1,124 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned workflow and shell linters
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.1
+          printf '%s\n' "$(go env GOPATH)/bin" >>"${GITHUB_PATH}"
+
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck
+          fi
+
+      - name: actionlint
+        shell: bash
+        run: actionlint
+
+      - name: ShellCheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find scripts -type f -name '*.sh' -print0 2>/dev/null || true)
+          if (( ${#files[@]} > 0 )); then
+            shellcheck "${files[@]}"
+          fi
+
+      - name: shfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -d scripts ]]; then
+            shfmt -d -i 2 -ci scripts
+          fi
+
+      - name: Homebrew Cask renderer smoke test
+        shell: bash
+        env:
+          CASK_TOKEN: example-app
+          VERSION: 1.2.3
+          SHA256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          GITHUB_OWNER: example
+          GITHUB_REPO: example-app
+          DMG_BASENAME: ExampleApp-v#{version}.dmg
+          APP_NAME: ExampleApp
+          DESCRIPTION: Example macOS application
+          HOMEPAGE: https://example.com
+          BUNDLE_ID: com.example.ExampleApp
+          OUTPUT_CASK: ${{ runner.temp }}/example-app.rb
+        run: |
+          set -euo pipefail
+          bash scripts/homebrew/render-cask.sh
+          ruby -c "${OUTPUT_CASK}"
+          grep -F 'version "1.2.3"' "${OUTPUT_CASK}" >/dev/null
+          grep -F 'app "ExampleApp.app"' "${OUTPUT_CASK}" >/dev/null
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install verified Gitleaks CLI
+        shell: bash
+        run: bash scripts/ci/install-gitleaks.sh
+
+      - name: Scan repository history for secrets
+        shell: bash
+        run: gitleaks git --redact --verbose .
+
+  actions-security:
+    name: GitHub Actions security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+          annotations: true
+          version: 1.30.1
