@@ -1,0 +1,179 @@
+name: Reusable Homebrew Update
+
+on:
+  workflow_call:
+    inputs:
+      tap-repository:
+        description: Homebrew tap repository in owner/repo form.
+        required: true
+        type: string
+      tap-default-branch:
+        description: Default branch of the tap repository.
+        required: false
+        default: main
+        type: string
+      cask-token:
+        description: Homebrew Cask token, for example schnee-bar.
+        required: true
+        type: string
+      app-name:
+        required: true
+        type: string
+      bundle-id:
+        required: true
+        type: string
+      description:
+        required: true
+        type: string
+      homepage:
+        required: true
+        type: string
+      dmg-name:
+        description: Actual release asset filename for this version.
+        required: true
+        type: string
+      dmg-basename-template:
+        description: Cask filename expression, for example MyApp-#{version}.dmg.
+        required: true
+        type: string
+    secrets:
+      tap-token:
+        description: Short-lived GitHub App installation token preferred; fine-grained PAT is a fallback.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  update-cask:
+    name: Open Homebrew Cask update PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Validate release context and Cask token
+        shell: bash
+        env:
+          CASK_TOKEN: ${{ inputs.cask-token }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" != "tag" || ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Homebrew update must run from a stable vX.Y.Z release tag." >&2
+            exit 1
+          fi
+          if [[ ! "${CASK_TOKEN}" =~ ^[a-z0-9][a-z0-9._+-]*$ ]]; then
+            echo "Unsafe or unsupported Cask token: ${CASK_TOKEN}" >&2
+            exit 1
+          fi
+
+      - name: Checkout release automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: source
+
+      - name: Download published checksum
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DMG_NAME: ${{ inputs.dmg-name }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh release download "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "${DMG_NAME}.sha256" \
+            --dir release-assets
+
+          checksum_file="release-assets/${DMG_NAME}.sha256"
+          if [[ ! -f "${checksum_file}" ]]; then
+            echo "Checksum asset not found: ${checksum_file}" >&2
+            exit 1
+          fi
+
+          sha256="$(awk 'NR == 1 { print $1 }' "${checksum_file}")"
+          if [[ ! "${sha256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "Invalid SHA-256 value in ${checksum_file}" >&2
+            exit 1
+          fi
+          echo "sha256=${sha256,,}" >> "${GITHUB_ENV}"
+
+      - name: Clone tap repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap-token }}
+          TAP_REPOSITORY: ${{ inputs.tap-repository }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          gh repo clone "${TAP_REPOSITORY}" tap
+
+      - name: Render Cask
+        shell: bash
+        env:
+          CASK_TEMPLATE: source/templates/homebrew/Cask.rb.template
+          CASK_TOKEN: ${{ inputs.cask-token }}
+          VERSION: ${{ github.ref_name }}
+          SHA256: ${{ env.sha256 }}
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+          DMG_BASENAME: ${{ inputs.dmg-basename-template }}
+          APP_NAME: ${{ inputs.app-name }}
+          DESCRIPTION: ${{ inputs.description }}
+          HOMEPAGE: ${{ inputs.homepage }}
+          BUNDLE_ID: ${{ inputs.bundle-id }}
+          OUTPUT_CASK: tap/Casks/${{ inputs.cask-token }}.rb
+        run: |
+          set -euo pipefail
+          VERSION="${VERSION#v}"
+          export VERSION
+          bash source/scripts/homebrew/render-cask.sh
+
+      - name: Commit and push Cask branch
+        id: push
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap-token }}
+          TAP_REPOSITORY: ${{ inputs.tap-repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap-default-branch }}
+          CASK_TOKEN: ${{ inputs.cask-token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          branch="automation/${CASK_TOKEN}-v${version}"
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch "${TAP_DEFAULT_BRANCH}"
+          git pull --ff-only origin "${TAP_DEFAULT_BRANCH}"
+          git switch -c "${branch}"
+          git add "Casks/${CASK_TOKEN}.rb"
+
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+          else
+            git commit -m "chore(cask): update ${CASK_TOKEN} to ${version}"
+            git push --set-upstream origin "${branch}"
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          fi
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+
+      - name: Open tap pull request
+        if: ${{ steps.push.outputs.changed == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap-token }}
+          TAP_REPOSITORY: ${{ inputs.tap-repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap-default-branch }}
+          CASK_TOKEN: ${{ inputs.cask-token }}
+          BRANCH: ${{ steps.push.outputs.branch }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          gh pr create \
+            --repo "${TAP_REPOSITORY}" \
+            --base "${TAP_DEFAULT_BRANCH}" \
+            --head "${BRANCH}" \
+            --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
+            --body "Automated Cask update for ${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}. Verify tap CI before merging."
