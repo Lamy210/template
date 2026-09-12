@@ -15,6 +15,7 @@ TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 KEY_DIR="$(mktemp -d "${TEMP_ROOT%/}/notary-key.XXXXXX")"
 KEY_PATH="${KEY_DIR}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
 RESULT_PATH="${TEMP_ROOT%/}/notary-result-${GITHUB_RUN_ID:-local}.json"
+LOG_PATH="${TEMP_ROOT%/}/notary-log-${GITHUB_RUN_ID:-local}.json"
 
 cleanup() {
   rm -rf "${KEY_DIR}"
@@ -31,21 +32,48 @@ xcrun notarytool submit "${DMG_PATH}" \
   --wait \
   --output-format json >"${RESULT_PATH}"
 
-python3 - "${RESULT_PATH}" <<'PY'
+submission_id="$(python3 - "${RESULT_PATH}" <<'PY'
 import json
 import sys
 
-path = sys.argv[1]
-with open(path, encoding="utf-8") as handle:
-    result = json.load(handle)
-
-status = result.get("status")
-submission_id = result.get("id", "unknown")
-print(f"Notarization submission: {submission_id}")
-print(f"Notarization status: {status}")
-if status != "Accepted":
-    raise SystemExit(f"Notarization failed with status: {status}")
+with open(sys.argv[1], encoding="utf-8") as handle:
+    print(json.load(handle).get("id", ""))
 PY
+)"
+status="$(python3 - "${RESULT_PATH}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    print(json.load(handle).get("status", ""))
+PY
+)"
+
+printf 'Notarization submission: %s\n' "${submission_id:-unknown}"
+printf 'Notarization status: %s\n' "${status:-unknown}"
+
+if [[ -z "${submission_id}" ]]; then
+  echo "Notarization response did not contain a submission ID." >&2
+  cat "${RESULT_PATH}" >&2
+  exit 1
+fi
+
+# Fetch the service log even on Accepted results so warnings remain available in
+# the Actions log. On failure this is the primary diagnostic for signing issues.
+if xcrun notarytool log "${submission_id}" \
+  --key "${KEY_PATH}" \
+  --key-id "${APP_STORE_CONNECT_KEY_ID}" \
+  --issuer "${APP_STORE_CONNECT_ISSUER_ID}" \
+  "${LOG_PATH}"; then
+  cat "${LOG_PATH}"
+else
+  echo "Unable to retrieve notarization log for ${submission_id}." >&2
+fi
+
+if [[ "${status}" != "Accepted" ]]; then
+  echo "Notarization failed with status: ${status:-unknown}" >&2
+  exit 1
+fi
 
 xcrun stapler staple "${DMG_PATH}"
 xcrun stapler validate "${DMG_PATH}"
