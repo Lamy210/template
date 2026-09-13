@@ -5,10 +5,10 @@ final class VisualComparatorTests: XCTestCase {
     func testIdenticalImagesPassStrictComparison() throws {
         let expected = try TestImageFactory.solid(width: 2, height: 2, rgba: [255, 0, 0, 255])
 
-        let result = VisualComparator.compare(
+        let result = try VisualComparator.compare(
             expected: expected,
             actual: expected,
-            policy: try ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 0)
+            policy: ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 0)
         )
 
         XCTAssertTrue(result.report.passed)
@@ -24,10 +24,10 @@ final class VisualComparatorTests: XCTestCase {
         bytes[0] = 1
         let actual = try PixelImage(width: 2, height: 2, rgba: bytes)
 
-        let result = VisualComparator.compare(
+        let result = try VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: try ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 0)
+            policy: ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 0)
         )
 
         XCTAssertFalse(result.report.passed)
@@ -42,10 +42,10 @@ final class VisualComparatorTests: XCTestCase {
         bytes[0] = 255
         let actual = try PixelImage(width: 2, height: 2, rgba: bytes)
 
-        let result = VisualComparator.compare(
+        let result = try VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: try ComparisonPolicy(maxChangedPixelRatio: 0.25, maxChannelDelta: 255)
+            policy: ComparisonPolicy(maxChangedPixelRatio: 0.25, maxChannelDelta: 255)
         )
 
         XCTAssertTrue(result.report.passed)
@@ -55,10 +55,10 @@ final class VisualComparatorTests: XCTestCase {
         let expected = try TestImageFactory.solid(width: 1, height: 1, rgba: [10, 20, 30, 255])
         let actual = try TestImageFactory.solid(width: 1, height: 1, rgba: [12, 20, 30, 255])
 
-        let result = VisualComparator.compare(
+        let result = try VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: try ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 2)
+            policy: ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 2)
         )
 
         XCTAssertTrue(result.report.passed)
@@ -69,10 +69,10 @@ final class VisualComparatorTests: XCTestCase {
         let expected = try TestImageFactory.solid(width: 2, height: 2, rgba: [0, 0, 0, 255])
         let actual = try TestImageFactory.solid(width: 3, height: 2, rgba: [0, 0, 0, 255])
 
-        let result = VisualComparator.compare(
+        let result = try VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: try ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 255)
+            policy: ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 255)
         )
 
         XCTAssertFalse(result.report.passed)
