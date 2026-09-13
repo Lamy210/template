@@ -3,6 +3,7 @@ import Foundation
 public enum ManifestRunnerError: Error, Equatable {
     case profileMismatch(expected: String, actual: String)
     case rollingProfileMismatch(expected: String, actual: String)
+    case rollingProfileFingerprintMismatch(expected: String, actual: String)
     case missingRollingProfile
     case missingCurrentCapture(caseID: String, path: String)
     case missingGitBaseline(caseID: String, path: String)
@@ -25,6 +26,7 @@ public struct VisualCaseRunReport: Codable, Sendable, Equatable {
     public let baselineReference: String
     public let currentSHA: String
     public let profile: String
+    public let profileFingerprint: String
     public let status: VisualCaseStatus
     public let maxChangedPixelRatio: Double
     public let maxChannelDeltaThreshold: Int
@@ -81,12 +83,20 @@ public struct ManifestRunConfiguration: Sendable, Equatable {
     }
 }
 
+struct ManifestExecutionProfile: Sendable, Equatable {
+    let label: String
+    let fingerprint: String
+}
+
 public enum ManifestRunner {
     public static func run(
         manifest: VisualManifest,
         configuration: ManifestRunConfiguration
     ) throws -> ManifestRunSummary {
-        try validateProfiles(manifest: manifest, configuration: configuration)
+        let executionProfile = try validateProfiles(
+            manifest: manifest,
+            configuration: configuration
+        )
         try FileManager.default.createDirectory(
             at: configuration.outputRoot,
             withIntermediateDirectories: true
@@ -96,7 +106,7 @@ public enum ManifestRunner {
         for testCase in manifest.cases {
             try reports.append(ManifestCaseExecutor.run(
                 testCase,
-                profile: manifest.profile,
+                executionProfile: executionProfile,
                 configuration: configuration
             ))
         }
@@ -106,7 +116,7 @@ public enum ManifestRunner {
     private static func validateProfiles(
         manifest: VisualManifest,
         configuration: ManifestRunConfiguration
-    ) throws {
+    ) throws -> ManifestExecutionProfile {
         let currentProfile = try ProfileMetadata.load(from: configuration.currentProfileURL)
         guard currentProfile.profile == manifest.profile else {
             throw ManifestRunnerError.profileMismatch(
@@ -115,9 +125,13 @@ public enum ManifestRunner {
             )
         }
 
+        let executionProfile = ManifestExecutionProfile(
+            label: currentProfile.profile,
+            fingerprint: currentProfile.profileFingerprint
+        )
         let hasRollingCases = manifest.cases.contains { $0.baseline == .rollingMain }
         guard hasRollingCases, configuration.rollingRoot != nil else {
-            return
+            return executionProfile
         }
         guard let rollingProfileURL = configuration.rollingProfileURL else {
             throw ManifestRunnerError.missingRollingProfile
@@ -129,5 +143,12 @@ public enum ManifestRunner {
                 actual: rollingProfile.profile
             )
         }
+        guard rollingProfile.profileFingerprint == executionProfile.fingerprint else {
+            throw ManifestRunnerError.rollingProfileFingerprintMismatch(
+                expected: executionProfile.fingerprint,
+                actual: rollingProfile.profileFingerprint
+            )
+        }
+        return executionProfile
     }
 }
