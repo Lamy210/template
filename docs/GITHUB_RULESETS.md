@@ -32,6 +32,7 @@ The default-branch profile requires:
 - non-fast-forward / force-push protection;
 - `Required gate`;
 - `swift-quality / Swift quality`;
+- required status checks remain enforced when a matching ref is created; GitHub's `do_not_enforce_on_create` field may be omitted or explicitly `false`, but not `true`;
 - portable status-check entries containing only the check context, not repository-specific `integration_id` values;
 - no additional ref rules that can silently make the default branch un-updatable;
 - no routine bypass actors.
@@ -132,6 +133,7 @@ In GitHub:
    - linear history is enabled;
    - `Required gate` is required;
    - `swift-quality / Swift quality` is required;
+   - status checks are not skipped on ref creation (`do_not_enforce_on_create` is absent or `false`);
    - no repository-specific status-check integration IDs were introduced;
    - no `release*` branch patterns are present;
    - no unexpected ref-mutation rules were introduced;
@@ -200,6 +202,7 @@ The validator rejects policy weakening or lockout regressions such as:
 - `release*` branches being added to the default-branch profile;
 - either canonical required check being removed or renamed;
 - duplicate required check contexts;
+- `do_not_enforce_on_create=true`, which would skip required status checks when a matching ref is created;
 - repository-specific `integration_id` or other fields being added to the portable status-check entries;
 - strict status-check policy being disabled;
 - review-thread resolution being disabled;
