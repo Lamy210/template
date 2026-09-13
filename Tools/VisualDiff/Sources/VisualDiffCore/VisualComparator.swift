@@ -13,11 +13,11 @@ public enum VisualComparator {
         var maxChannelDelta = 0
         var diffBytes = [UInt8](repeating: 0, count: expected.rgba.count)
 
-        for pixel in 0..<pixelCount {
+        for pixel in 0 ..< pixelCount {
             let offset = pixel * 4
             var pixelMaxDelta = 0
 
-            for channel in 0..<4 {
+            for channel in 0 ..< 4 {
                 let delta = abs(Int(expected.rgba[offset + channel]) - Int(actual.rgba[offset + channel]))
                 pixelMaxDelta = max(pixelMaxDelta, delta)
                 maxChannelDelta = max(maxChannelDelta, delta)
@@ -79,7 +79,7 @@ public enum VisualComparator {
         var bytes = [UInt8](repeating: 0, count: byteCount)
         fill(image: expected, into: &bytes, canvasWidth: combinedWidth, xOffset: 0)
 
-        for y in 0..<height {
+        for y in 0 ..< height {
             let offset = ((y * combinedWidth) + expected.width) * 4
             bytes[offset] = 255
             bytes[offset + 1] = 0
@@ -133,8 +133,8 @@ public enum VisualComparator {
         canvasWidth: Int,
         xOffset: Int
     ) {
-        for y in 0..<image.height {
-            for x in 0..<image.width {
+        for y in 0 ..< image.height {
+            for x in 0 ..< image.width {
                 let sourceOffset = ((y * image.width) + x) * 4
                 let destinationOffset = ((y * canvasWidth) + xOffset + x) * 4
                 canvas[destinationOffset] = image.rgba[sourceOffset]
