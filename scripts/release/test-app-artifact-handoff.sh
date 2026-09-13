@@ -101,4 +101,80 @@ if ARCHIVE_PATH="${UNSAFE_ARCHIVE}" \
   exit 1
 fi
 
+UNSAFE_HARDLINK_ARCHIVE="${TMP_ROOT}/artifact/unsafe-hardlink.tar.gz"
+python3 - "${UNSAFE_HARDLINK_ARCHIVE}" <<'PY'
+import sys
+import tarfile
+
+archive_path = sys.argv[1]
+with tarfile.open(archive_path, "w:gz") as archive:
+    for name in (
+        "TestApp.app",
+        "TestApp.app/Contents",
+        "TestApp.app/Contents/Resources",
+    ):
+        entry = tarfile.TarInfo(name)
+        entry.type = tarfile.DIRTYPE
+        entry.mode = 0o755
+        archive.addfile(entry)
+
+    link = tarfile.TarInfo("TestApp.app/Contents/Resources/escape-hardlink")
+    link.type = tarfile.LNKTYPE
+    link.linkname = "../../outside"
+    archive.addfile(link)
+PY
+
+if hardlink_output="$(
+  ARCHIVE_PATH="${UNSAFE_HARDLINK_ARCHIVE}" \
+    OUTPUT_DIR="${TMP_ROOT}/unsafe-hardlink-downloaded" \
+    APP_BASENAME="TestApp.app" \
+    bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh" 2>&1
+)"; then
+  echo "Archive with an escaping hard-link target was incorrectly accepted." >&2
+  exit 1
+fi
+if [[ "${hardlink_output}" != *"Archive hard link escapes expected app bundle"* ]]; then
+  echo "Escaping hard link was not rejected during archive prevalidation." >&2
+  printf '%s\n' "${hardlink_output}" >&2
+  exit 1
+fi
+
+UNSAFE_FIFO_ARCHIVE="${TMP_ROOT}/artifact/unsafe-fifo.tar.gz"
+python3 - "${UNSAFE_FIFO_ARCHIVE}" <<'PY'
+import sys
+import tarfile
+
+archive_path = sys.argv[1]
+with tarfile.open(archive_path, "w:gz") as archive:
+    for name in (
+        "TestApp.app",
+        "TestApp.app/Contents",
+        "TestApp.app/Contents/Resources",
+    ):
+        entry = tarfile.TarInfo(name)
+        entry.type = tarfile.DIRTYPE
+        entry.mode = 0o755
+        archive.addfile(entry)
+
+    fifo = tarfile.TarInfo("TestApp.app/Contents/Resources/unsafe-fifo")
+    fifo.type = tarfile.FIFOTYPE
+    fifo.mode = 0o644
+    archive.addfile(fifo)
+PY
+
+if fifo_output="$(
+  ARCHIVE_PATH="${UNSAFE_FIFO_ARCHIVE}" \
+    OUTPUT_DIR="${TMP_ROOT}/unsafe-fifo-downloaded" \
+    APP_BASENAME="TestApp.app" \
+    bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh" 2>&1
+)"; then
+  echo "Archive with a FIFO member was incorrectly accepted." >&2
+  exit 1
+fi
+if [[ "${fifo_output}" != *"Unsupported archive member type"* ]]; then
+  echo "FIFO member was not rejected during archive prevalidation." >&2
+  printf '%s\n' "${fifo_output}" >&2
+  exit 1
+fi
+
 printf 'App artifact handoff preserved and verified executable permissions.\n'
