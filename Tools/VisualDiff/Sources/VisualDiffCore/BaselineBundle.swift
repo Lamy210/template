@@ -53,12 +53,27 @@ public struct BaselineBundleManifest: Codable, Sendable, Equatable {
 }
 
 public struct ValidatedBaselineBundle: Sendable, Equatable {
+    public let root: URL
     public let manifest: BaselineBundleManifest
     public let caseDigests: [String: String]
 
-    public init(manifest: BaselineBundleManifest, caseDigests: [String: String]) {
+    public init(
+        root: URL,
+        manifest: BaselineBundleManifest,
+        caseDigests: [String: String]
+    ) {
+        self.root = root
         self.manifest = manifest
         self.caseDigests = caseDigests
+    }
+
+    public func imageURL(caseID: String) -> URL? {
+        guard caseDigests[caseID] != nil else {
+            return nil
+        }
+        return root
+            .appendingPathComponent("images", isDirectory: true)
+            .appendingPathComponent("\(caseID).png", isDirectory: false)
     }
 }
 
@@ -92,7 +107,8 @@ public enum BaselineBundleValidator {
         }
 
         let caseDigests = try validateCases(manifest.cases)
-        let imagesRoot = root.appendingPathComponent("images", isDirectory: true)
+        let standardizedRoot = root.standardizedFileURL
+        let imagesRoot = standardizedRoot.appendingPathComponent("images", isDirectory: true)
         guard try isDirectoryWithoutSymlink(imagesRoot) else {
             throw BaselineBundleError.missingImagesDirectory
         }
@@ -119,7 +135,11 @@ public enum BaselineBundleValidator {
             try rejectUnexpectedImages(in: imagesRoot, declaredCaseIDs: Set(caseDigests.keys))
         }
 
-        return ValidatedBaselineBundle(manifest: manifest, caseDigests: caseDigests)
+        return ValidatedBaselineBundle(
+            root: standardizedRoot,
+            manifest: manifest,
+            caseDigests: caseDigests
+        )
     }
 
     private static func validateManifestMetadata(_ manifest: BaselineBundleManifest) throws {
