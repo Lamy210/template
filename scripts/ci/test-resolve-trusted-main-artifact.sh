@@ -119,7 +119,7 @@ run_resolver() {
   PATH="${STUB_BIN}:${PATH}" \
     GH_STUB_SCENARIO="${scenario}" \
     GH_TOKEN="test-token" \
-    "${RESOLVER}" \
+    bash "${RESOLVER}" \
     --repository Lamy210/template \
     --workflow visual-regression.yml \
     --artifact visual-baseline-test \
