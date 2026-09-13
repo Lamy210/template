@@ -177,4 +177,44 @@ if [[ "${fifo_output}" != *"Unsupported archive member type"* ]]; then
   exit 1
 fi
 
+DUPLICATE_ARCHIVE="${TMP_ROOT}/artifact/duplicate-member.tar.gz"
+python3 - "${DUPLICATE_ARCHIVE}" <<'PY'
+import io
+import sys
+import tarfile
+
+archive_path = sys.argv[1]
+with tarfile.open(archive_path, "w:gz") as archive:
+    for name in (
+        "TestApp.app",
+        "TestApp.app/Contents",
+        "TestApp.app/Contents/Resources",
+    ):
+        entry = tarfile.TarInfo(name)
+        entry.type = tarfile.DIRTYPE
+        entry.mode = 0o755
+        archive.addfile(entry)
+
+    for payload in (b"first\n", b"second\n"):
+        duplicate = tarfile.TarInfo("TestApp.app/Contents/Resources/duplicate.txt")
+        duplicate.size = len(payload)
+        duplicate.mode = 0o644
+        archive.addfile(duplicate, io.BytesIO(payload))
+PY
+
+if duplicate_output="$(
+  ARCHIVE_PATH="${DUPLICATE_ARCHIVE}" \
+    OUTPUT_DIR="${TMP_ROOT}/duplicate-downloaded" \
+    APP_BASENAME="TestApp.app" \
+    bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh" 2>&1
+)"; then
+  echo "Archive with duplicate member paths was incorrectly accepted." >&2
+  exit 1
+fi
+if [[ "${duplicate_output}" != *"Duplicate archive member path"* ]]; then
+  echo "Duplicate archive member was not rejected during archive prevalidation." >&2
+  printf '%s\n' "${duplicate_output}" >&2
+  exit 1
+fi
+
 printf 'App artifact handoff preserved and verified executable permissions.\n'
