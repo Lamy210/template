@@ -146,6 +146,7 @@ jobs:
           plist="${APP_PATH}/Contents/Info.plist"
           actual_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${plist}")"
           actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${plist}")"
+          actual_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${plist}")"
           expected_version="${GITHUB_REF_NAME#v}"
 
           if [[ "${actual_bundle_id}" != "${EXPECTED_BUNDLE_ID}" ]]; then
@@ -156,6 +157,10 @@ jobs:
             echo "Version mismatch: tag=${expected_version}, app=${actual_version}" >&2
             exit 1
           fi
+
+          APP_PATH="${APP_PATH}" \
+            EXECUTABLE_NAME="${actual_executable}" \
+            bash scripts/release/verify-app-executable.sh
 
       - name: Import Developer ID certificate
         id: certificate
