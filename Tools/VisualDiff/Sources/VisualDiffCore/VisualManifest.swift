@@ -102,7 +102,7 @@ public struct VisualManifest: Codable, Sendable, Equatable {
         guard isSafeCaseID(testCase.id) else {
             throw VisualManifestError.invalidCaseID(testCase.id)
         }
-        guard (0...1).contains(testCase.maxChangedPixelRatio) else {
+        guard (0 ... 1).contains(testCase.maxChangedPixelRatio) else {
             throw VisualManifestError.invalidChangedPixelRatio(
                 caseID: testCase.id,
                 value: testCase.maxChangedPixelRatio
