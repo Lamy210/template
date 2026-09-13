@@ -57,6 +57,30 @@ class PortableSoloRulesetTests(unittest.TestCase):
 
         self.assertTrue(any("required checks must contain only context" in error for error in errors))
 
+    def test_allows_explicit_status_checks_on_create(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        status_rule = next(
+            rule for rule in document["rules"] if rule["type"] == "required_status_checks"
+        )
+        status_rule["parameters"]["do_not_enforce_on_create"] = False
+
+        errors = validate_main_solo(document)
+
+        self.assertEqual([], errors)
+
+    def test_rejects_skipping_status_checks_on_create(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        status_rule = next(
+            rule for rule in document["rules"] if rule["type"] == "required_status_checks"
+        )
+        status_rule["parameters"]["do_not_enforce_on_create"] = True
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(
+            any("do_not_enforce_on_create must be false or omitted" in error for error in errors)
+        )
+
     def test_rejects_unknown_status_rule_parameter(self) -> None:
         document = copy.deepcopy(valid_main_solo())
         status_rule = next(
