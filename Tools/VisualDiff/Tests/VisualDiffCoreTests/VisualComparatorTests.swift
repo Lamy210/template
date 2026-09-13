@@ -1,5 +1,5 @@
-import XCTest
 @testable import VisualDiffCore
+import XCTest
 
 final class VisualComparatorTests: XCTestCase {
     func testIdenticalImagesPassStrictComparison() throws {
