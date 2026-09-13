@@ -11,7 +11,7 @@ final class BaselineBundleTests: XCTestCase {
         try fixture.write(second, caseID: "main-window")
         let manifest = fixture.manifest(cases: [
             .init(id: "settings-light", digest: ImageDigest.sha256(first)),
-            .init(id: "main-window", digest: ImageDigest.sha256(second)),
+            .init(id: "main-window", digest: ImageDigest.sha256(second))
         ])
 
         let validated = try BaselineBundleValidator.validate(
@@ -28,7 +28,7 @@ final class BaselineBundleTests: XCTestCase {
     func testRejectsMissingDeclaredImage() throws {
         let fixture = try BundleFixture()
         let manifest = fixture.manifest(cases: [
-            .init(id: "missing", digest: ImageDigest.sha256(Data("missing".utf8))),
+            .init(id: "missing", digest: ImageDigest.sha256(Data("missing".utf8)))
         ])
 
         XCTAssertThrowsError(try BaselineBundleValidator.validate(
@@ -47,7 +47,7 @@ final class BaselineBundleTests: XCTestCase {
         let fixture = try BundleFixture()
         try fixture.write(Data("changed".utf8), caseID: "settings-light")
         let manifest = fixture.manifest(cases: [
-            .init(id: "settings-light", digest: ImageDigest.sha256(Data("expected".utf8))),
+            .init(id: "settings-light", digest: ImageDigest.sha256(Data("expected".utf8)))
         ])
 
         XCTAssertThrowsError(try BaselineBundleValidator.validate(
@@ -68,7 +68,7 @@ final class BaselineBundleTests: XCTestCase {
         try fixture.write(declared, caseID: "declared")
         try fixture.write(Data("unexpected".utf8), caseID: "unexpected")
         let manifest = fixture.manifest(cases: [
-            .init(id: "declared", digest: ImageDigest.sha256(declared)),
+            .init(id: "declared", digest: ImageDigest.sha256(declared))
         ])
 
         XCTAssertThrowsError(try BaselineBundleValidator.validate(
@@ -107,7 +107,7 @@ final class BaselineBundleTests: XCTestCase {
         let digest = ImageDigest.sha256(Data("same".utf8))
         let manifest = fixture.manifest(cases: [
             .init(id: "duplicate", digest: digest),
-            .init(id: "duplicate", digest: digest),
+            .init(id: "duplicate", digest: digest)
         ])
 
         XCTAssertThrowsError(try BaselineBundleValidator.validate(
@@ -125,7 +125,7 @@ final class BaselineBundleTests: XCTestCase {
     func testRejectsUnsafeCaseID() throws {
         let fixture = try BundleFixture()
         let manifest = fixture.manifest(cases: [
-            .init(id: "../escape", digest: ImageDigest.sha256(Data("x".utf8))),
+            .init(id: "../escape", digest: ImageDigest.sha256(Data("x".utf8)))
         ])
 
         XCTAssertThrowsError(try BaselineBundleValidator.validate(
