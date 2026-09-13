@@ -23,6 +23,8 @@ The default-branch profile requires:
 
 - pull requests before changes reach the default branch;
 - zero required approvals for a one-maintainer repository;
+- no path-specific `required_reviewers` approval requirement;
+- no extra approval requirement for unattributed changes;
 - all review conversations resolved;
 - squash as the allowed merge method in the Ruleset contract;
 - linear history;
@@ -30,6 +32,8 @@ The default-branch profile requires:
 - non-fast-forward / force-push protection;
 - `Required gate`;
 - `swift-quality / Swift quality`;
+- portable status-check entries containing only the check context, not repository-specific `integration_id` values;
+- no additional ref rules that can silently make the default branch un-updatable;
 - no routine bypass actors.
 
 The zero-approval value is deliberate. GitHub does not allow a PR author to satisfy their own required approval, so requiring one approval in a one-maintainer repository creates a merge deadlock.
@@ -45,6 +49,8 @@ refs/tags/v*
 It allows creation of a new matching tag but restricts subsequent update and deletion. The operational contract is:
 
 > Once a release tag exists, do not move or delete it. Publish a new version instead.
+
+The portable profile intentionally contains only the `update` and `deletion` restrictions. In particular, it does not add a `creation` restriction, because with no bypass actors that would prevent the normal release flow from creating a new matching version tag.
 
 Do not test this policy by creating a production-looking throwaway tag in this repository. A correctly immutable tag may intentionally be impossible to clean up afterward. Use GitHub Rule Insights/effective-rule inspection here; use a disposable test repository for destructive tag-rule testing.
 
@@ -89,9 +95,14 @@ If either context is different, stop. Update the desired-state JSON only after o
 
 ### 4. Refresh the governance branch from current main
 
-Before changing `.github/workflows/quality.yml` in the governance PR, update `feat/ruleset-governance` from the post-PR-#3 `main` state.
+Update `feat/ruleset-governance` from the post-PR-#3 `main` state before making PR #4 review-ready.
 
-Preserve the P0 `Required gate` topology from PR #3 and the Ruleset validator work from this branch.
+Both PRs modify `.github/workflows/quality.yml`. Resolve that integration by preserving:
+
+- PR #3's release-artifact package/round-trip jobs and final `Required gate`;
+- PR #4's `Ruleset governance validation` step inside `Repository hygiene`.
+
+Do not replace one side with the other wholesale. Re-run the combined Quality workflow after reconciliation.
 
 ### 5. Merge the governance implementation
 
@@ -116,11 +127,14 @@ In GitHub:
 6. Before creating/enabling it, verify:
    - target is the default branch only;
    - approval count is `0`;
+   - no path-specific required reviewers were introduced;
    - conversation resolution is enabled;
    - linear history is enabled;
    - `Required gate` is required;
    - `swift-quality / Swift quality` is required;
+   - no repository-specific status-check integration IDs were introduced;
    - no `release*` branch patterns are present;
+   - no unexpected ref-mutation rules were introduced;
    - no bypass actors were introduced.
 
 ### 7. Disable or replace the overlapping legacy branch Ruleset
@@ -139,7 +153,7 @@ Import `rulesets/release-tags.json` and verify it targets only:
 refs/tags/v*
 ```
 
-Confirm the effective rule restricts update and deletion while still allowing creation of a new version tag through the authorized release flow.
+Confirm the effective rule restricts update and deletion while still allowing creation of a new version tag through the authorized release flow. A `creation` restriction is not part of the portable Solo tag profile.
 
 ### 9. Inspect effective rules
 
@@ -168,25 +182,34 @@ Do not use a real release tag for destructive Ruleset testing.
 
 ## Offline validation
 
-Run:
+Run the same policy suites that Quality executes:
 
 ```bash
-python3 -m unittest scripts.ci.test_validate_rulesets -v
+python3 -m unittest \
+  scripts.ci.test_validate_rulesets \
+  scripts.ci.test_validate_rulesets_portability \
+  -v
 python3 scripts/ci/validate_rulesets.py
 ```
 
-The validator rejects policy weakening such as:
+The validator rejects policy weakening or lockout regressions such as:
 
 - approval count becoming non-zero;
+- path-specific `required_reviewers` being added to the Solo profile;
+- an extra approval requirement for unattributed changes being enabled;
 - `release*` branches being added to the default-branch profile;
 - either canonical required check being removed or renamed;
+- duplicate required check contexts;
+- repository-specific `integration_id` or other fields being added to the portable status-check entries;
 - strict status-check policy being disabled;
 - review-thread resolution being disabled;
 - merge/rebase being added to the Solo merge methods;
 - linear-history protection being removed;
+- unexpected default-branch rule types such as an `update` restriction being added;
 - bypass actors being added;
 - runtime GitHub metadata being committed into portable desired state;
-- release-tag update/deletion protection being removed.
+- release-tag update/deletion protection being removed;
+- a release-tag `creation` rule or another unexpected tag rule being added.
 
 The validator is intentionally offline and secret-free. It does not call GitHub and does not mutate repository Settings.
 
