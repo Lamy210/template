@@ -10,6 +10,11 @@ if [[ ! -d "${APP_PATH}" ]]; then
   exit 1
 fi
 
+if [[ "${APP_NAME}" == */* || "${APP_NAME}" == *.app || "${APP_NAME}" == "." || "${APP_NAME}" == ".." ]]; then
+  echo "APP_NAME must be an application basename without .app." >&2
+  exit 1
+fi
+
 TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 STAGING_DIR="$(mktemp -d "${TEMP_ROOT%/}/dmg-stage.XXXXXX")"
 
