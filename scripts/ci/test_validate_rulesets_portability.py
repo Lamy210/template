@@ -23,6 +23,33 @@ class PortableSoloRulesetTests(unittest.TestCase):
 
         self.assertTrue(any("required_reviewers must be empty or omitted" in error for error in errors))
 
+    def test_rejects_null_required_reviewers(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        pull_request = next(rule for rule in document["rules"] if rule["type"] == "pull_request")
+        pull_request["parameters"]["required_reviewers"] = None
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("required_reviewers must be empty or omitted" in error for error in errors))
+
+    def test_rejects_missing_dismiss_stale_reviews_on_push(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        pull_request = next(rule for rule in document["rules"] if rule["type"] == "pull_request")
+        pull_request["parameters"].pop("dismiss_stale_reviews_on_push")
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("dismiss_stale_reviews_on_push must be a boolean" in error for error in errors))
+
+    def test_rejects_non_boolean_dismiss_stale_reviews_on_push(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        pull_request = next(rule for rule in document["rules"] if rule["type"] == "pull_request")
+        pull_request["parameters"]["dismiss_stale_reviews_on_push"] = 1
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("dismiss_stale_reviews_on_push must be a boolean" in error for error in errors))
+
     def test_rejects_extra_unattributed_change_approval(self) -> None:
         document = copy.deepcopy(valid_main_solo())
         pull_request = next(rule for rule in document["rules"] if rule["type"] == "pull_request")
