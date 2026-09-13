@@ -115,7 +115,8 @@ api_to_file() {
   return 1
 }
 
-encoded_branch="$(python3 - "${branch}" <<'PY'
+encoded_branch="$(
+  python3 - "${branch}" <<'PY'
 import sys
 import urllib.parse
 
