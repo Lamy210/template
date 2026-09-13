@@ -404,6 +404,7 @@ private final class Fixture {
         try FileManager.default.createDirectory(at: imagesRoot, withIntermediateDirectories: true)
         let imageURL = imagesRoot.appendingPathComponent("\(caseID).png", isDirectory: false)
         try image.writePNG(to: imageURL)
+        let digest = try ImageDigest.sha256(fileAt: imageURL)
         let bundle = BaselineBundleManifest(
             schemaVersion: 1,
             sourceRepository: "Lamy210/template",
@@ -415,11 +416,12 @@ private final class Fixture {
             previousBaselineReference: nil,
             cases: [BaselineBundleCase(
                 id: caseID,
-                digest: try ImageDigest.sha256(fileAt: imageURL)
+                digest: digest
             )]
         )
         let manifestURL = rollingRoot.appendingPathComponent("bundle-manifest.json", isDirectory: false)
-        try JSONEncoder().encode(bundle).write(to: manifestURL, options: .atomic)
+        let data = try JSONEncoder().encode(bundle)
+        try data.write(to: manifestURL, options: .atomic)
         return imageURL
     }
 
