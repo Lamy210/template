@@ -1,5 +1,12 @@
 import Foundation
 
+private struct ManifestReportIdentity {
+    let expectedDigest: String
+    let actualDigest: String
+    let approvalStatus: VisualCaseStatus
+    let approvalReason: String?
+}
+
 enum ManifestCaseExecutor {
     static func run(
         _ testCase: VisualCase,
@@ -146,13 +153,17 @@ enum ManifestCaseExecutor {
             profileFingerprint: profile,
             configuration: configuration
         )
+        let identity = ManifestReportIdentity(
+            expectedDigest: expectedDigest,
+            actualDigest: actualDigest,
+            approvalStatus: approvalResult.status,
+            approvalReason: approvalResult.reason
+        )
         let report = makeReport(
             testCase: testCase,
             baselineReference: baselineReference,
             profile: profile,
-            expectedDigest: expectedDigest,
-            actualDigest: actualDigest,
-            approvalResult: approvalResult,
+            identity: identity,
             comparison: result.report,
             currentSHA: configuration.currentSHA
         )
@@ -254,9 +265,7 @@ enum ManifestCaseExecutor {
         testCase: VisualCase,
         baselineReference: String,
         profile: String,
-        expectedDigest: String,
-        actualDigest: String,
-        approvalResult: (status: VisualCaseStatus, reason: String?),
+        identity: ManifestReportIdentity,
         comparison: ComparisonReport,
         currentSHA: String
     ) -> VisualCaseRunReport {
@@ -266,13 +275,13 @@ enum ManifestCaseExecutor {
             baselineReference: baselineReference,
             currentSHA: currentSHA,
             profile: profile,
-            status: approvalResult.status,
+            status: identity.approvalStatus,
             maxChangedPixelRatio: testCase.maxChangedPixelRatio,
             maxChannelDeltaThreshold: Int(testCase.maxChannelDelta),
-            expectedDigest: expectedDigest,
-            actualDigest: actualDigest,
+            expectedDigest: identity.expectedDigest,
+            actualDigest: identity.actualDigest,
             approvalPath: testCase.approval,
-            approvalReason: approvalResult.reason,
+            approvalReason: identity.approvalReason,
             dimensionMismatch: comparison.dimensionMismatch,
             expectedWidth: comparison.expectedWidth,
             expectedHeight: comparison.expectedHeight,
