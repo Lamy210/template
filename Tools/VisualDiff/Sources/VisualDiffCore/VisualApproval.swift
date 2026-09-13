@@ -104,7 +104,7 @@ public struct VisualApproval: Codable, Sendable, Equatable {
         let hex = value.dropFirst(prefix.count)
         guard hex.count == 64 else { return false }
         return hex.allSatisfy { character in
-            character.isNumber || ("a"..."f").contains(character)
+            character.isNumber || ("a" ... "f").contains(character)
         }
     }
 }
