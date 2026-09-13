@@ -34,11 +34,18 @@ jobs:
           # Replace this with the application's deterministic build/test entrypoint.
           ./scripts/ci/build-release-artifact.sh
 
-      - name: Upload unsigned application
+      - name: Package unsigned application
+        shell: bash
+        env:
+          APP_PATH: build/MyApp.app
+          OUTPUT_ARCHIVE: build/unsigned-macos-app.tar.gz
+        run: bash scripts/release/package-app-artifact.sh
+
+      - name: Upload unsigned application archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unsigned-macos-app
-          path: build/MyApp.app
+          path: build/unsigned-macos-app.tar.gz
           if-no-files-found: error
           retention-days: 1
 
@@ -50,6 +57,7 @@ jobs:
     uses: ./.github/workflows/reusable-macos-release.yml
     with:
       artifact_name: unsigned-macos-app
+      artifact_archive_name: unsigned-macos-app.tar.gz
       app_name: MyApp
       app_path: MyApp.app
       bundle_id: com.example.MyApp
