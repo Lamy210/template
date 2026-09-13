@@ -6,11 +6,11 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "VisualDiffCore", targets: ["VisualDiffCore"]),
-        .executable(name: "visual-diff", targets: ["visual-diff"]),
+        .executable(name: "visual-diff", targets: ["visual-diff"])
     ],
     targets: [
         .target(name: "VisualDiffCore"),
         .executableTarget(name: "visual-diff", dependencies: ["VisualDiffCore"]),
-        .testTarget(name: "VisualDiffCoreTests", dependencies: ["VisualDiffCore"]),
+        .testTarget(name: "VisualDiffCoreTests", dependencies: ["VisualDiffCore"])
     ]
 )
