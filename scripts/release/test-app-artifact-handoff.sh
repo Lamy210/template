@@ -57,4 +57,36 @@ if APP_PATH="${RESTORED_APP}" \
 fi
 chmod 0755 "${RESTORED_EXECUTABLE}"
 
+UNSAFE_ARCHIVE="${TMP_ROOT}/artifact/unsafe-symlink.tar.gz"
+UNSAFE_EXTRACT_ROOT="${TMP_ROOT}/unsafe-downloaded"
+python3 - "${UNSAFE_ARCHIVE}" <<'PY'
+import sys
+import tarfile
+
+archive_path = sys.argv[1]
+with tarfile.open(archive_path, "w:gz") as archive:
+    for name in (
+        "TestApp.app",
+        "TestApp.app/Contents",
+        "TestApp.app/Contents/Resources",
+    ):
+        entry = tarfile.TarInfo(name)
+        entry.type = tarfile.DIRTYPE
+        entry.mode = 0o755
+        archive.addfile(entry)
+
+    link = tarfile.TarInfo("TestApp.app/Contents/Resources/escape")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "../../../outside"
+    archive.addfile(link)
+PY
+
+if ARCHIVE_PATH="${UNSAFE_ARCHIVE}" \
+  OUTPUT_DIR="${UNSAFE_EXTRACT_ROOT}" \
+  APP_BASENAME="TestApp.app" \
+  bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh"; then
+  echo "Archive with an escaping symlink target was incorrectly accepted." >&2
+  exit 1
+fi
+
 printf 'App artifact handoff preserved and verified executable permissions.\n'
