@@ -75,8 +75,6 @@ public struct PixelImage: Sendable, Equatable {
             }
 
             context.interpolationQuality = .none
-            context.translateBy(x: 0, y: CGFloat(height))
-            context.scaleBy(x: 1, y: -1)
             context.draw(sourceImage, in: CGRect(x: 0, y: 0, width: width, height: height))
             return true
         }
