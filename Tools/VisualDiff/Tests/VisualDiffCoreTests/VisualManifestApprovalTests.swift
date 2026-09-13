@@ -1,6 +1,6 @@
 import Foundation
-import XCTest
 @testable import VisualDiffCore
+import XCTest
 
 final class VisualManifestApprovalTests: XCTestCase {
     func testDecodesApprovalPathUnderApprovalRoot() throws {
