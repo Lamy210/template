@@ -57,7 +57,14 @@ def is_inside_app(path: str) -> bool:
 
 
 with tarfile.open(archive_path, "r:gz") as archive:
+    seen_paths: set[str] = set()
+
     for member in archive.getmembers():
+        canonical_name = posixpath.normpath(member.name)
+        if canonical_name in seen_paths:
+            raise SystemExit(f"Duplicate archive member path: {canonical_name}")
+        seen_paths.add(canonical_name)
+
         if not (member.isfile() or member.isdir() or member.issym() or member.islnk()):
             raise SystemExit(f"Unsupported archive member type: {member.name}")
 
