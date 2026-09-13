@@ -33,7 +33,8 @@ ARCHIVE_PATH="${ARCHIVE_PATH}" \
   APP_BASENAME="TestApp.app" \
   bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh"
 
-RESTORED_EXECUTABLE="${EXTRACT_ROOT}/TestApp.app/Contents/MacOS/TestApp"
+RESTORED_APP="${EXTRACT_ROOT}/TestApp.app"
+RESTORED_EXECUTABLE="${RESTORED_APP}/Contents/MacOS/TestApp"
 if [[ ! -f "${RESTORED_EXECUTABLE}" ]]; then
   echo "Restored bundle executable is missing: ${RESTORED_EXECUTABLE}" >&2
   exit 1
@@ -43,4 +44,17 @@ if [[ ! -x "${RESTORED_EXECUTABLE}" ]]; then
   exit 1
 fi
 
-printf 'App artifact handoff preserved executable permissions.\n'
+APP_PATH="${RESTORED_APP}" \
+  EXECUTABLE_NAME="TestApp" \
+  bash "${ROOT_DIR}/scripts/release/verify-app-executable.sh"
+
+chmod 0644 "${RESTORED_EXECUTABLE}"
+if APP_PATH="${RESTORED_APP}" \
+  EXECUTABLE_NAME="TestApp" \
+  bash "${ROOT_DIR}/scripts/release/verify-app-executable.sh"; then
+  echo "Non-executable bundle binary was incorrectly accepted." >&2
+  exit 1
+fi
+chmod 0755 "${RESTORED_EXECUTABLE}"
+
+printf 'App artifact handoff preserved and verified executable permissions.\n'
