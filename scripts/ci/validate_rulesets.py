@@ -135,6 +135,8 @@ def validate_main_solo(document: dict) -> list[str]:
                 errors.append("require_code_owner_review must be false")
             if parameters.get("require_last_push_approval") is not False:
                 errors.append("require_last_push_approval must be false")
+            if parameters.get("required_reviewers") not in (None, []):
+                errors.append("required_reviewers must be empty or omitted")
             if parameters.get("allowed_merge_methods") != ["squash"]:
                 errors.append("allowed_merge_methods must equal ['squash']")
 
@@ -148,11 +150,16 @@ def validate_main_solo(document: dict) -> list[str]:
                 errors.append("strict_required_status_checks_policy must be true")
             checks = parameters.get("required_status_checks")
             contexts: list[str | None] = []
+            portable_check_shape = False
             if isinstance(checks, list):
                 contexts = [
                     item.get("context") if isinstance(item, dict) else None
                     for item in checks
                 ]
+                portable_check_shape = all(
+                    isinstance(item, dict) and set(item) == {"context"}
+                    for item in checks
+                )
             if (
                 not isinstance(checks, list)
                 or len(contexts) != len(set(contexts))
@@ -162,6 +169,8 @@ def validate_main_solo(document: dict) -> list[str]:
                     "required check contexts must equal "
                     "{'Required gate', 'swift-quality / Swift quality'}"
                 )
+            if isinstance(checks, list) and not portable_check_shape:
+                errors.append("required checks must contain only context")
 
     return errors
 
