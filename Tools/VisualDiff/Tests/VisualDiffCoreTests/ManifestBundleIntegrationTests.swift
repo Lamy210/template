@@ -198,6 +198,8 @@ private final class RollingBundleFixture {
         profileFingerprint: String,
         cases: [BaselineBundleCase]
     ) throws {
+        let imagesRoot = rollingRoot.appendingPathComponent("images", isDirectory: true)
+        try FileManager.default.createDirectory(at: imagesRoot, withIntermediateDirectories: true)
         let bundle = BaselineBundleManifest(
             schemaVersion: 1,
             sourceRepository: "Lamy210/template",
