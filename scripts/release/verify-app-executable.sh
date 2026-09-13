@@ -15,6 +15,10 @@ if [[ "${EXECUTABLE_NAME}" == */* || "${EXECUTABLE_NAME}" == "." || "${EXECUTABL
 fi
 
 executable_path="${APP_PATH}/Contents/MacOS/${EXECUTABLE_NAME}"
+if [[ -L "${executable_path}" ]]; then
+  echo "Bundle executable must not be a symbolic link: ${executable_path}" >&2
+  exit 1
+fi
 if [[ ! -f "${executable_path}" ]]; then
   echo "Bundle executable not found: ${executable_path}" >&2
   exit 1
