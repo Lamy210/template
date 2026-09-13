@@ -1,6 +1,6 @@
 import Foundation
-import XCTest
 @testable import VisualDiffCore
+import XCTest
 
 final class VisualManifestTests: XCTestCase {
     func testDecodesValidGitAndRollingCases() throws {
