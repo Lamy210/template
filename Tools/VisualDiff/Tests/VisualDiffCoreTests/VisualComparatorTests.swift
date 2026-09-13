@@ -8,7 +8,7 @@ final class VisualComparatorTests: XCTestCase {
         let result = VisualComparator.compare(
             expected: expected,
             actual: expected,
-            policy: ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 0)
+            policy: try ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 0)
         )
 
         XCTAssertTrue(result.report.passed)
@@ -27,7 +27,7 @@ final class VisualComparatorTests: XCTestCase {
         let result = VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 0)
+            policy: try ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 0)
         )
 
         XCTAssertFalse(result.report.passed)
@@ -45,7 +45,7 @@ final class VisualComparatorTests: XCTestCase {
         let result = VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: ComparisonPolicy(maxChangedPixelRatio: 0.25, maxChannelDelta: 255)
+            policy: try ComparisonPolicy(maxChangedPixelRatio: 0.25, maxChannelDelta: 255)
         )
 
         XCTAssertTrue(result.report.passed)
@@ -58,7 +58,7 @@ final class VisualComparatorTests: XCTestCase {
         let result = VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 2)
+            policy: try ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 2)
         )
 
         XCTAssertTrue(result.report.passed)
@@ -72,7 +72,7 @@ final class VisualComparatorTests: XCTestCase {
         let result = VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 255)
+            policy: try ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 255)
         )
 
         XCTAssertFalse(result.report.passed)
