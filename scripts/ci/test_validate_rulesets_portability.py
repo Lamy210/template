@@ -72,5 +72,36 @@ class PortableReleaseTagRulesetTests(unittest.TestCase):
         self.assertTrue(any("unexpected release tag rule types" in error for error in errors))
 
 
+class PortableRulesetStructureTests(unittest.TestCase):
+    def test_rejects_missing_name(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        document.pop("name")
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("name must be a non-empty string" in error for error in errors))
+
+    def test_rejects_extra_targeting_condition(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        document["conditions"]["repository_name"] = {
+            "include": ["~ALL"],
+            "exclude": [],
+        }
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("conditions must contain only ref_name" in error for error in errors))
+
+    def test_rejects_malformed_rule_entry(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        document["rules"].append("deletion")
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(
+            any("rules entries must be objects with string type" in error for error in errors)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
