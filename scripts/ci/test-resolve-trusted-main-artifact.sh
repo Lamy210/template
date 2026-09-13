@@ -17,24 +17,32 @@ args="$*"
 
 if [[ "${args}" == *"/actions/workflows/visual-regression.yml/runs"* ]]; then
   case "${scenario}" in
-    success|wrong-artifact|expired|traversal)
+    malformed-runs)
+      printf '{not-json'
+      ;;
+    success|wrong-artifact|expired|duplicate-artifact|absolute|traversal|duplicate-member|symlink-escape)
       cat <<'JSON'
-{"workflow_runs":[{"id":9001,"head_branch":"main","event":"push","conclusion":"success"}]}
+{"workflow_runs":[{"id":9001,"run_attempt":2,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"full_name":"Lamy210/template"}}]}
+JSON
+      ;;
+    wrong-repo)
+      cat <<'JSON'
+{"workflow_runs":[{"id":9005,"run_attempt":1,"head_sha":"1123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"full_name":"attacker/template"}}]}
 JSON
       ;;
     pr)
       cat <<'JSON'
-{"workflow_runs":[{"id":9002,"head_branch":"main","event":"pull_request","conclusion":"success"}]}
+{"workflow_runs":[{"id":9002,"run_attempt":1,"head_sha":"2123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"pull_request","conclusion":"success","head_repository":{"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     non-main)
       cat <<'JSON'
-{"workflow_runs":[{"id":9003,"head_branch":"feature","event":"push","conclusion":"success"}]}
+{"workflow_runs":[{"id":9003,"run_attempt":1,"head_sha":"3123456789abcdef0123456789abcdef01234567","head_branch":"feature","event":"push","conclusion":"success","head_repository":{"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     failure)
       cat <<'JSON'
-{"workflow_runs":[{"id":9004,"head_branch":"main","event":"push","conclusion":"failure"}]}
+{"workflow_runs":[{"id":9004,"run_attempt":1,"head_sha":"4123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"failure","head_repository":{"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     *)
@@ -46,19 +54,24 @@ fi
 
 if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
   case "${scenario}" in
-    success|traversal)
+    success|absolute|traversal|duplicate-member|symlink-escape)
       cat <<'JSON'
-{"artifacts":[{"id":7001,"name":"visual-baseline-test","expired":false}]}
+{"artifacts":[{"id":7001,"name":"visual-baseline-test","expired":false,"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}
 JSON
       ;;
     wrong-artifact)
       cat <<'JSON'
-{"artifacts":[{"id":7002,"name":"different-artifact","expired":false}]}
+{"artifacts":[{"id":7002,"name":"different-artifact","expired":false,"digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}
 JSON
       ;;
     expired)
       cat <<'JSON'
-{"artifacts":[{"id":7003,"name":"visual-baseline-test","expired":true}]}
+{"artifacts":[{"id":7003,"name":"visual-baseline-test","expired":true,"digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]}
+JSON
+      ;;
+    duplicate-artifact)
+      cat <<'JSON'
+{"artifacts":[{"id":7001,"name":"visual-baseline-test","expired":false},{"id":7004,"name":"visual-baseline-test","expired":false}]}
 JSON
       ;;
   esac
@@ -68,14 +81,25 @@ fi
 if [[ "${args}" == *"/actions/artifacts/7001/zip"* ]]; then
   python3 - "${scenario}" <<'PY'
 import io
+import stat
 import sys
 import zipfile
 
 scenario = sys.argv[1]
 buffer = io.BytesIO()
 with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-    if scenario == "traversal":
+    if scenario == "absolute":
+        archive.writestr("/tmp/evil.txt", "escape")
+    elif scenario == "traversal":
         archive.writestr("../evil.txt", "escape")
+    elif scenario == "duplicate-member":
+        archive.writestr("images/screen.png", "first")
+        archive.writestr("images/./screen.png", "second")
+    elif scenario == "symlink-escape":
+        link = zipfile.ZipInfo("images/link")
+        link.create_system = 3
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive.writestr(link, "../../outside")
     else:
         archive.writestr("profile.json", '{"profile":"test"}')
         archive.writestr("screen.png", "png-placeholder")
@@ -126,19 +150,39 @@ run_id="$(run_resolver success "${success_output}")"
 [[ "${run_id}" == "9001" ]]
 [[ -f "${success_output}/profile.json" ]]
 [[ -f "${success_output}/screen.png" ]]
+[[ -f "${success_output}/resolver-metadata.json" ]]
+python3 - "${success_output}/resolver-metadata.json" <<'PY'
+import json
+import sys
 
+with open(sys.argv[1], encoding="utf-8") as handle:
+    metadata = json.load(handle)
+
+assert metadata["repository"] == "Lamy210/template"
+assert metadata["workflow"] == "visual-regression.yml"
+assert metadata["runId"] == 9001
+assert metadata["runAttempt"] == 2
+assert metadata["sourceSHA"] == "0123456789abcdef0123456789abcdef01234567"
+assert metadata["artifactId"] == 7001
+assert metadata["artifactName"] == "visual-baseline-test"
+assert metadata["artifactDigest"] == "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+PY
+
+assert_status empty 4
 assert_status pr 4
 assert_status non-main 4
 assert_status failure 4
+assert_status wrong-repo 4
 assert_status wrong-artifact 4
 assert_status expired 4
+assert_status malformed-runs 3
+assert_status duplicate-artifact 3
+assert_status absolute 5
+assert_status traversal 5
+assert_status duplicate-member 5
+assert_status symlink-escape 5
 
-traversal_output="${TEMP_ROOT}/traversal"
-set +e
-run_resolver traversal "${traversal_output}" >/dev/null 2>"${TEMP_ROOT}/traversal.stderr"
-traversal_status=$?
-set -e
-[[ "${traversal_status}" -ne 0 ]]
 [[ ! -e "${TEMP_ROOT}/evil.txt" ]]
+[[ ! -e "${TEMP_ROOT}/outside" ]]
 
 printf 'trusted-main artifact resolver tests passed\n'
