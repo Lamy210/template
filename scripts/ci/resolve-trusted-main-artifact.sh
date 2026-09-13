@@ -28,29 +28,29 @@ workflow=""
 artifact_name=""
 output_dir=""
 
-while (( $# > 0 )); do
+while (($# > 0)); do
   case "$1" in
     --repository)
-      (( $# >= 2 )) || die "${EXIT_USAGE}" 'missing value for --repository'
+      (($# >= 2)) || die "${EXIT_USAGE}" 'missing value for --repository'
       repository="$2"
       shift 2
       ;;
     --workflow)
-      (( $# >= 2 )) || die "${EXIT_USAGE}" 'missing value for --workflow'
+      (($# >= 2)) || die "${EXIT_USAGE}" 'missing value for --workflow'
       workflow="$2"
       shift 2
       ;;
     --artifact)
-      (( $# >= 2 )) || die "${EXIT_USAGE}" 'missing value for --artifact'
+      (($# >= 2)) || die "${EXIT_USAGE}" 'missing value for --artifact'
       artifact_name="$2"
       shift 2
       ;;
     --output)
-      (( $# >= 2 )) || die "${EXIT_USAGE}" 'missing value for --output'
+      (($# >= 2)) || die "${EXIT_USAGE}" 'missing value for --output'
       output_dir="$2"
       shift 2
       ;;
-    -h|--help)
+    -h | --help)
       usage
       exit 0
       ;;
@@ -87,7 +87,7 @@ api_to_file() {
       return 0
     fi
     rm -f "${destination}"
-    if (( attempt < 3 )); then
+    if ((attempt < 3)); then
       sleep "${attempt}"
     fi
   done
@@ -198,7 +198,7 @@ print(f"{artifact_id}\t{digest or ''}")
 PY
   then
     parser_status=$?
-    if (( parser_status == 2 )); then
+    if ((parser_status == 2)); then
       die "${EXIT_INFRA}" "ambiguous exact-name artifacts for run ${run_id}"
     fi
     die "${EXIT_INFRA}" "artifacts response for run ${run_id} was malformed"
@@ -309,7 +309,7 @@ with archive:
 PY
 then
   archive_status=$?
-  if (( archive_status == 2 )); then
+  if ((archive_status == 2)); then
     die "${EXIT_UNSAFE_ARCHIVE}" 'artifact archive failed safety validation'
   fi
   die "${EXIT_INFRA}" 'artifact archive could not be decoded'
