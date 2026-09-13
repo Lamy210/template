@@ -67,7 +67,10 @@ def valid_release_tags() -> dict:
             }
         },
         "rules": [
-            {"type": "update"},
+            {
+                "type": "update",
+                "parameters": {"update_allows_fetch_and_merge": False},
+            },
             {"type": "deletion"},
         ],
     }
