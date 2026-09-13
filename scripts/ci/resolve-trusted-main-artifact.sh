@@ -100,7 +100,7 @@ runs_endpoint="repos/${repository}/actions/workflows/${workflow}/runs?branch=mai
 api_to_file "${runs_endpoint}" "${runs_json}" || die "${EXIT_INFRA}" 'failed to query workflow runs'
 
 candidates_file="${work_root}/candidates.tsv"
-if ! python3 - "${runs_json}" "${repository}" >"${candidates_file}" <<'PY'
+if python3 - "${runs_json}" "${repository}" >"${candidates_file}" <<'PY'
 import json
 import sys
 
@@ -139,6 +139,8 @@ for run in runs:
     print(f"{run_id}\t{attempt}\t{head_sha}")
 PY
 then
+  :
+else
   die "${EXIT_INFRA}" 'workflow-runs response was malformed'
 fi
 
@@ -156,7 +158,7 @@ while IFS=$'\t' read -r run_id run_attempt source_sha; do
   api_to_file "${artifacts_endpoint}" "${artifacts_json}" || die "${EXIT_INFRA}" "failed to query artifacts for run ${run_id}"
 
   artifact_result="${work_root}/artifact-${run_id}.tsv"
-  if ! python3 - "${artifacts_json}" "${artifact_name}" >"${artifact_result}" <<'PY'
+  if python3 - "${artifacts_json}" "${artifact_name}" >"${artifact_result}" <<'PY'
 import json
 import sys
 
@@ -197,6 +199,8 @@ if digest is not None and not isinstance(digest, str):
 print(f"{artifact_id}\t{digest or ''}")
 PY
   then
+    :
+  else
     parser_status=$?
     if ((parser_status == 2)); then
       die "${EXIT_INFRA}" "ambiguous exact-name artifacts for run ${run_id}"
@@ -223,7 +227,7 @@ api_to_file "${archive_endpoint}" "${archive_path}" || die "${EXIT_INFRA}" 'fail
 
 stage_dir="${work_root}/stage"
 mkdir -p "${stage_dir}"
-if ! python3 - "${archive_path}" "${stage_dir}" <<'PY'
+if python3 - "${archive_path}" "${stage_dir}" <<'PY'
 import os
 import pathlib
 import shutil
@@ -308,6 +312,8 @@ with archive:
             shutil.copyfileobj(source, sink)
 PY
 then
+  :
+else
   archive_status=$?
   if ((archive_status == 2)); then
     die "${EXIT_UNSAFE_ARCHIVE}" 'artifact archive failed safety validation'
