@@ -43,5 +43,7 @@ jobs:
           --manifest Tests/VisualRegression/visual-regression.example.json
           --repo-root "$GITHUB_WORKSPACE"
 
-      - name: Trusted main artifact resolver tests
-        run: bash scripts/ci/test-resolve-trusted-main-artifact.sh
+      - name: Trusted artifact resolver tests
+        run: |
+          bash scripts/ci/test-resolve-trusted-main-artifact.sh
+          bash scripts/ci/test-resolve-trusted-main-artifact-options.sh
