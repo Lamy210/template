@@ -42,7 +42,7 @@ on:
         default: main
         type: string
       publish_github_release:
-        description: Publish/update a GitHub Release after notarization and verification.
+        description: Publish an immutable GitHub Release after notarization and verification.
         required: false
         default: true
         type: boolean
@@ -227,25 +227,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish GitHub Release
+      - name: Publish immutable GitHub Release
         if: ${{ inputs.publish_github_release }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
           DMG_PATH: release-output/${{ inputs.dmg_name }}
-        run: |
-          set -euo pipefail
-          checksum="${DMG_PATH}.sha256"
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" "${DMG_PATH}" "${checksum}" --clobber
-          else
-            gh release create "${GITHUB_REF_NAME}" \
-              "${DMG_PATH}" \
-              "${checksum}" \
-              --verify-tag \
-              --generate-notes \
-              --title "${GITHUB_REF_NAME}"
-          fi
+        run: bash scripts/release/publish-github-release.sh
 
       - name: Delete temporary signing keychain
         if: ${{ always() }}
