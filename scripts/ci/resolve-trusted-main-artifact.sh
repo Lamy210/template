@@ -230,7 +230,8 @@ archive_path="${work_root}/artifact.zip"
 archive_endpoint="repos/${repository}/actions/artifacts/${selected_artifact_id}/zip"
 api_to_file "${archive_endpoint}" "${archive_path}" || die "${EXIT_INFRA}" 'failed to download artifact archive'
 
-actual_archive_digest="$(python3 - "${archive_path}" <<'PY'
+actual_archive_digest="$ (
+  python3 - "${archive_path}" <<'PY'
 import hashlib
 import sys
 
