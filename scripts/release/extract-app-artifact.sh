@@ -43,6 +43,34 @@ while IFS= read -r member; do
   done
 done <"${members_file}"
 
+python3 - "${ARCHIVE_PATH}" "${APP_BASENAME}" <<'PY'
+import posixpath
+import sys
+import tarfile
+
+archive_path, app_basename = sys.argv[1:]
+app_prefix = f"{app_basename}/"
+
+with tarfile.open(archive_path, "r:gz") as archive:
+    for member in archive.getmembers():
+        if not member.issym():
+            continue
+
+        target = member.linkname
+        if not target or target.startswith("/"):
+            raise SystemExit(
+                f"Unsafe archive symlink target: {member.name} -> {target}"
+            )
+
+        resolved_target = posixpath.normpath(
+            posixpath.join(posixpath.dirname(member.name), target)
+        )
+        if resolved_target != app_basename and not resolved_target.startswith(app_prefix):
+            raise SystemExit(
+                f"Archive symlink escapes expected app bundle: {member.name} -> {target}"
+            )
+PY
+
 rm -rf "${OUTPUT_DIR}"
 mkdir -p "${OUTPUT_DIR}"
 tar -xzf "${ARCHIVE_PATH}" -C "${OUTPUT_DIR}"
