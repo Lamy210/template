@@ -13,9 +13,10 @@ final class ManifestBundleIntegrationTests: XCTestCase {
             profileFingerprint: profile.profileFingerprint,
             images: ["dynamic": expected]
         )
+        let manifest = try fixture.manifest(cases: [testCase])
 
         let summary = try ManifestRunner.run(
-            manifest: try fixture.manifest(cases: [testCase]),
+            manifest: manifest,
             configuration: fixture.configuration(bootstrapRolling: false)
         )
 
@@ -36,9 +37,10 @@ final class ManifestBundleIntegrationTests: XCTestCase {
         let newCase = fixture.rollingCase(id: "new-screen")
         let current = try TestImageFactory.solid(width: 1, height: 1, rgba: [4, 5, 6, 255])
         try fixture.writeCurrent(current, testCase: newCase)
+        let manifest = try fixture.manifest(cases: [newCase])
 
         let summary = try ManifestRunner.run(
-            manifest: try fixture.manifest(cases: [newCase]),
+            manifest: manifest,
             configuration: fixture.configuration(bootstrapRolling: false)
         )
 
@@ -61,9 +63,10 @@ final class ManifestBundleIntegrationTests: XCTestCase {
                 )
             ]
         )
+        let manifest = try fixture.manifest(cases: [testCase])
 
         XCTAssertThrowsError(try ManifestRunner.run(
-            manifest: try fixture.manifest(cases: [testCase]),
+            manifest: manifest,
             configuration: fixture.configuration(bootstrapRolling: true)
         )) { error in
             guard case BaselineBundleError.missingImage(caseID: "dynamic") = error else {
@@ -182,9 +185,10 @@ private final class RollingBundleFixture {
         for (caseID, image) in images.sorted(by: { $0.key < $1.key }) {
             let url = imagesRoot.appendingPathComponent("\(caseID).png")
             try image.writePNG(to: url)
+            let digest = try ImageDigest.sha256(fileAt: url)
             cases.append(BaselineBundleCase(
                 id: caseID,
-                digest: try ImageDigest.sha256(fileAt: url)
+                digest: digest
             ))
         }
         try writeBundleManifest(profileFingerprint: profileFingerprint, cases: cases)
@@ -208,11 +212,12 @@ private final class RollingBundleFixture {
         try writeJSON(bundle, to: rollingRoot.appendingPathComponent("bundle-manifest.json"))
     }
 
-    private func writeJSON<T: Encodable>(_ value: T, to url: URL) throws {
+    private func writeJSON(_ value: some Encodable, to url: URL) throws {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try JSONEncoder().encode(value).write(to: url, options: .atomic)
+        let data = try JSONEncoder().encode(value)
+        try data.write(to: url, options: .atomic)
     }
 }
