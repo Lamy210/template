@@ -10,7 +10,7 @@ private struct ManifestReportIdentity {
 enum ManifestCaseExecutor {
     static func run(
         _ testCase: VisualCase,
-        profile: String,
+        executionProfile: ManifestExecutionProfile,
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
         let currentURL = try ManifestPathResolver.confinedRepositoryURL(
@@ -28,14 +28,14 @@ enum ManifestCaseExecutor {
             return try runGitCase(
                 testCase,
                 currentURL: currentURL,
-                profile: profile,
+                executionProfile: executionProfile,
                 configuration: configuration
             )
         case .rollingMain:
             return try runRollingCase(
                 testCase,
                 currentURL: currentURL,
-                profile: profile,
+                executionProfile: executionProfile,
                 configuration: configuration
             )
         }
@@ -44,7 +44,7 @@ enum ManifestCaseExecutor {
     private static func runGitCase(
         _ testCase: VisualCase,
         currentURL: URL,
-        profile: String,
+        executionProfile: ManifestExecutionProfile,
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
         guard let expectedPath = testCase.expected else {
@@ -64,7 +64,7 @@ enum ManifestCaseExecutor {
             expectedURL: expectedURL,
             currentURL: currentURL,
             baselineReference: "git:\(expectedPath)",
-            profile: profile,
+            executionProfile: executionProfile,
             configuration: configuration
         )
     }
@@ -72,14 +72,14 @@ enum ManifestCaseExecutor {
     private static func runRollingCase(
         _ testCase: VisualCase,
         currentURL: URL,
-        profile: String,
+        executionProfile: ManifestExecutionProfile,
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
         guard let rollingRoot = configuration.rollingRoot else {
             return try bootstrapOrThrow(
                 testCase,
                 currentURL: currentURL,
-                profile: profile,
+                executionProfile: executionProfile,
                 configuration: configuration
             )
         }
@@ -92,7 +92,7 @@ enum ManifestCaseExecutor {
             return try bootstrapOrThrow(
                 testCase,
                 currentURL: currentURL,
-                profile: profile,
+                executionProfile: executionProfile,
                 configuration: configuration
             )
         }
@@ -103,7 +103,7 @@ enum ManifestCaseExecutor {
             expectedURL: expectedURL,
             currentURL: currentURL,
             baselineReference: baselineReference,
-            profile: profile,
+            executionProfile: executionProfile,
             configuration: configuration
         )
     }
@@ -111,7 +111,7 @@ enum ManifestCaseExecutor {
     private static func bootstrapOrThrow(
         _ testCase: VisualCase,
         currentURL: URL,
-        profile: String,
+        executionProfile: ManifestExecutionProfile,
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
         guard configuration.bootstrapRolling else {
@@ -120,7 +120,7 @@ enum ManifestCaseExecutor {
         return try writeBootstrapReport(
             testCase: testCase,
             currentURL: currentURL,
-            profile: profile,
+            executionProfile: executionProfile,
             configuration: configuration
         )
     }
@@ -130,7 +130,7 @@ enum ManifestCaseExecutor {
         expectedURL: URL,
         currentURL: URL,
         baselineReference: String,
-        profile: String,
+        executionProfile: ManifestExecutionProfile,
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
         let expected = try PixelImage.loadPNG(from: expectedURL)
@@ -150,7 +150,7 @@ enum ManifestCaseExecutor {
             comparisonPassed: result.report.passed,
             expectedDigest: expectedDigest,
             actualDigest: actualDigest,
-            profileFingerprint: profile,
+            profileFingerprint: executionProfile.fingerprint,
             configuration: configuration
         )
         let identity = ManifestReportIdentity(
@@ -162,7 +162,7 @@ enum ManifestCaseExecutor {
         let report = makeReport(
             testCase: testCase,
             baselineReference: baselineReference,
-            profile: profile,
+            executionProfile: executionProfile,
             identity: identity,
             comparison: result.report,
             currentSHA: configuration.currentSHA
@@ -222,7 +222,7 @@ enum ManifestCaseExecutor {
     private static func writeBootstrapReport(
         testCase: VisualCase,
         currentURL: URL,
-        profile: String,
+        executionProfile: ManifestExecutionProfile,
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
         let actual = try PixelImage.loadPNG(from: currentURL)
@@ -231,7 +231,8 @@ enum ManifestCaseExecutor {
             baseline: testCase.baseline,
             baselineReference: "bootstrap:none",
             currentSHA: configuration.currentSHA,
-            profile: profile,
+            profile: executionProfile.label,
+            profileFingerprint: executionProfile.fingerprint,
             status: .bootstrap,
             maxChangedPixelRatio: testCase.maxChangedPixelRatio,
             maxChannelDeltaThreshold: Int(testCase.maxChannelDelta),
@@ -264,7 +265,7 @@ enum ManifestCaseExecutor {
     private static func makeReport(
         testCase: VisualCase,
         baselineReference: String,
-        profile: String,
+        executionProfile: ManifestExecutionProfile,
         identity: ManifestReportIdentity,
         comparison: ComparisonReport,
         currentSHA: String
@@ -274,7 +275,8 @@ enum ManifestCaseExecutor {
             baseline: testCase.baseline,
             baselineReference: baselineReference,
             currentSHA: currentSHA,
-            profile: profile,
+            profile: executionProfile.label,
+            profileFingerprint: executionProfile.fingerprint,
             status: identity.approvalStatus,
             maxChangedPixelRatio: testCase.maxChangedPixelRatio,
             maxChannelDeltaThreshold: Int(testCase.maxChannelDelta),
