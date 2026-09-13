@@ -4,7 +4,11 @@ on:
   workflow_call:
     inputs:
       artifact_name:
-        description: Name of the unsigned .app artifact uploaded by the secret-free build job.
+        description: Name of the Actions Artifact containing the unsigned application archive.
+        required: true
+        type: string
+      artifact_archive_name:
+        description: Tar.gz filename inside the downloaded Actions Artifact.
         required: true
         type: string
       app_name:
@@ -12,7 +16,7 @@ on:
         required: true
         type: string
       app_path:
-        description: Relative path to the .app inside the downloaded artifact.
+        description: Application bundle basename after archive extraction, for example MyApp.app.
         required: true
         type: string
       bundle_id:
@@ -59,6 +63,7 @@ jobs:
         shell: bash
         env:
           APP_PATH_INPUT: ${{ inputs.app_path }}
+          ARTIFACT_ARCHIVE_NAME: ${{ inputs.artifact_archive_name }}
           DMG_NAME: ${{ inputs.dmg_name }}
           RELEASE_BRANCH: ${{ inputs.release_branch }}
         run: |
@@ -71,8 +76,12 @@ jobs:
             echo "Only stable SemVer tags in the form vX.Y.Z are accepted." >&2
             exit 1
           fi
-          if [[ "${APP_PATH_INPUT}" == /* || "${APP_PATH_INPUT}" == *".."* ]]; then
-            echo "app_path must be a safe relative path." >&2
+          if [[ "${APP_PATH_INPUT}" == */* || "${APP_PATH_INPUT}" != *.app ]]; then
+            echo "app_path must be a .app basename." >&2
+            exit 1
+          fi
+          if [[ "${ARTIFACT_ARCHIVE_NAME}" == */* || "${ARTIFACT_ARCHIVE_NAME}" != *.tar.gz ]]; then
+            echo "artifact_archive_name must be a .tar.gz basename." >&2
             exit 1
           fi
           if [[ "${DMG_NAME}" == */* || "${DMG_NAME}" != *.dmg ]]; then
@@ -112,7 +121,15 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ inputs.artifact_name }}
-          path: release-input
+          path: release-artifact
+
+      - name: Extract unsigned application archive
+        shell: bash
+        env:
+          ARCHIVE_PATH: release-artifact/${{ inputs.artifact_archive_name }}
+          OUTPUT_DIR: release-input
+          APP_BASENAME: ${{ inputs.app_path }}
+        run: bash scripts/release/extract-app-artifact.sh
 
       - name: Validate application metadata
         shell: bash
@@ -129,6 +146,7 @@ jobs:
           plist="${APP_PATH}/Contents/Info.plist"
           actual_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${plist}")"
           actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${plist}")"
+          actual_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${plist}")"
           expected_version="${GITHUB_REF_NAME#v}"
 
           if [[ "${actual_bundle_id}" != "${EXPECTED_BUNDLE_ID}" ]]; then
@@ -139,6 +157,10 @@ jobs:
             echo "Version mismatch: tag=${expected_version}, app=${actual_version}" >&2
             exit 1
           fi
+
+          APP_PATH="${APP_PATH}" \
+            EXECUTABLE_NAME="${actual_executable}" \
+            bash scripts/release/verify-app-executable.sh
 
       - name: Import Developer ID certificate
         id: certificate
