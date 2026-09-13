@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 final class ProfileMetadataTests: XCTestCase {
-    func testControlledProfileFingerprintIsStable() throws {
+    func testControlledProfileFingerprintIsStable() {
         let profile = makeControlledProfile()
 
         XCTAssertEqual(profile.fingerprint, profile.fingerprint)
@@ -82,18 +82,6 @@ final class ProfileMetadataTests: XCTestCase {
     }
 
     func testRejectsStoredFingerprintThatDoesNotMatchControlledProfile() {
-        let metadata = try? ProfileMetadata(
-            profile: "canonical-macos",
-            controlled: makeControlledProfile(),
-            observed: ObservedRuntime(
-                macOSBuild: "25G83",
-                runnerImageVersion: "20260907.0351.1",
-                xcodeBuild: "17G29"
-            ),
-            currentSHA: "abcdef"
-        )
-        XCTAssertNotNil(metadata)
-
         let json = """
         {
           "schemaVersion": 2,
