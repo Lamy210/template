@@ -60,6 +60,10 @@ jobs:
             shfmt -d -i 2 -ci scripts
           fi
 
+      - name: Release artifact handoff regression
+        shell: bash
+        run: bash scripts/release/test-app-artifact-handoff.sh
+
       - name: Homebrew Cask renderer smoke test
         shell: bash
         env:
