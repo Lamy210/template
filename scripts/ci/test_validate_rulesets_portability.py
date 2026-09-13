@@ -37,6 +37,29 @@ class PortableSoloRulesetTests(unittest.TestCase):
             )
         )
 
+    def test_rejects_numeric_false_for_extra_unattributed_change_approval(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        pull_request = next(rule for rule in document["rules"] if rule["type"] == "pull_request")
+        pull_request["parameters"]["require_extra_approval_for_unattributed_changes"] = 0
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(
+            any(
+                "require_extra_approval_for_unattributed_changes must be false or omitted" in error
+                for error in errors
+            )
+        )
+
+    def test_rejects_boolean_required_approval_count(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        pull_request = next(rule for rule in document["rules"] if rule["type"] == "pull_request")
+        pull_request["parameters"]["required_approving_review_count"] = False
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("required_approving_review_count must equal 0" in error for error in errors))
+
     def test_rejects_unknown_pull_request_parameter(self) -> None:
         document = copy.deepcopy(valid_main_solo())
         pull_request = next(rule for rule in document["rules"] if rule["type"] == "pull_request")
@@ -92,6 +115,19 @@ class PortableSoloRulesetTests(unittest.TestCase):
             any("do_not_enforce_on_create must be false or omitted" in error for error in errors)
         )
 
+    def test_rejects_numeric_false_for_status_checks_on_create(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        status_rule = next(
+            rule for rule in document["rules"] if rule["type"] == "required_status_checks"
+        )
+        status_rule["parameters"]["do_not_enforce_on_create"] = 0
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(
+            any("do_not_enforce_on_create must be false or omitted" in error for error in errors)
+        )
+
     def test_rejects_unknown_status_rule_parameter(self) -> None:
         document = copy.deepcopy(valid_main_solo())
         status_rule = next(
@@ -134,6 +170,15 @@ class PortableReleaseTagRulesetTests(unittest.TestCase):
         errors = validate_release_tags(document)
 
         self.assertTrue(any("unexpected release tag rule types" in error for error in errors))
+
+    def test_rejects_numeric_false_for_update_allows_fetch_and_merge(self) -> None:
+        document = copy.deepcopy(valid_release_tags())
+        update_rule = next(rule for rule in document["rules"] if rule["type"] == "update")
+        update_rule["parameters"]["update_allows_fetch_and_merge"] = 0
+
+        errors = validate_release_tags(document)
+
+        self.assertTrue(any("release tag update parameters must equal" in error for error in errors))
 
 
 class PortableRulesetStructureTests(unittest.TestCase):
