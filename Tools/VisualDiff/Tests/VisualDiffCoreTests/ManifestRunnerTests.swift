@@ -32,7 +32,8 @@ final class ManifestRunnerTests: XCTestCase {
         try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
 
         let expected = try TestImageFactory.solid(width: 2, height: 2, rgba: [10, 20, 30, 255])
-        try fixture.write(image: expected, relativePath: testCase.expected!)
+        let expectedPath = try XCTUnwrap(testCase.expected)
+        try fixture.write(image: expected, relativePath: expectedPath)
         try fixture.write(image: expected, relativePath: testCase.current)
 
         let summary = try ManifestRunner.run(
@@ -68,6 +69,75 @@ final class ManifestRunnerTests: XCTestCase {
         XCTAssertFalse(summary.hasFailures)
         XCTAssertEqual(summary.cases.first?.status, .passed)
         XCTAssertEqual(summary.cases.first?.baselineReference, "run:12345")
+    }
+
+    func testExactApprovalTurnsRollingMismatchIntoApprovedChange() throws {
+        let fixture = try Fixture()
+        let approvalPath = "Tests/VisualRegression/Approvals/dynamic.json"
+        let testCase = fixture.rollingCase(id: "dynamic", approval: approvalPath)
+        let manifest = try fixture.manifest(cases: [testCase])
+        try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
+        try fixture.writeProfile(id: manifest.profile, to: fixture.rollingProfileURL)
+
+        let expected = try TestImageFactory.solid(width: 1, height: 1, rgba: [0, 0, 0, 255])
+        let actual = try TestImageFactory.solid(width: 1, height: 1, rgba: [1, 0, 0, 255])
+        let expectedURL = fixture.rollingRoot.appendingPathComponent("dynamic.png")
+        let actualURL = fixture.root.appendingPathComponent(testCase.current)
+        try expected.writePNG(to: expectedURL)
+        try actual.writePNG(to: actualURL)
+
+        let approval = VisualApproval(
+            schemaVersion: 1,
+            caseID: testCase.id,
+            fromDigest: try ImageDigest.sha256(fileAt: expectedURL),
+            toDigest: try ImageDigest.sha256(fileAt: actualURL),
+            profileFingerprint: manifest.profile,
+            reason: "Intentional redesign"
+        )
+        try fixture.writeApproval(approval, relativePath: approvalPath)
+
+        let summary = try ManifestRunner.run(
+            manifest: manifest,
+            configuration: fixture.configuration(bootstrapRolling: false)
+        )
+
+        XCTAssertFalse(summary.hasFailures)
+        XCTAssertEqual(summary.cases.first?.status, .approvedChange)
+        XCTAssertGreaterThan(summary.cases.first?.changedPixelCount ?? 0, 0)
+    }
+
+    func testStaleApprovalDoesNotAuthorizeDifferentCurrentImage() throws {
+        let fixture = try Fixture()
+        let approvalPath = "Tests/VisualRegression/Approvals/dynamic.json"
+        let testCase = fixture.rollingCase(id: "dynamic", approval: approvalPath)
+        let manifest = try fixture.manifest(cases: [testCase])
+        try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
+        try fixture.writeProfile(id: manifest.profile, to: fixture.rollingProfileURL)
+
+        let expected = try TestImageFactory.solid(width: 1, height: 1, rgba: [0, 0, 0, 255])
+        let actual = try TestImageFactory.solid(width: 1, height: 1, rgba: [2, 0, 0, 255])
+        let expectedURL = fixture.rollingRoot.appendingPathComponent("dynamic.png")
+        let actualURL = fixture.root.appendingPathComponent(testCase.current)
+        try expected.writePNG(to: expectedURL)
+        try actual.writePNG(to: actualURL)
+
+        let approval = VisualApproval(
+            schemaVersion: 1,
+            caseID: testCase.id,
+            fromDigest: try ImageDigest.sha256(fileAt: expectedURL),
+            toDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            profileFingerprint: manifest.profile,
+            reason: "Approval for an older capture"
+        )
+        try fixture.writeApproval(approval, relativePath: approvalPath)
+
+        let summary = try ManifestRunner.run(
+            manifest: manifest,
+            configuration: fixture.configuration(bootstrapRolling: false)
+        )
+
+        XCTAssertTrue(summary.hasFailures)
+        XCTAssertEqual(summary.cases.first?.status, .failed)
     }
 
     func testMissingRollingBaselineIsExplicitBootstrapWhenEnabled() throws {
@@ -177,14 +247,15 @@ private final class Fixture {
         )
     }
 
-    func rollingCase(id: String) -> VisualCase {
+    func rollingCase(id: String, approval: String? = nil) -> VisualCase {
         VisualCase(
             id: id,
             baseline: .rollingMain,
             current: "artifacts/visual/current/\(id).png",
             expected: nil,
             maxChangedPixelRatio: 0,
-            maxChannelDelta: 0
+            maxChannelDelta: 0,
+            approval: approval
         )
     }
 
@@ -208,6 +279,15 @@ private final class Fixture {
         try image.writePNG(to: root.appendingPathComponent(relativePath))
     }
 
+    func writeApproval(_ approval: VisualApproval, relativePath: String) throws {
+        let url = root.appendingPathComponent(relativePath)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try JSONEncoder().encode(approval).write(to: url, options: .atomic)
+    }
+
     func writeProfile(id: String, to url: URL) throws {
         let metadata = ProfileMetadata(
             schemaVersion: 1,
@@ -221,7 +301,10 @@ private final class Fixture {
             timezone: "UTC",
             currentSHA: "abcdef"
         )
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try JSONEncoder().encode(metadata).write(to: url, options: .atomic)
     }
 }
