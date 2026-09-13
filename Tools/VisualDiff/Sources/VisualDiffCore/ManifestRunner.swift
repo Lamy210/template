@@ -7,6 +7,7 @@ public enum ManifestRunnerError: Error, Equatable {
     case missingCurrentCapture(caseID: String, path: String)
     case missingGitBaseline(caseID: String, path: String)
     case missingRollingBaseline(caseID: String)
+    case missingApproval(caseID: String, path: String)
     case unsafeResolvedPath(String)
     case notRegularFile(String)
 }
@@ -14,6 +15,7 @@ public enum ManifestRunnerError: Error, Equatable {
 public enum VisualCaseStatus: String, Codable, Sendable, Equatable {
     case passed
     case failed
+    case approvedChange = "approved-change"
     case bootstrap
 }
 
@@ -26,6 +28,10 @@ public struct VisualCaseRunReport: Codable, Sendable, Equatable {
     public let status: VisualCaseStatus
     public let maxChangedPixelRatio: Double
     public let maxChannelDeltaThreshold: Int
+    public let expectedDigest: String?
+    public let actualDigest: String?
+    public let approvalPath: String?
+    public let approvalReason: String?
     public let dimensionMismatch: Bool?
     public let expectedWidth: Int?
     public let expectedHeight: Int?
@@ -206,16 +212,29 @@ public enum ManifestRunner {
                 maxChannelDelta: testCase.maxChannelDelta
             )
         )
-        let status: VisualCaseStatus = result.report.passed ? .passed : .failed
+        let expectedDigest = try ImageDigest.sha256(fileAt: expectedURL)
+        let actualDigest = try ImageDigest.sha256(fileAt: currentURL)
+        let approvalResult = try evaluateApproval(
+            testCase: testCase,
+            comparisonPassed: result.report.passed,
+            expectedDigest: expectedDigest,
+            actualDigest: actualDigest,
+            profileFingerprint: profile,
+            configuration: configuration
+        )
         let report = VisualCaseRunReport(
             caseID: testCase.id,
             baseline: testCase.baseline,
             baselineReference: baselineReference,
             currentSHA: configuration.currentSHA,
             profile: profile,
-            status: status,
+            status: approvalResult.status,
             maxChangedPixelRatio: testCase.maxChangedPixelRatio,
             maxChannelDeltaThreshold: Int(testCase.maxChannelDelta),
+            expectedDigest: expectedDigest,
+            actualDigest: actualDigest,
+            approvalPath: testCase.approval,
+            approvalReason: approvalResult.reason,
             dimensionMismatch: result.report.dimensionMismatch,
             expectedWidth: result.report.expectedWidth,
             expectedHeight: result.report.expectedHeight,
@@ -237,6 +256,43 @@ public enum ManifestRunner {
         return report
     }
 
+    private static func evaluateApproval(
+        testCase: VisualCase,
+        comparisonPassed: Bool,
+        expectedDigest: String,
+        actualDigest: String,
+        profileFingerprint: String,
+        configuration: ManifestRunConfiguration
+    ) throws -> (status: VisualCaseStatus, reason: String?) {
+        guard !comparisonPassed else {
+            return (.passed, nil)
+        }
+        guard let approvalPath = testCase.approval else {
+            return (.failed, nil)
+        }
+
+        let approvalURL = try confinedRepositoryURL(
+            repoRoot: configuration.repoRoot,
+            relativePath: approvalPath,
+            allowedRelativeRoot: "Tests/VisualRegression/Approvals"
+        )
+        try requireRegularFile(
+            approvalURL,
+            missingError: .missingApproval(caseID: testCase.id, path: approvalPath)
+        )
+        let approval = try VisualApproval.load(from: approvalURL)
+        let context = VisualApprovalContext(
+            caseID: testCase.id,
+            fromDigest: expectedDigest,
+            toDigest: actualDigest,
+            profileFingerprint: profileFingerprint
+        )
+        guard approval.matches(context) else {
+            return (.failed, nil)
+        }
+        return (.approvedChange, approval.reason)
+    }
+
     private static func writeBootstrapReport(
         testCase: VisualCase,
         currentURL: URL,
@@ -253,6 +309,10 @@ public enum ManifestRunner {
             status: .bootstrap,
             maxChangedPixelRatio: testCase.maxChangedPixelRatio,
             maxChannelDeltaThreshold: Int(testCase.maxChannelDelta),
+            expectedDigest: nil,
+            actualDigest: try ImageDigest.sha256(fileAt: currentURL),
+            approvalPath: testCase.approval,
+            approvalReason: nil,
             dimensionMismatch: nil,
             expectedWidth: nil,
             expectedHeight: nil,
