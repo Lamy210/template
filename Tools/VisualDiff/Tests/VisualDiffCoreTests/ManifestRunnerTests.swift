@@ -93,8 +93,11 @@ final class ManifestRunnerTests: XCTestCase {
 
     func testMissingRollingBaselineFailsWhenBootstrapDisabled() throws {
         let fixture = try Fixture()
-        let manifest = try fixture.manifest(cases: [fixture.rollingCase(id: "dynamic")])
+        let testCase = fixture.rollingCase(id: "dynamic")
+        let manifest = try fixture.manifest(cases: [testCase])
         try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
+        let current = try TestImageFactory.solid(width: 1, height: 1, rgba: [40, 50, 60, 255])
+        try fixture.write(image: current, relativePath: testCase.current)
 
         XCTAssertThrowsError(
             try ManifestRunner.run(
