@@ -13,7 +13,9 @@ Usage: resolve-trusted-main-artifact.sh \
   --repository owner/repo \
   --workflow workflow.yml \
   --artifact exact-name \
-  --output directory
+  --output directory \
+  [--branch branch-name] \
+  [--max-runs 1..100]
 EOF
 }
 
@@ -28,6 +30,8 @@ repository=""
 workflow=""
 artifact_name=""
 output_dir=""
+branch="main"
+max_runs="100"
 
 while (($# > 0)); do
   case "$1" in
@@ -51,6 +55,16 @@ while (($# > 0)); do
       output_dir="$2"
       shift 2
       ;;
+    --branch)
+      (($# >= 2)) || die "${EXIT_USAGE}" 'missing value for --branch'
+      branch="$2"
+      shift 2
+      ;;
+    --max-runs)
+      (($# >= 2)) || die "${EXIT_USAGE}" 'missing value for --max-runs'
+      max_runs="$2"
+      shift 2
+      ;;
     -h | --help)
       usage
       exit 0
@@ -68,6 +82,11 @@ done
 [[ "${workflow}" != */* ]] || die "${EXIT_USAGE}" '--workflow must be a workflow file name, not a path'
 [[ -n "${artifact_name}" ]] || die "${EXIT_USAGE}" '--artifact is required'
 [[ -n "${output_dir}" ]] || die "${EXIT_USAGE}" '--output is required'
+[[ -n "${branch}" ]] || die "${EXIT_USAGE}" '--branch must not be empty'
+[[ "${max_runs}" =~ ^[0-9]+$ ]] || die "${EXIT_USAGE}" '--max-runs must be an integer from 1 to 100'
+max_runs_number=$((10#${max_runs}))
+((max_runs_number >= 1 && max_runs_number <= 100)) || die "${EXIT_USAGE}" '--max-runs must be from 1 to 100'
+max_runs="${max_runs_number}"
 [[ -n "${GH_TOKEN:-}" ]] || die "${EXIT_USAGE}" 'GH_TOKEN is required'
 
 command -v gh >/dev/null 2>&1 || die "${EXIT_USAGE}" 'gh is required'
@@ -96,16 +115,24 @@ api_to_file() {
   return 1
 }
 
+encoded_branch="$(python3 - "${branch}" <<'PY'
+import sys
+import urllib.parse
+
+print(urllib.parse.quote(sys.argv[1], safe=""))
+PY
+)"
+
 runs_json="${work_root}/runs.json"
-runs_endpoint="repos/${repository}/actions/workflows/${workflow}/runs?branch=main&event=push&status=success&per_page=20"
+runs_endpoint="repos/${repository}/actions/workflows/${workflow}/runs?branch=${encoded_branch}&event=push&status=success&per_page=${max_runs}"
 api_to_file "${runs_endpoint}" "${runs_json}" || die "${EXIT_INFRA}" 'failed to query workflow runs'
 
 candidates_file="${work_root}/candidates.tsv"
-if python3 - "${runs_json}" "${repository}" >"${candidates_file}" <<'PY'
+if python3 - "${runs_json}" "${repository}" "${branch}" >"${candidates_file}" <<'PY'
 import json
 import sys
 
-path, expected_repo = sys.argv[1:3]
+path, expected_repo, expected_branch = sys.argv[1:4]
 try:
     with open(path, encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -124,7 +151,7 @@ for run in runs:
         continue
     if head_repository.get("full_name") != expected_repo:
         continue
-    if run.get("head_branch") != "main":
+    if run.get("head_branch") != expected_branch:
         continue
     if run.get("event") != "push":
         continue
@@ -220,7 +247,7 @@ PY
   break
 done <"${candidates_file}"
 
-[[ -n "${selected_run_id}" ]] || die "${EXIT_NOT_FOUND}" 'no trusted main artifact candidate found'
+[[ -n "${selected_run_id}" ]] || die "${EXIT_NOT_FOUND}" "no trusted artifact candidate found on branch ${branch}"
 
 if [[ ! "${selected_artifact_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   die "${EXIT_INTEGRITY}" 'trusted artifact is missing a valid SHA-256 digest'
@@ -346,6 +373,7 @@ python3 - \
   "${stage_dir}/resolver-metadata.json" \
   "${repository}" \
   "${workflow}" \
+  "${branch}" \
   "${selected_run_id}" \
   "${selected_run_attempt}" \
   "${selected_source_sha}" \
@@ -360,6 +388,7 @@ import sys
     output,
     repository,
     workflow,
+    branch,
     run_id,
     run_attempt,
     source_sha,
@@ -372,6 +401,7 @@ payload = {
     "schemaVersion": 1,
     "repository": repository,
     "workflow": workflow,
+    "branch": branch,
     "runId": int(run_id),
     "runAttempt": int(run_attempt),
     "sourceSHA": source_sha,
