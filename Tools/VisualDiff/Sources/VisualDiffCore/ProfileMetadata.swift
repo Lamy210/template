@@ -65,7 +65,7 @@ public struct ControlledProfile: Codable, Sendable, Equatable {
             "appearance": appearance,
             "displayScale": displayScale,
             "captureGeometry": captureGeometry,
-            "fixtureVersion": fixtureVersion,
+            "fixtureVersion": fixtureVersion
         ]
         for (name, value) in fields {
             guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
