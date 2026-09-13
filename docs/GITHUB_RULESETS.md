@@ -9,13 +9,17 @@ The files are **not** an automatic synchronization mechanism. Committing them do
 - `rulesets/main-solo.json` — Solo OSS protection for the repository default branch.
 - `rulesets/release-tags.json` — immutable release-tag policy for `refs/tags/v*`.
 
-The Solo profile is intentionally portable:
+The Solo profile is intentionally portable and minimal:
 
 - it uses `~DEFAULT_BRANCH` instead of a literal branch name;
 - it stores no repository/ruleset IDs;
 - it stores no user/team actor IDs;
 - it stores no GitHub App integration ID;
-- it stores no Administration credential.
+- it stores no Administration credential;
+- it intentionally omits optional import/export fields such as `source_type` from the canonical template shape, even though GitHub's official Ruleset recipes may include them;
+- it excludes effective/runtime response fields such as `current_user_can_bypass`.
+
+GitHub's official import recipes demonstrate both forms: some include `source_type: "Repository"` and some omit `source_type`. This template chooses omission as its canonical form so the source-controlled desired state stays minimal and repository-portable. Treat rejection of `source_type` here as a **template canonicalization rule**, not as a claim that GitHub itself does not support the field.
 
 ## Canonical Solo policy
 
@@ -194,14 +198,14 @@ python3 -m unittest \
 python3 scripts/ci/validate_rulesets.py
 ```
 
-The validator rejects policy weakening or lockout regressions such as:
+The validator rejects policy weakening, noncanonical state, or lockout regressions such as:
 
 - approval count becoming non-zero;
 - path-specific `required_reviewers` being added to the Solo profile;
 - an extra approval requirement for unattributed changes being enabled;
 - `release*` branches being added to the default-branch profile;
 - either canonical required check being removed or renamed;
-- duplicate required check contexts;
+- duplicate or non-string required check contexts;
 - `do_not_enforce_on_create=true`, which would skip required status checks when a matching ref is created;
 - repository-specific `integration_id` or other fields being added to the portable status-check entries;
 - strict status-check policy being disabled;
@@ -210,7 +214,7 @@ The validator rejects policy weakening or lockout regressions such as:
 - linear-history protection being removed;
 - unexpected default-branch rule types such as an `update` restriction being added;
 - bypass actors being added;
-- runtime GitHub metadata being committed into portable desired state;
+- effective/runtime response fields or template-noncanonical optional export fields being committed into canonical desired state;
 - release-tag update/deletion protection being removed;
 - a release-tag `creation` rule or another unexpected tag rule being added.
 
