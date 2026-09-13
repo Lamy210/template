@@ -37,6 +37,15 @@ class PortableSoloRulesetTests(unittest.TestCase):
             )
         )
 
+    def test_rejects_unknown_pull_request_parameter(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        pull_request = next(rule for rule in document["rules"] if rule["type"] == "pull_request")
+        pull_request["parameters"]["future_approval_gate"] = True
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("unexpected pull_request parameters" in error for error in errors))
+
     def test_rejects_required_check_integration_id(self) -> None:
         document = copy.deepcopy(valid_main_solo())
         status_rule = next(
@@ -47,6 +56,17 @@ class PortableSoloRulesetTests(unittest.TestCase):
         errors = validate_main_solo(document)
 
         self.assertTrue(any("required checks must contain only context" in error for error in errors))
+
+    def test_rejects_unknown_status_rule_parameter(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        status_rule = next(
+            rule for rule in document["rules"] if rule["type"] == "required_status_checks"
+        )
+        status_rule["parameters"]["future_status_policy"] = True
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("unexpected required_status_checks parameters" in error for error in errors))
 
     def test_rejects_unexpected_main_rule_type(self) -> None:
         document = copy.deepcopy(valid_main_solo())
@@ -60,6 +80,15 @@ class PortableSoloRulesetTests(unittest.TestCase):
         errors = validate_main_solo(document)
 
         self.assertTrue(any("unexpected main rule types" in error for error in errors))
+
+    def test_rejects_metadata_on_simple_rule(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        deletion_rule = next(rule for rule in document["rules"] if rule["type"] == "deletion")
+        deletion_rule["id"] = 123
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("deletion rule must contain only type" in error for error in errors))
 
 
 class PortableReleaseTagRulesetTests(unittest.TestCase):
@@ -81,6 +110,15 @@ class PortableRulesetStructureTests(unittest.TestCase):
 
         self.assertTrue(any("name must be a non-empty string" in error for error in errors))
 
+    def test_rejects_runtime_export_metadata(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        document["source_type"] = "Repository"
+        document["current_user_can_bypass"] = "never"
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("unexpected top-level fields" in error for error in errors))
+
     def test_rejects_extra_targeting_condition(self) -> None:
         document = copy.deepcopy(valid_main_solo())
         document["conditions"]["repository_name"] = {
@@ -91,6 +129,14 @@ class PortableRulesetStructureTests(unittest.TestCase):
         errors = validate_main_solo(document)
 
         self.assertTrue(any("conditions must contain only ref_name" in error for error in errors))
+
+    def test_rejects_extra_ref_name_field(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        document["conditions"]["ref_name"]["future_selector"] = ["main"]
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("conditions.ref_name must contain only include and exclude" in error for error in errors))
 
     def test_rejects_malformed_rule_entry(self) -> None:
         document = copy.deepcopy(valid_main_solo())
