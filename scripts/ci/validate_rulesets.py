@@ -50,6 +50,7 @@ PULL_REQUEST_PARAMETERS = {
 STATUS_CHECK_PARAMETERS = {
     "strict_required_status_checks_policy",
     "required_status_checks",
+    "do_not_enforce_on_create",
 }
 RELEASE_TAG_RULES = {
     "deletion",
@@ -238,6 +239,8 @@ def validate_main_solo(document: dict) -> list[str]:
                 )
             if parameters.get("strict_required_status_checks_policy") is not True:
                 errors.append("strict_required_status_checks_policy must be true")
+            if parameters.get("do_not_enforce_on_create") not in (None, False):
+                errors.append("do_not_enforce_on_create must be false or omitted")
             checks = parameters.get("required_status_checks")
             contexts: list[str | None] = []
             portable_check_shape = False
