@@ -64,6 +64,10 @@ jobs:
         shell: bash
         run: bash scripts/release/test-app-artifact-handoff.sh
 
+      - name: GitHub Release immutability regression
+        shell: bash
+        run: bash scripts/release/test-publish-github-release.sh
+
       - name: Homebrew Cask renderer smoke test
         shell: bash
         env:
