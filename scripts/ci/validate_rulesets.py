@@ -28,6 +28,10 @@ RELEASE_TAG_RULES = {
     "deletion",
     "update",
 }
+BRANCH_ONLY_RELEASE_TAG_RULES = {
+    "pull_request",
+    "required_status_checks",
+}
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CANONICAL_PROFILES = (
     (REPO_ROOT / "rulesets/main-solo.json", "main-solo"),
@@ -204,9 +208,17 @@ def validate_release_tags(document: dict) -> list[str]:
     )
     grouped = _rules_by_type(document)
 
-    unexpected_rule_types = sorted(set(grouped) - RELEASE_TAG_RULES)
-    if unexpected_rule_types:
-        errors.append(f"unexpected release tag rule types: {unexpected_rule_types!r}")
+    branch_only_rule_types = sorted(set(grouped) & BRANCH_ONLY_RELEASE_TAG_RULES)
+    for rule_type in branch_only_rule_types:
+        errors.append(f"{rule_type} is not allowed for release tags")
+
+    other_unexpected_rule_types = sorted(
+        set(grouped) - RELEASE_TAG_RULES - BRANCH_ONLY_RELEASE_TAG_RULES
+    )
+    if other_unexpected_rule_types:
+        errors.append(
+            f"unexpected release tag rule types: {other_unexpected_rule_types!r}"
+        )
 
     update_rules = grouped.get("update", [])
     if len(update_rules) != 1:
