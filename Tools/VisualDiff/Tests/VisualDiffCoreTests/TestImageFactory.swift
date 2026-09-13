@@ -10,7 +10,7 @@ enum TestImageFactory {
         return try PixelImage(
             width: width,
             height: height,
-            rgba: Array(repeating: rgba, count: width * height).flatMap { $0 }
+            rgba: Array(repeating: rgba, count: width * height).flatMap(\.self)
         )
     }
 }
