@@ -83,7 +83,7 @@ The JSON files are directly importable GitHub Ruleset definitions. They contain 
 
 `validate-rulesets.py` uses the Python standard library only. It validates both JSON syntax and template-specific policy invariants. The validator is an offline checker; it does not require GitHub credentials.
 
-The existing Quality workflow runs the validator when `rulesets/**` or the validator itself changes. The workflow remains able to run without administration permissions.
+The existing Quality workflow runs the validator on every workflow run once the governance files exist. This keeps the externally required Quality/Required-gate workflow stable and avoids top-level path filtering while making the governance check cheap enough to run unconditionally.
 
 ## 6. Solo default-branch ruleset
 
@@ -128,6 +128,8 @@ The desired pull-request rule requires:
 - squash as the only allowed PR merge method represented by the ruleset contract where GitHub accepts this parameter.
 
 The zero-approval value is intentional: CI and conversation resolution remain blocking gates while avoiding the one-maintainer self-approval deadlock.
+
+GitHub currently exposes an additional-approval option for unattributed Copilot pull requests and reports it in the live ruleset payload. GitHub documents that this option has no effect when required approvals are zero. The Solo profile therefore does not depend on that preview option for its security or mergeability contract; the validator is anchored to the explicit zero-approval requirement instead of treating the preview field as a core portable invariant.
 
 ### 6.4 Required status checks
 
@@ -231,7 +233,7 @@ The validator produces precise file/rule diagnostics and a non-zero exit code. I
 
 The existing Quality workflow remains the governance validation entry point.
 
-A dedicated step runs:
+A dedicated step runs on every Quality execution:
 
 ```text
 python3 scripts/ci/validate-rulesets.py
@@ -276,9 +278,11 @@ swift-quality / Swift quality
 
 This order avoids importing a required check whose implementation has not yet landed on the default branch.
 
-### Stage 3: review governance implementation
+### Stage 3: refresh and review governance implementation
 
-Merge the Ruleset governance PR containing the importable JSON, validator, and operator documentation.
+After PR #3 lands, refresh/rebase the governance implementation branch onto the new `main` before adding the executable Ruleset files. This ensures the Quality workflow being modified already contains the hardened P0 gate implementation.
+
+Then complete and merge the Ruleset governance PR containing the importable JSON, validator, and operator documentation.
 
 The repository files now define the desired state but still do not claim live Settings are synchronized.
 
@@ -291,7 +295,7 @@ In GitHub Settings:
 3. review the imported target and check contexts before creating it;
 4. replace/disable the legacy overlapping branch ruleset so two conflicting branch policies do not layer accidentally;
 5. import `rulesets/release-tags.json`;
-6. inspect Rule Insights and the effective rules on `main` and a test `v*` ref.
+6. inspect Rule Insights and the effective rules on `main` and matching `v*` refs.
 
 GitHub aggregates overlapping rulesets and applies the most restrictive result. Therefore leaving the old approval=1 ruleset active would preserve the deadlock even if the new Solo ruleset requires zero approvals.
 
@@ -306,7 +310,7 @@ Open a trivial PR and confirm:
 - squash is the supported merge path;
 - direct/force update of the default branch remains restricted.
 
-Release-tag immutability should be verified without damaging a real release tag. Use a deliberately disposable `v0.0.0-ruleset-smoke` style ref only if the configured pattern deliberately includes it, or inspect Rule Insights/effective rules instead. Do not create a production-looking version merely for testing unless the repository release policy explicitly permits it.
+Do not create a fake `v*` tag in the production repository merely to test immutability: a correct immutable-tag policy would intentionally prevent cleaning it up. Validate the effective tag rules through GitHub's rules/ruleset views and Rule Insights. If an end-to-end destructive tag test is desired, run it in a disposable test repository generated from the template, not in the canonical template repository.
 
 ## 11. Failure and recovery model
 
