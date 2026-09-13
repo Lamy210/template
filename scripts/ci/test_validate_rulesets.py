@@ -254,6 +254,18 @@ class FileValidationTests(unittest.TestCase):
 
         self.assertTrue(any("unknown profile" in error for error in errors))
 
+    def test_canonical_repository_rulesets_are_valid(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+
+        self.assertEqual(
+            [],
+            validate_file(root / "rulesets/main-solo.json", "main-solo"),
+        )
+        self.assertEqual(
+            [],
+            validate_file(root / "rulesets/release-tags.json", "release-tags"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
