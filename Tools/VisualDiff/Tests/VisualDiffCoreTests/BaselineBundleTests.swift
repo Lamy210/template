@@ -56,7 +56,11 @@ final class BaselineBundleTests: XCTestCase {
             expectedProfileFingerprint: fixture.profileFingerprint,
             strict: true
         )) { error in
-            guard case BaselineBundleError.digestMismatch(caseID: "settings-light", expected: _, actual: _) = error else {
+            guard case BaselineBundleError.digestMismatch(
+                caseID: "settings-light",
+                expected: _,
+                actual: _
+            ) = error else {
                 return XCTFail("Unexpected error: \(error)")
             }
         }
