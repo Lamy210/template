@@ -54,7 +54,9 @@ struct Arguments {
 }
 
 func pathURL(_ path: String, relativeTo root: URL) -> URL {
-    if path.hasPrefix("/") { return URL(fileURLWithPath: path) }
+    if path.hasPrefix("/") {
+        return URL(fileURLWithPath: path)
+    }
     return root.appendingPathComponent(path)
 }
 
@@ -82,9 +84,9 @@ let command = raw[1]
 
 do {
     let arguments = try Arguments(raw.dropFirst(2))
-    let repoRoot = URL(fileURLWithPath: try arguments.require("--repo-root"), isDirectory: true)
+    let repoRoot = try URL(fileURLWithPath: arguments.require("--repo-root"), isDirectory: true)
         .standardizedFileURL
-    let manifestURL = pathURL(try arguments.require("--manifest"), relativeTo: repoRoot)
+    let manifestURL = try pathURL(arguments.require("--manifest"), relativeTo: repoRoot)
     let manifest = try VisualManifest.load(from: manifestURL)
 
     switch command {
@@ -92,8 +94,8 @@ do {
         print("Manifest valid: \(manifest.cases.count) case(s), profile=\(manifest.profile)")
 
     case "compare-manifest":
-        let currentProfileURL = pathURL(try arguments.require("--current-profile"), relativeTo: repoRoot)
-        let outputRoot = pathURL(try arguments.require("--output"), relativeTo: repoRoot)
+        let currentProfileURL = try pathURL(arguments.require("--current-profile"), relativeTo: repoRoot)
+        let outputRoot = try pathURL(arguments.require("--output"), relativeTo: repoRoot)
         let rollingRoot = arguments.optional("--rolling-root").map { pathURL($0, relativeTo: repoRoot) }
         let rollingProfile = arguments.optional("--rolling-profile").map { pathURL($0, relativeTo: repoRoot) }
         let summary = try ManifestRunner.run(
@@ -104,16 +106,18 @@ do {
                 rollingRoot: rollingRoot,
                 rollingProfileURL: rollingProfile,
                 outputRoot: outputRoot,
-                currentSHA: try arguments.require("--current-sha"),
+                currentSHA: arguments.require("--current-sha"),
                 baselineRunID: arguments.optional("--baseline-run-id"),
-                bootstrapRolling: try arguments.boolean("--bootstrap-rolling")
+                bootstrapRolling: arguments.boolean("--bootstrap-rolling")
             )
         )
 
         for report in summary.cases {
             print("\(report.caseID)\t\(report.baseline.rawValue)\t\(report.status.rawValue)")
         }
-        if summary.hasFailures { exit(1) }
+        if summary.hasFailures {
+            exit(1)
+        }
 
     default:
         throw CLIError.usage(usage())
