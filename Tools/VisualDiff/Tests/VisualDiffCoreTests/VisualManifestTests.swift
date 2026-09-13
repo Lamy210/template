@@ -46,7 +46,8 @@ final class VisualManifestTests: XCTestCase {
     }
 
     func testRejectsGitCaseWithoutExpectedPath() {
-        let json = #"{
+        let json = """
+        {
           "schemaVersion": 1,
           "profile": "macos-26-arm64-xcode-26.6",
           "cases": [{
@@ -56,7 +57,8 @@ final class VisualManifestTests: XCTestCase {
             "maxChangedPixelRatio": 0.0,
             "maxChannelDelta": 0
           }]
-        }"#
+        }
+        """
         assertManifestFails(json)
     }
 
@@ -106,26 +108,28 @@ final class VisualManifestTests: XCTestCase {
     }
 
     private var validManifest: String {
-        #"{
-  "schemaVersion": 1,
-  "profile": "macos-26-arm64-xcode-26.6",
-  "cases": [
-    {
-      "id": "settings-light",
-      "baseline": "git",
-      "current": "artifacts/visual/current/settings-light.png",
-      "expected": "Tests/VisualBaselines/macos-26-arm64-xcode-26.6/settings-light.png",
-      "maxChangedPixelRatio": 0.0,
-      "maxChannelDelta": 0
-    },
-    {
-      "id": "large-dynamic-screen",
-      "baseline": "rolling-main",
-      "current": "artifacts/visual/current/large-dynamic-screen.png",
-      "maxChangedPixelRatio": 0.001,
-      "maxChannelDelta": 8
-    }
-  ]
-}"#
+        """
+        {
+          "schemaVersion": 1,
+          "profile": "macos-26-arm64-xcode-26.6",
+          "cases": [
+            {
+              "id": "settings-light",
+              "baseline": "git",
+              "current": "artifacts/visual/current/settings-light.png",
+              "expected": "Tests/VisualBaselines/macos-26-arm64-xcode-26.6/settings-light.png",
+              "maxChangedPixelRatio": 0.0,
+              "maxChannelDelta": 0
+            },
+            {
+              "id": "large-dynamic-screen",
+              "baseline": "rolling-main",
+              "current": "artifacts/visual/current/large-dynamic-screen.png",
+              "maxChangedPixelRatio": 0.001,
+              "maxChannelDelta": 8
+            }
+          ]
+        }
+        """
     }
 }
