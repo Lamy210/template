@@ -71,7 +71,11 @@ final class ManifestRunnerTests: XCTestCase {
 
         let current = try TestImageFactory.solid(width: 1, height: 1, rgba: [40, 50, 60, 255])
         try fixture.write(image: current, relativePath: testCase.current)
-        try current.writePNG(to: fixture.rollingRoot.appendingPathComponent("dynamic.png"))
+        try fixture.writeRollingBaseline(
+            image: current,
+            caseID: testCase.id,
+            profileFingerprint: rollingMetadata.profileFingerprint
+        )
 
         let summary = try ManifestRunner.run(
             manifest: manifest,
@@ -128,9 +132,12 @@ final class ManifestRunnerTests: XCTestCase {
 
         let expected = try TestImageFactory.solid(width: 1, height: 1, rgba: [0, 0, 0, 255])
         let actual = try TestImageFactory.solid(width: 1, height: 1, rgba: [1, 0, 0, 255])
-        let expectedURL = fixture.rollingRoot.appendingPathComponent("dynamic.png")
+        let expectedURL = try fixture.writeRollingBaseline(
+            image: expected,
+            caseID: testCase.id,
+            profileFingerprint: currentMetadata.profileFingerprint
+        )
         let actualURL = fixture.root.appendingPathComponent(testCase.current)
-        try expected.writePNG(to: expectedURL)
         try actual.writePNG(to: actualURL)
 
         let approval = try VisualApproval(
@@ -159,14 +166,17 @@ final class ManifestRunnerTests: XCTestCase {
         let approvalPath = "Tests/VisualRegression/Approvals/dynamic.json"
         let testCase = fixture.rollingCase(id: "dynamic", approval: approvalPath)
         let manifest = try fixture.manifest(cases: [testCase])
-        try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
+        let currentMetadata = try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
         try fixture.writeProfile(id: manifest.profile, to: fixture.rollingProfileURL)
 
         let expected = try TestImageFactory.solid(width: 1, height: 1, rgba: [0, 0, 0, 255])
         let actual = try TestImageFactory.solid(width: 1, height: 1, rgba: [1, 0, 0, 255])
-        let expectedURL = fixture.rollingRoot.appendingPathComponent("dynamic.png")
+        let expectedURL = try fixture.writeRollingBaseline(
+            image: expected,
+            caseID: testCase.id,
+            profileFingerprint: currentMetadata.profileFingerprint
+        )
         let actualURL = fixture.root.appendingPathComponent(testCase.current)
-        try expected.writePNG(to: expectedURL)
         try actual.writePNG(to: actualURL)
 
         let approval = try VisualApproval(
@@ -201,9 +211,12 @@ final class ManifestRunnerTests: XCTestCase {
 
         let expected = try TestImageFactory.solid(width: 1, height: 1, rgba: [0, 0, 0, 255])
         let actual = try TestImageFactory.solid(width: 1, height: 1, rgba: [2, 0, 0, 255])
-        let expectedURL = fixture.rollingRoot.appendingPathComponent("dynamic.png")
+        let expectedURL = try fixture.writeRollingBaseline(
+            image: expected,
+            caseID: testCase.id,
+            profileFingerprint: currentMetadata.profileFingerprint
+        )
         let actualURL = fixture.root.appendingPathComponent(testCase.current)
-        try expected.writePNG(to: expectedURL)
         try actual.writePNG(to: actualURL)
 
         let approval = try VisualApproval(
@@ -379,6 +392,35 @@ private final class Fixture {
 
     func write(image: PixelImage, relativePath: String) throws {
         try image.writePNG(to: root.appendingPathComponent(relativePath))
+    }
+
+    @discardableResult
+    func writeRollingBaseline(
+        image: PixelImage,
+        caseID: String,
+        profileFingerprint: String
+    ) throws -> URL {
+        let imagesRoot = rollingRoot.appendingPathComponent("images", isDirectory: true)
+        try FileManager.default.createDirectory(at: imagesRoot, withIntermediateDirectories: true)
+        let imageURL = imagesRoot.appendingPathComponent("\(caseID).png", isDirectory: false)
+        try image.writePNG(to: imageURL)
+        let bundle = BaselineBundleManifest(
+            schemaVersion: 1,
+            sourceRepository: "Lamy210/template",
+            workflow: "visual-regression.yml",
+            sourceRunID: "12345",
+            runAttempt: 1,
+            sourceSHA: "0123456789abcdef0123456789abcdef01234567",
+            profileFingerprint: profileFingerprint,
+            previousBaselineReference: nil,
+            cases: [BaselineBundleCase(
+                id: caseID,
+                digest: try ImageDigest.sha256(fileAt: imageURL)
+            )]
+        )
+        let manifestURL = rollingRoot.appendingPathComponent("bundle-manifest.json", isDirectory: false)
+        try JSONEncoder().encode(bundle).write(to: manifestURL, options: .atomic)
+        return imageURL
     }
 
     func writeApproval(_ approval: VisualApproval, relativePath: String) throws {
