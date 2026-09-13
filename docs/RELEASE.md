@@ -14,8 +14,8 @@ Do not upload the `.app` directory directly with `actions/upload-artifact`. Acti
 
 A protected macOS release job downloads only that archive and performs:
 
-1. archive member validation and extraction
-2. `CFBundleExecutable` existence/executable-mode verification
+1. archive member/link/type validation and extraction
+2. `CFBundleExecutable` existence/executable-mode/non-symlink verification
 3. temporary keychain creation
 4. Developer ID certificate import
 5. app signing
@@ -26,7 +26,7 @@ A protected macOS release job downloads only that archive and performs:
 10. ticket stapling
 11. Gatekeeper/signature/executable validation
 12. SHA-256 generation
-13. GitHub Release publication
+13. immutable GitHub Release publication
 14. optional Homebrew Cask update
 
 The privileged job must not execute arbitrary build/test commands supplied by the application repository or from the downloaded app artifact.
@@ -91,11 +91,21 @@ build/MyApp.app
   -> release-input/MyApp.app
 ```
 
-`extract-app-artifact.sh` rejects absolute paths, `..` traversal components, members outside the expected app bundle, and an extracted top-level app symlink before release processing continues.
+`extract-app-artifact.sh` treats the downloaded archive as untrusted input at the privileged boundary. Before extraction it rejects:
 
-After extraction, the release workflow reads `CFBundleExecutable` from `Contents/Info.plist` and requires `Contents/MacOS/$CFBundleExecutable` to be a regular executable file. `verify-release.sh` repeats that executable-mode check on both the signed source bundle and the exact application mounted from the final DMG.
+- absolute member paths;
+- `..` traversal components;
+- members outside the expected app bundle;
+- symbolic-link targets that resolve outside the expected app bundle;
+- hard-link targets that resolve outside the expected app bundle;
+- special archive member types such as FIFOs/devices;
+- an extracted top-level app symlink.
 
-The repository Quality workflow contains both a shell-level regression test and a real Actions Artifact upload/download round-trip fixture. A change that reintroduces direct `.app` artifact handoff or loses the executable bit must fail CI.
+Regular files, directories, and app-internal symbolic/hard links remain supported so normal macOS framework layouts are not rejected merely for using links.
+
+After extraction, the release workflow reads `CFBundleExecutable` from `Contents/Info.plist` and requires `Contents/MacOS/$CFBundleExecutable` to be a **non-symlink regular executable file**. `verify-release.sh` repeats the executable-mode check on both the signed source bundle and the exact application mounted from the final DMG.
+
+The repository Quality workflow contains both a shell-level malicious-archive regression suite and a real Actions Artifact upload/download round-trip fixture. A change that reintroduces direct `.app` artifact handoff, permits an escaping archive link, accepts a special archive entry, or loses the executable bit must fail CI.
 
 ## Trusted release context
 
@@ -106,10 +116,11 @@ The workflow additionally verifies:
 - `app_path` is a `.app` basename
 - `artifact_archive_name` is a `.tar.gz` basename
 - `dmg_name` is a basename ending in `.dmg`
-- archive members remain under the expected app bundle
+- archive members and link targets remain under the expected app bundle
+- archive member types are limited to the supported handoff contract
 - `CFBundleIdentifier` matches the configured bundle ID
 - `CFBundleShortVersionString` matches the release tag without the leading `v`
-- `CFBundleExecutable` resolves to an existing executable file
+- `CFBundleExecutable` resolves to a non-symlink regular executable file
 
 Any mismatch blocks release before signing.
 
@@ -170,6 +181,20 @@ Keep entitlements in the application repository because they define application 
 
 Do not blindly reuse an entitlement file between unrelated applications. Review additions to entitlement files as security-sensitive changes.
 
+## GitHub Release immutability
+
+A stable release version is append-never/replace-never after publication.
+
+`publish-github-release.sh` enforces this contract:
+
+- if the tag has no GitHub Release, create it with the verified DMG and `.sha256` asset;
+- if the Release already exists and both assets are byte-for-byte identical by SHA-256, treat a rerun as a no-op;
+- if either expected asset is missing, fail;
+- if either existing asset differs from the newly verified artifact, fail;
+- never use `gh release upload --clobber` for stable releases.
+
+This keeps the immutable `vX.Y.Z` tag, downloadable DMG, checksum asset, and Homebrew Cask SHA aligned. A changed build must receive a new version/tag rather than replacing a published asset.
+
 ## Failure handling
 
 A failed notarization must stop publication. Preserve the notarization submission identifier and retrieve Apple's log for diagnosis.
@@ -177,14 +202,16 @@ A failed notarization must stop publication. Preserve the notarization submissio
 Typical failure classes:
 
 - artifact handoff lost executable permission
+- unsafe archive link or unsupported archive member type
 - unsigned nested component
 - invalid/missing hardened runtime
 - invalid entitlement
 - certificate mismatch/expiration
 - bundle metadata mismatch
 - malformed DMG
+- attempted replacement of an existing stable release asset
 
-Never bypass Gatekeeper/notarization/executable checks to make a release green.
+Never bypass Gatekeeper/notarization/executable/archive-integrity checks to make a release green.
 
 ## Homebrew
 
@@ -196,7 +223,7 @@ See [`HOMEBREW.md`](HOMEBREW.md) for the tap CI and credential model.
 
 ## Rollback
 
-Do not move a published tag. If a release is defective:
+Do not move a published tag or replace its release assets. If a release is defective:
 
 1. mark/remove the downloadable release if necessary
 2. fix the source on a new PR

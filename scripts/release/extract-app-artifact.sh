@@ -51,24 +51,50 @@ import tarfile
 archive_path, app_basename = sys.argv[1:]
 app_prefix = f"{app_basename}/"
 
+
+def is_inside_app(path: str) -> bool:
+    return path == app_basename or path.startswith(app_prefix)
+
+
 with tarfile.open(archive_path, "r:gz") as archive:
+    seen_paths: set[str] = set()
+
     for member in archive.getmembers():
-        if not member.issym():
-            continue
+        canonical_name = posixpath.normpath(member.name)
+        if canonical_name in seen_paths:
+            raise SystemExit(f"Duplicate archive member path: {canonical_name}")
+        seen_paths.add(canonical_name)
 
-        target = member.linkname
-        if not target or target.startswith("/"):
-            raise SystemExit(
-                f"Unsafe archive symlink target: {member.name} -> {target}"
-            )
+        if not (member.isfile() or member.isdir() or member.issym() or member.islnk()):
+            raise SystemExit(f"Unsupported archive member type: {member.name}")
 
-        resolved_target = posixpath.normpath(
-            posixpath.join(posixpath.dirname(member.name), target)
-        )
-        if resolved_target != app_basename and not resolved_target.startswith(app_prefix):
-            raise SystemExit(
-                f"Archive symlink escapes expected app bundle: {member.name} -> {target}"
+        if member.issym():
+            target = member.linkname
+            if not target or target.startswith("/"):
+                raise SystemExit(
+                    f"Unsafe archive symlink target: {member.name} -> {target}"
+                )
+
+            resolved_target = posixpath.normpath(
+                posixpath.join(posixpath.dirname(member.name), target)
             )
+            if not is_inside_app(resolved_target):
+                raise SystemExit(
+                    f"Archive symlink escapes expected app bundle: {member.name} -> {target}"
+                )
+
+        if member.islnk():
+            target = member.linkname
+            if not target or target.startswith("/"):
+                raise SystemExit(
+                    f"Unsafe archive hard link target: {member.name} -> {target}"
+                )
+
+            resolved_target = posixpath.normpath(target)
+            if not is_inside_app(resolved_target):
+                raise SystemExit(
+                    f"Archive hard link escapes expected app bundle: {member.name} -> {target}"
+                )
 PY
 
 rm -rf "${OUTPUT_DIR}"
