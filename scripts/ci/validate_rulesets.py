@@ -241,27 +241,40 @@ def validate_main_solo(document: dict) -> list[str]:
                 errors.append("strict_required_status_checks_policy must be true")
             if parameters.get("do_not_enforce_on_create") not in (None, False):
                 errors.append("do_not_enforce_on_create must be false or omitted")
+
             checks = parameters.get("required_status_checks")
-            contexts: list[str | None] = []
             portable_check_shape = False
-            if isinstance(checks, list):
-                contexts = [
-                    item.get("context") if isinstance(item, dict) else None
-                    for item in checks
-                ]
-                portable_check_shape = all(
-                    isinstance(item, dict) and set(item) == {"context"}
-                    for item in checks
-                )
-            if (
-                not isinstance(checks, list)
-                or len(contexts) != len(set(contexts))
-                or set(contexts) != CANONICAL_CHECKS
-            ):
+            if not isinstance(checks, list):
                 errors.append(
                     "required check contexts must equal "
                     "{'Required gate', 'swift-quality / Swift quality'}"
                 )
+            else:
+                raw_contexts = [
+                    item.get("context") if isinstance(item, dict) else None
+                    for item in checks
+                ]
+                contexts_are_strings = all(
+                    isinstance(context, str) and bool(context)
+                    for context in raw_contexts
+                )
+                if not contexts_are_strings:
+                    errors.append("required check contexts must be strings")
+                else:
+                    contexts = [context for context in raw_contexts if isinstance(context, str)]
+                    if (
+                        len(contexts) != len(set(contexts))
+                        or set(contexts) != CANONICAL_CHECKS
+                    ):
+                        errors.append(
+                            "required check contexts must equal "
+                            "{'Required gate', 'swift-quality / Swift quality'}"
+                        )
+                portable_check_shape = all(
+                    isinstance(item, dict) and set(item) == {"context"}
+                    for item in checks
+                )
+
             if isinstance(checks, list) and not portable_check_shape:
                 errors.append("required checks must contain only context")
 
