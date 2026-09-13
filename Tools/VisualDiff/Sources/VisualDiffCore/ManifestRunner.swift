@@ -1,0 +1,344 @@
+import Foundation
+
+public enum ManifestRunnerError: Error, Equatable {
+    case profileMismatch(expected: String, actual: String)
+    case rollingProfileMismatch(expected: String, actual: String)
+    case missingRollingProfile
+    case missingCurrentCapture(caseID: String, path: String)
+    case missingGitBaseline(caseID: String, path: String)
+    case missingRollingBaseline(caseID: String)
+    case unsafeResolvedPath(String)
+    case notRegularFile(String)
+}
+
+public enum VisualCaseStatus: String, Codable, Sendable, Equatable {
+    case passed
+    case failed
+    case bootstrap
+}
+
+public struct VisualCaseRunReport: Codable, Sendable, Equatable {
+    public let caseID: String
+    public let baseline: BaselineSource
+    public let baselineReference: String
+    public let currentSHA: String
+    public let profile: String
+    public let status: VisualCaseStatus
+    public let maxChangedPixelRatio: Double
+    public let maxChannelDeltaThreshold: Int
+    public let dimensionMismatch: Bool?
+    public let expectedWidth: Int?
+    public let expectedHeight: Int?
+    public let actualWidth: Int?
+    public let actualHeight: Int?
+    public let changedPixelCount: Int?
+    public let changedPixelRatio: Double?
+    public let maxChannelDelta: Int?
+}
+
+public struct ManifestRunSummary: Sendable, Equatable {
+    public let cases: [VisualCaseRunReport]
+
+    public var hasFailures: Bool {
+        cases.contains { $0.status == .failed }
+    }
+}
+
+public struct ManifestRunConfiguration: Sendable, Equatable {
+    public let repoRoot: URL
+    public let currentProfileURL: URL
+    public let rollingRoot: URL?
+    public let rollingProfileURL: URL?
+    public let outputRoot: URL
+    public let currentSHA: String
+    public let baselineRunID: String?
+    public let bootstrapRolling: Bool
+
+    public init(
+        repoRoot: URL,
+        currentProfileURL: URL,
+        rollingRoot: URL?,
+        rollingProfileURL: URL?,
+        outputRoot: URL,
+        currentSHA: String,
+        baselineRunID: String?,
+        bootstrapRolling: Bool
+    ) {
+        self.repoRoot = repoRoot
+        self.currentProfileURL = currentProfileURL
+        self.rollingRoot = rollingRoot
+        self.rollingProfileURL = rollingProfileURL
+        self.outputRoot = outputRoot
+        self.currentSHA = currentSHA
+        self.baselineRunID = baselineRunID
+        self.bootstrapRolling = bootstrapRolling
+    }
+}
+
+public enum ManifestRunner {
+    public static func run(
+        manifest: VisualManifest,
+        configuration: ManifestRunConfiguration
+    ) throws -> ManifestRunSummary {
+        let currentProfile = try ProfileMetadata.load(from: configuration.currentProfileURL)
+        guard currentProfile.profile == manifest.profile else {
+            throw ManifestRunnerError.profileMismatch(
+                expected: manifest.profile,
+                actual: currentProfile.profile
+            )
+        }
+
+        let rollingCases = manifest.cases.filter { $0.baseline == .rollingMain }
+        if !rollingCases.isEmpty, configuration.rollingRoot != nil {
+            guard let rollingProfileURL = configuration.rollingProfileURL else {
+                throw ManifestRunnerError.missingRollingProfile
+            }
+            let rollingProfile = try ProfileMetadata.load(from: rollingProfileURL)
+            guard rollingProfile.profile == manifest.profile else {
+                throw ManifestRunnerError.rollingProfileMismatch(
+                    expected: manifest.profile,
+                    actual: rollingProfile.profile
+                )
+            }
+        }
+
+        try FileManager.default.createDirectory(
+            at: configuration.outputRoot,
+            withIntermediateDirectories: true
+        )
+
+        var reports: [VisualCaseRunReport] = []
+        for testCase in manifest.cases {
+            let currentURL = try confinedRepositoryURL(
+                repoRoot: configuration.repoRoot,
+                relativePath: testCase.current,
+                allowedRelativeRoot: "artifacts/visual/current"
+            )
+            try requireRegularFile(
+                currentURL,
+                missingError: .missingCurrentCapture(caseID: testCase.id, path: testCase.current)
+            )
+
+            switch testCase.baseline {
+            case .git:
+                guard let expectedPath = testCase.expected else {
+                    throw ManifestRunnerError.missingGitBaseline(caseID: testCase.id, path: "")
+                }
+                let expectedURL = try confinedRepositoryURL(
+                    repoRoot: configuration.repoRoot,
+                    relativePath: expectedPath,
+                    allowedRelativeRoot: "Tests/VisualBaselines"
+                )
+                try requireRegularFile(
+                    expectedURL,
+                    missingError: .missingGitBaseline(caseID: testCase.id, path: expectedPath)
+                )
+                reports.append(try compareAndWrite(
+                    testCase: testCase,
+                    expectedURL: expectedURL,
+                    currentURL: currentURL,
+                    baselineReference: "git:\(expectedPath)",
+                    profile: manifest.profile,
+                    configuration: configuration
+                ))
+
+            case .rollingMain:
+                guard let rollingRoot = configuration.rollingRoot else {
+                    guard configuration.bootstrapRolling else {
+                        throw ManifestRunnerError.missingRollingBaseline(caseID: testCase.id)
+                    }
+                    reports.append(try writeBootstrapReport(
+                        testCase: testCase,
+                        currentURL: currentURL,
+                        profile: manifest.profile,
+                        configuration: configuration
+                    ))
+                    continue
+                }
+
+                let expectedURL = try confinedChildURL(
+                    root: rollingRoot,
+                    childName: "\(testCase.id).png"
+                )
+                guard isRegularFile(expectedURL) else {
+                    guard configuration.bootstrapRolling else {
+                        throw ManifestRunnerError.missingRollingBaseline(caseID: testCase.id)
+                    }
+                    reports.append(try writeBootstrapReport(
+                        testCase: testCase,
+                        currentURL: currentURL,
+                        profile: manifest.profile,
+                        configuration: configuration
+                    ))
+                    continue
+                }
+
+                let baselineReference = configuration.baselineRunID.map { "run:\($0)" } ?? "rolling-main"
+                reports.append(try compareAndWrite(
+                    testCase: testCase,
+                    expectedURL: expectedURL,
+                    currentURL: currentURL,
+                    baselineReference: baselineReference,
+                    profile: manifest.profile,
+                    configuration: configuration
+                ))
+            }
+        }
+
+        return ManifestRunSummary(cases: reports)
+    }
+
+    private static func compareAndWrite(
+        testCase: VisualCase,
+        expectedURL: URL,
+        currentURL: URL,
+        baselineReference: String,
+        profile: String,
+        configuration: ManifestRunConfiguration
+    ) throws -> VisualCaseRunReport {
+        let expected = try PixelImage.loadPNG(from: expectedURL)
+        let actual = try PixelImage.loadPNG(from: currentURL)
+        let result = VisualComparator.compare(
+            expected: expected,
+            actual: actual,
+            policy: ComparisonPolicy(
+                maxChangedPixelRatio: testCase.maxChangedPixelRatio,
+                maxChannelDelta: testCase.maxChannelDelta
+            )
+        )
+        let status: VisualCaseStatus = result.report.passed ? .passed : .failed
+        let report = VisualCaseRunReport(
+            caseID: testCase.id,
+            baseline: testCase.baseline,
+            baselineReference: baselineReference,
+            currentSHA: configuration.currentSHA,
+            profile: profile,
+            status: status,
+            maxChangedPixelRatio: testCase.maxChangedPixelRatio,
+            maxChannelDeltaThreshold: Int(testCase.maxChannelDelta),
+            dimensionMismatch: result.report.dimensionMismatch,
+            expectedWidth: result.report.expectedWidth,
+            expectedHeight: result.report.expectedHeight,
+            actualWidth: result.report.actualWidth,
+            actualHeight: result.report.actualHeight,
+            changedPixelCount: result.report.changedPixelCount,
+            changedPixelRatio: result.report.changedPixelRatio,
+            maxChannelDelta: result.report.maxChannelDelta
+        )
+
+        let caseRoot = try prepareCaseOutput(
+            caseID: testCase.id,
+            outputRoot: configuration.outputRoot
+        )
+        try expected.writePNG(to: caseRoot.appendingPathComponent("expected.png"))
+        try actual.writePNG(to: caseRoot.appendingPathComponent("actual.png"))
+        try result.diff.writePNG(to: caseRoot.appendingPathComponent("diff.png"))
+        try write(report: report, to: caseRoot.appendingPathComponent("report.json"))
+        return report
+    }
+
+    private static func writeBootstrapReport(
+        testCase: VisualCase,
+        currentURL: URL,
+        profile: String,
+        configuration: ManifestRunConfiguration
+    ) throws -> VisualCaseRunReport {
+        let actual = try PixelImage.loadPNG(from: currentURL)
+        let report = VisualCaseRunReport(
+            caseID: testCase.id,
+            baseline: testCase.baseline,
+            baselineReference: "bootstrap:none",
+            currentSHA: configuration.currentSHA,
+            profile: profile,
+            status: .bootstrap,
+            maxChangedPixelRatio: testCase.maxChangedPixelRatio,
+            maxChannelDeltaThreshold: Int(testCase.maxChannelDelta),
+            dimensionMismatch: nil,
+            expectedWidth: nil,
+            expectedHeight: nil,
+            actualWidth: actual.width,
+            actualHeight: actual.height,
+            changedPixelCount: nil,
+            changedPixelRatio: nil,
+            maxChannelDelta: nil
+        )
+
+        let caseRoot = try prepareCaseOutput(
+            caseID: testCase.id,
+            outputRoot: configuration.outputRoot
+        )
+        try actual.writePNG(to: caseRoot.appendingPathComponent("actual.png"))
+        try write(report: report, to: caseRoot.appendingPathComponent("report.json"))
+        return report
+    }
+
+    private static func prepareCaseOutput(caseID: String, outputRoot: URL) throws -> URL {
+        let caseRoot = outputRoot.appendingPathComponent(caseID, isDirectory: true)
+        if FileManager.default.fileExists(atPath: caseRoot.path) {
+            try FileManager.default.removeItem(at: caseRoot)
+        }
+        try FileManager.default.createDirectory(at: caseRoot, withIntermediateDirectories: true)
+        return caseRoot
+    }
+
+    private static func write(report: VisualCaseRunReport, to url: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        try encoder.encode(report).write(to: url, options: .atomic)
+    }
+
+    private static func requireRegularFile(
+        _ url: URL,
+        missingError: ManifestRunnerError
+    ) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw missingError
+        }
+        guard isRegularFile(url) else {
+            throw ManifestRunnerError.notRegularFile(url.path)
+        }
+    }
+
+    private static func isRegularFile(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey]) else {
+            return false
+        }
+        return values.isRegularFile == true
+    }
+
+    private static func confinedRepositoryURL(
+        repoRoot: URL,
+        relativePath: String,
+        allowedRelativeRoot: String
+    ) throws -> URL {
+        let allowedRoot = repoRoot
+            .appendingPathComponent(allowedRelativeRoot, isDirectory: true)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        let candidate = repoRoot
+            .appendingPathComponent(relativePath)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        guard isDescendant(candidate, of: allowedRoot) else {
+            throw ManifestRunnerError.unsafeResolvedPath(relativePath)
+        }
+        return candidate
+    }
+
+    private static func confinedChildURL(root: URL, childName: String) throws -> URL {
+        let resolvedRoot = root.standardizedFileURL.resolvingSymlinksInPath()
+        let candidate = root
+            .appendingPathComponent(childName)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        guard isDescendant(candidate, of: resolvedRoot) else {
+            throw ManifestRunnerError.unsafeResolvedPath(childName)
+        }
+        return candidate
+    }
+
+    private static func isDescendant(_ candidate: URL, of root: URL) -> Bool {
+        let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        return candidate.path == root.path || candidate.path.hasPrefix(rootPath)
+    }
+}
