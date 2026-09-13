@@ -202,7 +202,9 @@ def validate_main_solo(document: dict) -> list[str]:
                 errors.append(
                     f"unexpected pull_request parameters: {unexpected_parameters!r}"
                 )
-            if parameters.get("required_approving_review_count") != 0:
+
+            approval_count = parameters.get("required_approving_review_count")
+            if type(approval_count) is not int or approval_count != 0:
                 errors.append("required_approving_review_count must equal 0")
             if parameters.get("required_review_thread_resolution") is not True:
                 errors.append("required_review_thread_resolution must be true")
@@ -212,9 +214,9 @@ def validate_main_solo(document: dict) -> list[str]:
                 errors.append("require_last_push_approval must be false")
             if parameters.get("required_reviewers") not in (None, []):
                 errors.append("required_reviewers must be empty or omitted")
-            if parameters.get("require_extra_approval_for_unattributed_changes") not in (
-                None,
-                False,
+            if (
+                "require_extra_approval_for_unattributed_changes" in parameters
+                and parameters["require_extra_approval_for_unattributed_changes"] is not False
             ):
                 errors.append(
                     "require_extra_approval_for_unattributed_changes must be false or omitted"
@@ -239,7 +241,10 @@ def validate_main_solo(document: dict) -> list[str]:
                 )
             if parameters.get("strict_required_status_checks_policy") is not True:
                 errors.append("strict_required_status_checks_policy must be true")
-            if parameters.get("do_not_enforce_on_create") not in (None, False):
+            if (
+                "do_not_enforce_on_create" in parameters
+                and parameters["do_not_enforce_on_create"] is not False
+            ):
                 errors.append("do_not_enforce_on_create must be false or omitted")
 
             checks = parameters.get("required_status_checks")
@@ -312,7 +317,12 @@ def validate_release_tags(document: dict) -> list[str]:
         if set(update_rule) - {"type", "parameters"}:
             errors.append("release tag update rule contains unexpected fields")
         parameters = update_rule.get("parameters")
-        if parameters != {"update_allows_fetch_and_merge": False}:
+        valid_update_parameters = (
+            isinstance(parameters, dict)
+            and set(parameters) == {"update_allows_fetch_and_merge"}
+            and parameters["update_allows_fetch_and_merge"] is False
+        )
+        if not valid_update_parameters:
             errors.append(
                 "release tag update parameters must equal "
                 "{'update_allows_fetch_and_merge': false}"
