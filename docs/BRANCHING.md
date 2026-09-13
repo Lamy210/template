@@ -37,14 +37,16 @@ The default coding expectations are defined in [`CODING_STANDARDS.md`](CODING_ST
 
 A required Ruleset should select checks that are created for every pull request. Do not require a workflow whose top-level trigger can disappear because of `paths:` filtering; GitHub can leave such a required context pending when the workflow is skipped.
 
-The template's stable foundation contexts are:
+The template's observed stable foundation check-run names are:
 
-- `Quality / Required gate`
-- `Swift Quality / Swift quality`
+- `Required gate`
+- `swift-quality / Swift quality`
 
-`Quality / Required gate` aggregates repository hygiene, secret scanning, GitHub Actions security, and the real upload/download release-artifact permission round-trip. Individual internal jobs remain visible for diagnosis, but the Ruleset can depend on the stable aggregate context rather than a growing list of implementation-detail job names.
+These names are taken from GitHub's Check Runs API after successful execution; they are not inferred from workflow display names.
 
-`Swift Quality` is started for every pull request and `main` push. Source detection occurs inside the reusable workflow, so repositories without application Swift sources still create and complete the required context instead of leaving it pending.
+`Required gate` aggregates repository hygiene, secret scanning, GitHub Actions security, and the real upload/download release-artifact permission round-trip. Individual internal jobs remain visible for diagnosis, but the Ruleset can depend on the stable aggregate context rather than a growing list of implementation-detail job names.
+
+The `Swift Quality` workflow is started for every pull request and `main` push. Its reusable workflow emits the check-run `swift-quality / Swift quality`. Source detection occurs inside the reusable workflow, so repositories without application Swift sources still create and complete the required context instead of leaving it pending.
 
 When application-specific build/test workflows are added, expose a similarly stable final gate rather than requiring path-filtered internal jobs directly.
 
@@ -54,8 +56,8 @@ For repositories with one maintainer:
 
 - require a PR
 - require **zero approvals**
-- require `Quality / Required gate`
-- require `Swift Quality / Swift quality`
+- require `Required gate`
+- require `swift-quality / Swift quality`
 - require all application-specific stable gates once present
 - require review-conversation resolution
 - require linear history
@@ -86,8 +88,8 @@ Recommended `main` Ruleset:
 3. Block force pushes.
 4. Require a pull request before merging.
 5. Use zero approvals for Solo OSS, or one-or-more approvals for the Team profile.
-6. Require `Quality / Required gate`.
-7. Require `Swift Quality / Swift quality`.
+6. Require `Required gate`.
+7. Require `swift-quality / Swift quality`.
 8. Require conversation resolution.
 9. Require linear history.
 10. Require the branch to be up to date before merging when merge queue is unavailable.
@@ -95,7 +97,7 @@ Recommended `main` Ruleset:
 
 Do not include `release**`, `release-*`, or `release/**/*` in the default branch Ruleset when using this trunk-only model. If a project intentionally introduces long-lived release branches later, add a separate documented profile with narrowly scoped patterns rather than broadening the default template implicitly.
 
-For Swift projects, the required check is the always-created `Swift Quality / Swift quality` context. Select status-check names only after GitHub has emitted them successfully at least once; the names above are the observed contexts from this template's CI.
+Select status-check names only after GitHub has emitted them successfully at least once. If workflow/job names are changed, re-observe the resulting Check Run names before changing the Ruleset.
 
 Recommended `v*` tag Ruleset:
 
