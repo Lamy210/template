@@ -29,7 +29,10 @@ final class ManifestRunnerTests: XCTestCase {
         let fixture = try Fixture()
         let testCase = fixture.gitCase(id: "settings-light")
         let manifest = try fixture.manifest(cases: [testCase])
-        try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
+        let metadata = try fixture.writeProfile(
+            id: manifest.profile,
+            to: fixture.currentProfileURL
+        )
 
         let expected = try TestImageFactory.solid(width: 2, height: 2, rgba: [10, 20, 30, 255])
         let expectedPath = try XCTUnwrap(testCase.expected)
@@ -43,6 +46,7 @@ final class ManifestRunnerTests: XCTestCase {
 
         XCTAssertFalse(summary.hasFailures)
         XCTAssertEqual(summary.cases.map(\.status), [.passed])
+        XCTAssertEqual(summary.cases.first?.profileFingerprint, metadata.profileFingerprint)
         let caseRoot = fixture.outputRoot.appendingPathComponent("settings-light", isDirectory: true)
         XCTAssertTrue(FileManager.default.fileExists(atPath: caseRoot.appendingPathComponent("expected.png").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: caseRoot.appendingPathComponent("actual.png").path))
@@ -50,12 +54,20 @@ final class ManifestRunnerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: caseRoot.appendingPathComponent("report.json").path))
     }
 
-    func testRollingBaselineUsesOnlyRollingRoot() throws {
+    func testRollingBaselineAllowsObservedRuntimeDrift() throws {
         let fixture = try Fixture()
         let testCase = fixture.rollingCase(id: "dynamic")
         let manifest = try fixture.manifest(cases: [testCase])
-        try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
-        try fixture.writeProfile(id: manifest.profile, to: fixture.rollingProfileURL)
+        let currentMetadata = try fixture.writeProfile(
+            id: manifest.profile,
+            observedBuild: "25G83",
+            to: fixture.currentProfileURL
+        )
+        let rollingMetadata = try fixture.writeProfile(
+            id: manifest.profile,
+            observedBuild: "25G84",
+            to: fixture.rollingProfileURL
+        )
 
         let current = try TestImageFactory.solid(width: 1, height: 1, rgba: [40, 50, 60, 255])
         try fixture.write(image: current, relativePath: testCase.current)
@@ -66,12 +78,83 @@ final class ManifestRunnerTests: XCTestCase {
             configuration: fixture.configuration(bootstrapRolling: false)
         )
 
+        XCTAssertEqual(currentMetadata.profileFingerprint, rollingMetadata.profileFingerprint)
+        XCTAssertNotEqual(currentMetadata.observed, rollingMetadata.observed)
         XCTAssertFalse(summary.hasFailures)
         XCTAssertEqual(summary.cases.first?.status, .passed)
         XCTAssertEqual(summary.cases.first?.baselineReference, "run:12345")
     }
 
+    func testRollingControlledProfileMismatchFailsBeforePixelComparison() throws {
+        let fixture = try Fixture()
+        let testCase = fixture.rollingCase(id: "dynamic")
+        let manifest = try fixture.manifest(cases: [testCase])
+        let current = try fixture.writeProfile(
+            id: manifest.profile,
+            controlled: fixture.controlledProfile(appearance: "light"),
+            to: fixture.currentProfileURL
+        )
+        let rolling = try fixture.writeProfile(
+            id: manifest.profile,
+            controlled: fixture.controlledProfile(appearance: "dark"),
+            to: fixture.rollingProfileURL
+        )
+
+        XCTAssertThrowsError(
+            try ManifestRunner.run(
+                manifest: manifest,
+                configuration: fixture.configuration(bootstrapRolling: false)
+            )
+        ) { error in
+            guard case ManifestRunnerError.rollingProfileFingerprintMismatch(
+                expected: current.profileFingerprint,
+                actual: rolling.profileFingerprint
+            ) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
     func testExactApprovalTurnsRollingMismatchIntoApprovedChange() throws {
+        let fixture = try Fixture()
+        let approvalPath = "Tests/VisualRegression/Approvals/dynamic.json"
+        let testCase = fixture.rollingCase(id: "dynamic", approval: approvalPath)
+        let manifest = try fixture.manifest(cases: [testCase])
+        let currentMetadata = try fixture.writeProfile(
+            id: manifest.profile,
+            to: fixture.currentProfileURL
+        )
+        try fixture.writeProfile(id: manifest.profile, to: fixture.rollingProfileURL)
+
+        let expected = try TestImageFactory.solid(width: 1, height: 1, rgba: [0, 0, 0, 255])
+        let actual = try TestImageFactory.solid(width: 1, height: 1, rgba: [1, 0, 0, 255])
+        let expectedURL = fixture.rollingRoot.appendingPathComponent("dynamic.png")
+        let actualURL = fixture.root.appendingPathComponent(testCase.current)
+        try expected.writePNG(to: expectedURL)
+        try actual.writePNG(to: actualURL)
+
+        let approval = try VisualApproval(
+            schemaVersion: 1,
+            caseID: testCase.id,
+            fromDigest: ImageDigest.sha256(fileAt: expectedURL),
+            toDigest: ImageDigest.sha256(fileAt: actualURL),
+            profileFingerprint: currentMetadata.profileFingerprint,
+            reason: "Intentional redesign"
+        )
+        try fixture.writeApproval(approval, relativePath: approvalPath)
+
+        let summary = try ManifestRunner.run(
+            manifest: manifest,
+            configuration: fixture.configuration(bootstrapRolling: false)
+        )
+
+        XCTAssertFalse(summary.hasFailures)
+        XCTAssertEqual(summary.cases.first?.status, .approvedChange)
+        XCTAssertEqual(summary.cases.first?.profileFingerprint, currentMetadata.profileFingerprint)
+        XCTAssertGreaterThan(summary.cases.first?.changedPixelCount ?? 0, 0)
+    }
+
+    func testHumanProfileLabelCannotSubstituteForApprovalFingerprint() throws {
         let fixture = try Fixture()
         let approvalPath = "Tests/VisualRegression/Approvals/dynamic.json"
         let testCase = fixture.rollingCase(id: "dynamic", approval: approvalPath)
@@ -92,7 +175,7 @@ final class ManifestRunnerTests: XCTestCase {
             fromDigest: ImageDigest.sha256(fileAt: expectedURL),
             toDigest: ImageDigest.sha256(fileAt: actualURL),
             profileFingerprint: manifest.profile,
-            reason: "Intentional redesign"
+            reason: "Incorrectly bound to label"
         )
         try fixture.writeApproval(approval, relativePath: approvalPath)
 
@@ -101,9 +184,8 @@ final class ManifestRunnerTests: XCTestCase {
             configuration: fixture.configuration(bootstrapRolling: false)
         )
 
-        XCTAssertFalse(summary.hasFailures)
-        XCTAssertEqual(summary.cases.first?.status, .approvedChange)
-        XCTAssertGreaterThan(summary.cases.first?.changedPixelCount ?? 0, 0)
+        XCTAssertTrue(summary.hasFailures)
+        XCTAssertEqual(summary.cases.first?.status, .failed)
     }
 
     func testStaleApprovalDoesNotAuthorizeDifferentCurrentImage() throws {
@@ -111,7 +193,10 @@ final class ManifestRunnerTests: XCTestCase {
         let approvalPath = "Tests/VisualRegression/Approvals/dynamic.json"
         let testCase = fixture.rollingCase(id: "dynamic", approval: approvalPath)
         let manifest = try fixture.manifest(cases: [testCase])
-        try fixture.writeProfile(id: manifest.profile, to: fixture.currentProfileURL)
+        let currentMetadata = try fixture.writeProfile(
+            id: manifest.profile,
+            to: fixture.currentProfileURL
+        )
         try fixture.writeProfile(id: manifest.profile, to: fixture.rollingProfileURL)
 
         let expected = try TestImageFactory.solid(width: 1, height: 1, rgba: [0, 0, 0, 255])
@@ -126,7 +211,7 @@ final class ManifestRunnerTests: XCTestCase {
             caseID: testCase.id,
             fromDigest: ImageDigest.sha256(fileAt: expectedURL),
             toDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            profileFingerprint: manifest.profile,
+            profileFingerprint: currentMetadata.profileFingerprint,
             reason: "Approval for an older capture"
         )
         try fixture.writeApproval(approval, relativePath: approvalPath)
@@ -184,7 +269,7 @@ final class ManifestRunnerTests: XCTestCase {
         }
     }
 
-    func testRollingProfileMismatchFailsBeforePixelComparison() throws {
+    func testRollingProfileLabelMismatchFailsBeforePixelComparison() throws {
         let fixture = try Fixture()
         let testCase = fixture.rollingCase(id: "dynamic")
         let manifest = try fixture.manifest(cases: [testCase])
@@ -233,6 +318,23 @@ private final class Fixture {
             schemaVersion: 1,
             profile: "macos-26-arm64-xcode-26.6",
             cases: cases
+        )
+    }
+
+    func controlledProfile(appearance: String = "light") -> ControlledProfile {
+        ControlledProfile(
+            runnerFamily: "macos-26",
+            architecture: "arm64",
+            xcodePolicy: "26.6",
+            locale: "en_US.UTF-8",
+            language: "en",
+            timezone: "UTC",
+            appearance: appearance,
+            displayScale: "2x",
+            captureGeometry: "window:900x600",
+            fixtureVersion: "fixture-v1",
+            captureContractVersion: 1,
+            comparatorSchemaVersion: 1
         )
     }
 
@@ -288,17 +390,21 @@ private final class Fixture {
         try JSONEncoder().encode(approval).write(to: url, options: .atomic)
     }
 
-    func writeProfile(id: String, to url: URL) throws {
-        let metadata = ProfileMetadata(
-            schemaVersion: 1,
+    @discardableResult
+    func writeProfile(
+        id: String,
+        controlled: ControlledProfile? = nil,
+        observedBuild: String = "25G83",
+        to url: URL
+    ) throws -> ProfileMetadata {
+        let metadata = try ProfileMetadata(
             profile: id,
-            runnerOS: "macOS",
-            runnerArch: "ARM64",
-            xcodePath: "/Applications/Xcode_26.6.app/Contents/Developer",
-            xcodeVersion: "Xcode 26.6",
-            locale: "en_US.UTF-8",
-            language: "en",
-            timezone: "UTC",
+            controlled: controlled ?? controlledProfile(),
+            observed: ObservedRuntime(
+                macOSBuild: observedBuild,
+                runnerImageVersion: "20260907.0351.1",
+                xcodeBuild: "17G29"
+            ),
             currentSHA: "abcdef"
         )
         try FileManager.default.createDirectory(
@@ -306,5 +412,6 @@ private final class Fixture {
             withIntermediateDirectories: true
         )
         try JSONEncoder().encode(metadata).write(to: url, options: .atomic)
+        return metadata
     }
 }
