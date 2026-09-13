@@ -96,10 +96,10 @@ run_resolver() {
     GH_STUB_SCENARIO="${scenario}" \
     GH_TOKEN="test-token" \
     "${RESOLVER}" \
-      --repository Lamy210/template \
-      --workflow visual-regression.yml \
-      --artifact visual-baseline-test \
-      --output "${output_dir}"
+    --repository Lamy210/template \
+    --workflow visual-regression.yml \
+    --artifact visual-baseline-test \
+    --output "${output_dir}"
 }
 
 assert_status() {
