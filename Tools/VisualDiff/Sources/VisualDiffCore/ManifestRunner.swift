@@ -86,6 +86,27 @@ public enum ManifestRunner {
         manifest: VisualManifest,
         configuration: ManifestRunConfiguration
     ) throws -> ManifestRunSummary {
+        try validateProfiles(manifest: manifest, configuration: configuration)
+        try FileManager.default.createDirectory(
+            at: configuration.outputRoot,
+            withIntermediateDirectories: true
+        )
+
+        var reports: [VisualCaseRunReport] = []
+        for testCase in manifest.cases {
+            try reports.append(runCase(
+                testCase,
+                profile: manifest.profile,
+                configuration: configuration
+            ))
+        }
+        return ManifestRunSummary(cases: reports)
+    }
+
+    private static func validateProfiles(
+        manifest: VisualManifest,
+        configuration: ManifestRunConfiguration
+    ) throws {
         let currentProfile = try ProfileMetadata.load(from: configuration.currentProfileURL)
         guard currentProfile.profile == manifest.profile else {
             throw ManifestRunnerError.profileMismatch(
@@ -94,104 +115,137 @@ public enum ManifestRunner {
             )
         }
 
-        let rollingCases = manifest.cases.filter { $0.baseline == .rollingMain }
-        if !rollingCases.isEmpty, configuration.rollingRoot != nil {
-            guard let rollingProfileURL = configuration.rollingProfileURL else {
-                throw ManifestRunnerError.missingRollingProfile
-            }
-            let rollingProfile = try ProfileMetadata.load(from: rollingProfileURL)
-            guard rollingProfile.profile == manifest.profile else {
-                throw ManifestRunnerError.rollingProfileMismatch(
-                    expected: manifest.profile,
-                    actual: rollingProfile.profile
-                )
-            }
+        let hasRollingCases = manifest.cases.contains { $0.baseline == .rollingMain }
+        guard hasRollingCases, configuration.rollingRoot != nil else {
+            return
         }
+        guard let rollingProfileURL = configuration.rollingProfileURL else {
+            throw ManifestRunnerError.missingRollingProfile
+        }
+        let rollingProfile = try ProfileMetadata.load(from: rollingProfileURL)
+        guard rollingProfile.profile == manifest.profile else {
+            throw ManifestRunnerError.rollingProfileMismatch(
+                expected: manifest.profile,
+                actual: rollingProfile.profile
+            )
+        }
+    }
 
-        try FileManager.default.createDirectory(
-            at: configuration.outputRoot,
-            withIntermediateDirectories: true
+    private static func runCase(
+        _ testCase: VisualCase,
+        profile: String,
+        configuration: ManifestRunConfiguration
+    ) throws -> VisualCaseRunReport {
+        let currentURL = try confinedRepositoryURL(
+            repoRoot: configuration.repoRoot,
+            relativePath: testCase.current,
+            allowedRelativeRoot: "artifacts/visual/current"
+        )
+        try requireRegularFile(
+            currentURL,
+            missingError: .missingCurrentCapture(caseID: testCase.id, path: testCase.current)
         )
 
-        var reports: [VisualCaseRunReport] = []
-        for testCase in manifest.cases {
-            let currentURL = try confinedRepositoryURL(
-                repoRoot: configuration.repoRoot,
-                relativePath: testCase.current,
-                allowedRelativeRoot: "artifacts/visual/current"
+        switch testCase.baseline {
+        case .git:
+            return try runGitCase(
+                testCase,
+                currentURL: currentURL,
+                profile: profile,
+                configuration: configuration
             )
-            try requireRegularFile(
-                currentURL,
-                missingError: .missingCurrentCapture(caseID: testCase.id, path: testCase.current)
+        case .rollingMain:
+            return try runRollingCase(
+                testCase,
+                currentURL: currentURL,
+                profile: profile,
+                configuration: configuration
             )
+        }
+    }
 
-            switch testCase.baseline {
-            case .git:
-                guard let expectedPath = testCase.expected else {
-                    throw ManifestRunnerError.missingGitBaseline(caseID: testCase.id, path: "")
-                }
-                let expectedURL = try confinedRepositoryURL(
-                    repoRoot: configuration.repoRoot,
-                    relativePath: expectedPath,
-                    allowedRelativeRoot: "Tests/VisualBaselines"
-                )
-                try requireRegularFile(
-                    expectedURL,
-                    missingError: .missingGitBaseline(caseID: testCase.id, path: expectedPath)
-                )
-                try reports.append(compareAndWrite(
-                    testCase: testCase,
-                    expectedURL: expectedURL,
-                    currentURL: currentURL,
-                    baselineReference: "git:\(expectedPath)",
-                    profile: manifest.profile,
-                    configuration: configuration
-                ))
+    private static func runGitCase(
+        _ testCase: VisualCase,
+        currentURL: URL,
+        profile: String,
+        configuration: ManifestRunConfiguration
+    ) throws -> VisualCaseRunReport {
+        guard let expectedPath = testCase.expected else {
+            throw ManifestRunnerError.missingGitBaseline(caseID: testCase.id, path: "")
+        }
+        let expectedURL = try confinedRepositoryURL(
+            repoRoot: configuration.repoRoot,
+            relativePath: expectedPath,
+            allowedRelativeRoot: "Tests/VisualBaselines"
+        )
+        try requireRegularFile(
+            expectedURL,
+            missingError: .missingGitBaseline(caseID: testCase.id, path: expectedPath)
+        )
+        return try compareAndWrite(
+            testCase: testCase,
+            expectedURL: expectedURL,
+            currentURL: currentURL,
+            baselineReference: "git:\(expectedPath)",
+            profile: profile,
+            configuration: configuration
+        )
+    }
 
-            case .rollingMain:
-                guard let rollingRoot = configuration.rollingRoot else {
-                    guard configuration.bootstrapRolling else {
-                        throw ManifestRunnerError.missingRollingBaseline(caseID: testCase.id)
-                    }
-                    try reports.append(writeBootstrapReport(
-                        testCase: testCase,
-                        currentURL: currentURL,
-                        profile: manifest.profile,
-                        configuration: configuration
-                    ))
-                    continue
-                }
-
-                let expectedURL = try confinedChildURL(
-                    root: rollingRoot,
-                    childName: "\(testCase.id).png"
-                )
-                guard isRegularFile(expectedURL) else {
-                    guard configuration.bootstrapRolling else {
-                        throw ManifestRunnerError.missingRollingBaseline(caseID: testCase.id)
-                    }
-                    try reports.append(writeBootstrapReport(
-                        testCase: testCase,
-                        currentURL: currentURL,
-                        profile: manifest.profile,
-                        configuration: configuration
-                    ))
-                    continue
-                }
-
-                let baselineReference = configuration.baselineRunID.map { "run:\($0)" } ?? "rolling-main"
-                try reports.append(compareAndWrite(
-                    testCase: testCase,
-                    expectedURL: expectedURL,
-                    currentURL: currentURL,
-                    baselineReference: baselineReference,
-                    profile: manifest.profile,
-                    configuration: configuration
-                ))
-            }
+    private static func runRollingCase(
+        _ testCase: VisualCase,
+        currentURL: URL,
+        profile: String,
+        configuration: ManifestRunConfiguration
+    ) throws -> VisualCaseRunReport {
+        guard let rollingRoot = configuration.rollingRoot else {
+            return try bootstrapOrThrow(
+                testCase,
+                currentURL: currentURL,
+                profile: profile,
+                configuration: configuration
+            )
         }
 
-        return ManifestRunSummary(cases: reports)
+        let expectedURL = try confinedChildURL(
+            root: rollingRoot,
+            childName: "\(testCase.id).png"
+        )
+        guard isRegularFile(expectedURL) else {
+            return try bootstrapOrThrow(
+                testCase,
+                currentURL: currentURL,
+                profile: profile,
+                configuration: configuration
+            )
+        }
+
+        let baselineReference = configuration.baselineRunID.map { "run:\($0)" } ?? "rolling-main"
+        return try compareAndWrite(
+            testCase: testCase,
+            expectedURL: expectedURL,
+            currentURL: currentURL,
+            baselineReference: baselineReference,
+            profile: profile,
+            configuration: configuration
+        )
+    }
+
+    private static func bootstrapOrThrow(
+        _ testCase: VisualCase,
+        currentURL: URL,
+        profile: String,
+        configuration: ManifestRunConfiguration
+    ) throws -> VisualCaseRunReport {
+        guard configuration.bootstrapRolling else {
+            throw ManifestRunnerError.missingRollingBaseline(caseID: testCase.id)
+        }
+        return try writeBootstrapReport(
+            testCase: testCase,
+            currentURL: currentURL,
+            profile: profile,
+            configuration: configuration
+        )
     }
 
     private static func compareAndWrite(
