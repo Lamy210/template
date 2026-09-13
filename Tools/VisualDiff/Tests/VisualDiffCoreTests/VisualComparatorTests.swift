@@ -36,6 +36,44 @@ final class VisualComparatorTests: XCTestCase {
         XCTAssertEqual(result.report.maxChannelDelta, 1)
     }
 
+    func testWidespreadChannelNoiseWithinToleranceDoesNotCountAsChangedPixels() throws {
+        let expected = try TestImageFactory.solid(width: 2, height: 2, rgba: [10, 20, 30, 255])
+        var bytes = expected.rgba
+        for pixel in 0 ..< 4 {
+            bytes[pixel * 4] = 11
+        }
+        let actual = try PixelImage(width: 2, height: 2, rgba: bytes)
+
+        let result = try VisualComparator.compare(
+            expected: expected,
+            actual: actual,
+            policy: ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 1)
+        )
+
+        XCTAssertTrue(result.report.passed)
+        XCTAssertEqual(result.report.changedPixelCount, 0)
+        XCTAssertEqual(result.report.changedPixelRatio, 0, accuracy: 0.000_001)
+        XCTAssertEqual(result.report.maxChannelDelta, 1)
+    }
+
+    func testChangedPixelRatioCountsOnlyPixelsBeyondChannelTolerance() throws {
+        let expected = try TestImageFactory.solid(width: 2, height: 2, rgba: [0, 0, 0, 255])
+        var bytes = expected.rgba
+        bytes[0] = 11
+        let actual = try PixelImage(width: 2, height: 2, rgba: bytes)
+
+        let result = try VisualComparator.compare(
+            expected: expected,
+            actual: actual,
+            policy: ComparisonPolicy(maxChangedPixelRatio: 0.25, maxChannelDelta: 10)
+        )
+
+        XCTAssertTrue(result.report.passed)
+        XCTAssertEqual(result.report.changedPixelCount, 1)
+        XCTAssertEqual(result.report.changedPixelRatio, 0.25, accuracy: 0.000_001)
+        XCTAssertEqual(result.report.maxChannelDelta, 11)
+    }
+
     func testChangedPixelRatioAtThresholdPasses() throws {
         let expected = try TestImageFactory.solid(width: 2, height: 2, rgba: [0, 0, 0, 255])
         var bytes = expected.rgba
@@ -45,10 +83,12 @@ final class VisualComparatorTests: XCTestCase {
         let result = try VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: ComparisonPolicy(maxChangedPixelRatio: 0.25, maxChannelDelta: 255)
+            policy: ComparisonPolicy(maxChangedPixelRatio: 0.25, maxChannelDelta: 0)
         )
 
         XCTAssertTrue(result.report.passed)
+        XCTAssertEqual(result.report.changedPixelCount, 1)
+        XCTAssertEqual(result.report.changedPixelRatio, 0.25, accuracy: 0.000_001)
     }
 
     func testChannelDeltaAtThresholdPasses() throws {
@@ -58,10 +98,11 @@ final class VisualComparatorTests: XCTestCase {
         let result = try VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: ComparisonPolicy(maxChangedPixelRatio: 1, maxChannelDelta: 2)
+            policy: ComparisonPolicy(maxChangedPixelRatio: 0, maxChannelDelta: 2)
         )
 
         XCTAssertTrue(result.report.passed)
+        XCTAssertEqual(result.report.changedPixelCount, 0)
         XCTAssertEqual(result.report.maxChannelDelta, 2)
     }
 
