@@ -9,6 +9,7 @@ public enum VisualComparator {
         }
 
         let pixelCount = expected.width * expected.height
+        let channelTolerance = Int(policy.maxChannelDelta)
         var changedPixelCount = 0
         var maxChannelDelta = 0
         var diffBytes = [UInt8](repeating: 0, count: expected.rgba.count)
@@ -23,7 +24,7 @@ public enum VisualComparator {
                 maxChannelDelta = max(maxChannelDelta, delta)
             }
 
-            if pixelMaxDelta > 0 {
+            if pixelMaxDelta > channelTolerance {
                 changedPixelCount += 1
                 diffBytes[offset] = 255
                 diffBytes[offset + 1] = 0
@@ -38,10 +39,8 @@ public enum VisualComparator {
         }
 
         let changedPixelRatio = Double(changedPixelCount) / Double(pixelCount)
-        let passed = changedPixelRatio <= policy.maxChangedPixelRatio
-            && maxChannelDelta <= Int(policy.maxChannelDelta)
         let report = ComparisonReport(
-            passed: passed,
+            passed: changedPixelRatio <= policy.maxChangedPixelRatio,
             dimensionMismatch: false,
             expectedWidth: expected.width,
             expectedHeight: expected.height,
