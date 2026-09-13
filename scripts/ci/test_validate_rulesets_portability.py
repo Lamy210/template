@@ -145,7 +145,7 @@ class PortableRulesetStructureTests(unittest.TestCase):
 
         self.assertTrue(any("name must be a non-empty string" in error for error in errors))
 
-    def test_rejects_runtime_export_metadata(self) -> None:
+    def test_rejects_noncanonical_export_fields(self) -> None:
         document = copy.deepcopy(valid_main_solo())
         document["source_type"] = "Repository"
         document["current_user_can_bypass"] = "never"
