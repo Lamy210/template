@@ -5,6 +5,7 @@ public enum ManifestRunnerError: Error, Equatable {
     case rollingProfileMismatch(expected: String, actual: String)
     case rollingProfileFingerprintMismatch(expected: String, actual: String)
     case missingRollingProfile
+    case missingRollingBundleManifest
     case missingCurrentCapture(caseID: String, path: String)
     case missingGitBaseline(caseID: String, path: String)
     case missingRollingBaseline(caseID: String)
@@ -88,12 +89,17 @@ struct ManifestExecutionProfile: Sendable, Equatable {
     let fingerprint: String
 }
 
+struct ManifestValidatedContext: Sendable, Equatable {
+    let executionProfile: ManifestExecutionProfile
+    let rollingBaseline: ValidatedBaselineBundle?
+}
+
 public enum ManifestRunner {
     public static func run(
         manifest: VisualManifest,
         configuration: ManifestRunConfiguration
     ) throws -> ManifestRunSummary {
-        let executionProfile = try validateProfiles(
+        let context = try validateContext(
             manifest: manifest,
             configuration: configuration
         )
@@ -106,17 +112,18 @@ public enum ManifestRunner {
         for testCase in manifest.cases {
             try reports.append(ManifestCaseExecutor.run(
                 testCase,
-                executionProfile: executionProfile,
+                executionProfile: context.executionProfile,
+                rollingBaseline: context.rollingBaseline,
                 configuration: configuration
             ))
         }
         return ManifestRunSummary(cases: reports)
     }
 
-    private static func validateProfiles(
+    private static func validateContext(
         manifest: VisualManifest,
         configuration: ManifestRunConfiguration
-    ) throws -> ManifestExecutionProfile {
+    ) throws -> ManifestValidatedContext {
         let currentProfile = try ProfileMetadata.load(from: configuration.currentProfileURL)
         guard currentProfile.profile == manifest.profile else {
             throw ManifestRunnerError.profileMismatch(
@@ -129,13 +136,36 @@ public enum ManifestRunner {
             label: currentProfile.profile,
             fingerprint: currentProfile.profileFingerprint
         )
-        let hasRollingCases = manifest.cases.contains { $0.baseline == .rollingMain }
-        guard hasRollingCases, configuration.rollingRoot != nil else {
-            return executionProfile
+        let rollingBaseline = try validateRollingBaseline(
+            manifest: manifest,
+            executionProfile: executionProfile,
+            configuration: configuration
+        )
+        return ManifestValidatedContext(
+            executionProfile: executionProfile,
+            rollingBaseline: rollingBaseline
+        )
+    }
+
+    private static func validateRollingBaseline(
+        manifest: VisualManifest,
+        executionProfile: ManifestExecutionProfile,
+        configuration: ManifestRunConfiguration
+    ) throws -> ValidatedBaselineBundle? {
+        let rollingCases = manifest.cases.filter { $0.baseline == .rollingMain }
+        guard let firstRollingCase = rollingCases.first else {
+            return nil
+        }
+        guard let rollingRoot = configuration.rollingRoot else {
+            if configuration.bootstrapRolling {
+                return nil
+            }
+            throw ManifestRunnerError.missingRollingBaseline(caseID: firstRollingCase.id)
         }
         guard let rollingProfileURL = configuration.rollingProfileURL else {
             throw ManifestRunnerError.missingRollingProfile
         }
+
         let rollingProfile = try ProfileMetadata.load(from: rollingProfileURL)
         guard rollingProfile.profile == manifest.profile else {
             throw ManifestRunnerError.rollingProfileMismatch(
@@ -149,6 +179,20 @@ public enum ManifestRunner {
                 actual: rollingProfile.profileFingerprint
             )
         }
-        return executionProfile
+
+        let bundleManifestURL = rollingRoot.appendingPathComponent(
+            "bundle-manifest.json",
+            isDirectory: false
+        )
+        guard ManifestPathResolver.isRegularFile(bundleManifestURL) else {
+            throw ManifestRunnerError.missingRollingBundleManifest
+        }
+        let bundleManifest = try BaselineBundleManifest.decode(Data(contentsOf: bundleManifestURL))
+        return try BaselineBundleValidator.validate(
+            root: rollingRoot,
+            manifest: bundleManifest,
+            expectedProfileFingerprint: executionProfile.fingerprint,
+            strict: true
+        )
     }
 }
