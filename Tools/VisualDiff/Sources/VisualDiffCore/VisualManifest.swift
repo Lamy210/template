@@ -12,6 +12,7 @@ public enum VisualManifestError: Error, Equatable {
     case missingGitExpectedPath(String)
     case gitExpectedOutsideBaselineRoot(String)
     case rollingCaseMustNotDeclareExpected(String)
+    case approvalOutsideApprovalRoot(String)
     case invalidChangedPixelRatio(caseID: String, value: Double)
 }
 
@@ -27,6 +28,7 @@ public struct VisualCase: Codable, Sendable, Equatable {
     public let expected: String?
     public let maxChangedPixelRatio: Double
     public let maxChannelDelta: UInt8
+    public let approval: String?
 
     public init(
         id: String,
@@ -34,7 +36,8 @@ public struct VisualCase: Codable, Sendable, Equatable {
         current: String,
         expected: String?,
         maxChangedPixelRatio: Double,
-        maxChannelDelta: UInt8
+        maxChannelDelta: UInt8,
+        approval: String? = nil
     ) {
         self.id = id
         self.baseline = baseline
@@ -42,6 +45,7 @@ public struct VisualCase: Codable, Sendable, Equatable {
         self.expected = expected
         self.maxChangedPixelRatio = maxChangedPixelRatio
         self.maxChannelDelta = maxChannelDelta
+        self.approval = approval
     }
 }
 
@@ -108,6 +112,13 @@ public struct VisualManifest: Codable, Sendable, Equatable {
         try validateRelativePath(testCase.current)
         guard isUnder(testCase.current, prefix: "artifacts/visual/current") else {
             throw VisualManifestError.currentOutsideCaptureRoot(testCase.current)
+        }
+
+        if let approval = testCase.approval {
+            try validateRelativePath(approval)
+            guard isUnder(approval, prefix: "Tests/VisualRegression/Approvals") else {
+                throw VisualManifestError.approvalOutsideApprovalRoot(approval)
+            }
         }
 
         switch testCase.baseline {
