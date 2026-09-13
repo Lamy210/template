@@ -139,7 +139,7 @@ public enum ManifestRunner {
                     expectedURL,
                     missingError: .missingGitBaseline(caseID: testCase.id, path: expectedPath)
                 )
-                reports.append(try compareAndWrite(
+                try reports.append(compareAndWrite(
                     testCase: testCase,
                     expectedURL: expectedURL,
                     currentURL: currentURL,
@@ -153,7 +153,7 @@ public enum ManifestRunner {
                     guard configuration.bootstrapRolling else {
                         throw ManifestRunnerError.missingRollingBaseline(caseID: testCase.id)
                     }
-                    reports.append(try writeBootstrapReport(
+                    try reports.append(writeBootstrapReport(
                         testCase: testCase,
                         currentURL: currentURL,
                         profile: manifest.profile,
@@ -170,7 +170,7 @@ public enum ManifestRunner {
                     guard configuration.bootstrapRolling else {
                         throw ManifestRunnerError.missingRollingBaseline(caseID: testCase.id)
                     }
-                    reports.append(try writeBootstrapReport(
+                    try reports.append(writeBootstrapReport(
                         testCase: testCase,
                         currentURL: currentURL,
                         profile: manifest.profile,
@@ -180,7 +180,7 @@ public enum ManifestRunner {
                 }
 
                 let baselineReference = configuration.baselineRunID.map { "run:\($0)" } ?? "rolling-main"
-                reports.append(try compareAndWrite(
+                try reports.append(compareAndWrite(
                     testCase: testCase,
                     expectedURL: expectedURL,
                     currentURL: currentURL,
@@ -300,7 +300,7 @@ public enum ManifestRunner {
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
         let actual = try PixelImage.loadPNG(from: currentURL)
-        let report = VisualCaseRunReport(
+        let report = try VisualCaseRunReport(
             caseID: testCase.id,
             baseline: testCase.baseline,
             baselineReference: "bootstrap:none",
@@ -310,7 +310,7 @@ public enum ManifestRunner {
             maxChangedPixelRatio: testCase.maxChangedPixelRatio,
             maxChannelDeltaThreshold: Int(testCase.maxChannelDelta),
             expectedDigest: nil,
-            actualDigest: try ImageDigest.sha256(fileAt: currentURL),
+            actualDigest: ImageDigest.sha256(fileAt: currentURL),
             approvalPath: testCase.approval,
             approvalReason: nil,
             dimensionMismatch: nil,
