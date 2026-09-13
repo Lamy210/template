@@ -11,6 +11,7 @@ enum ManifestCaseExecutor {
     static func run(
         _ testCase: VisualCase,
         executionProfile: ManifestExecutionProfile,
+        rollingBaseline: ValidatedBaselineBundle?,
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
         let currentURL = try ManifestPathResolver.confinedRepositoryURL(
@@ -36,6 +37,7 @@ enum ManifestCaseExecutor {
                 testCase,
                 currentURL: currentURL,
                 executionProfile: executionProfile,
+                rollingBaseline: rollingBaseline,
                 configuration: configuration
             )
         }
@@ -73,9 +75,10 @@ enum ManifestCaseExecutor {
         _ testCase: VisualCase,
         currentURL: URL,
         executionProfile: ManifestExecutionProfile,
+        rollingBaseline: ValidatedBaselineBundle?,
         configuration: ManifestRunConfiguration
     ) throws -> VisualCaseRunReport {
-        guard let rollingRoot = configuration.rollingRoot else {
+        guard let rollingBaseline else {
             return try bootstrapOrThrow(
                 testCase,
                 currentURL: currentURL,
@@ -84,25 +87,20 @@ enum ManifestCaseExecutor {
             )
         }
 
-        let expectedURL = try ManifestPathResolver.confinedChildURL(
-            root: rollingRoot,
-            childName: "\(testCase.id).png"
-        )
-        guard ManifestPathResolver.isRegularFile(expectedURL) else {
-            return try bootstrapOrThrow(
-                testCase,
+        guard let expectedURL = rollingBaseline.imageURL(caseID: testCase.id) else {
+            return try writeBootstrapReport(
+                testCase: testCase,
                 currentURL: currentURL,
                 executionProfile: executionProfile,
                 configuration: configuration
             )
         }
 
-        let baselineReference = configuration.baselineRunID.map { "run:\($0)" } ?? "rolling-main"
         return try compareAndWrite(
             testCase: testCase,
             expectedURL: expectedURL,
             currentURL: currentURL,
-            baselineReference: baselineReference,
+            baselineReference: "run:\(rollingBaseline.manifest.sourceRunID)",
             executionProfile: executionProfile,
             configuration: configuration
         )
