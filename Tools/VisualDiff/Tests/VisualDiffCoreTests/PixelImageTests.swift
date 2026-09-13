@@ -1,6 +1,6 @@
 import Foundation
-import XCTest
 @testable import VisualDiffCore
+import XCTest
 
 final class PixelImageTests: XCTestCase {
     func testRejectsInvalidRGBAByteCount() {
@@ -20,7 +20,7 @@ final class PixelImageTests: XCTestCase {
             height: 2,
             rgba: [
                 255, 0, 0, 255,
-                0, 0, 255, 255,
+                0, 0, 255, 255
             ]
         )
         let directory = FileManager.default.temporaryDirectory
