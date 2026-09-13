@@ -24,6 +24,10 @@ SINGLETON_MAIN_RULES = {
     "pull_request",
     "required_status_checks",
 }
+RELEASE_TAG_RULES = {
+    "deletion",
+    "update",
+}
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CANONICAL_PROFILES = (
     (REPO_ROOT / "rulesets/main-solo.json", "main-solo"),
@@ -121,6 +125,10 @@ def validate_main_solo(document: dict) -> list[str]:
     )
     grouped = _rules_by_type(document)
 
+    unexpected_rule_types = sorted(set(grouped) - SINGLETON_MAIN_RULES)
+    if unexpected_rule_types:
+        errors.append(f"unexpected main rule types: {unexpected_rule_types!r}")
+
     for rule_type in sorted(SINGLETON_MAIN_RULES):
         _single_rule(grouped, rule_type, errors)
 
@@ -140,6 +148,13 @@ def validate_main_solo(document: dict) -> list[str]:
                 errors.append("require_last_push_approval must be false")
             if parameters.get("required_reviewers") not in (None, []):
                 errors.append("required_reviewers must be empty or omitted")
+            if parameters.get("require_extra_approval_for_unattributed_changes") not in (
+                None,
+                False,
+            ):
+                errors.append(
+                    "require_extra_approval_for_unattributed_changes must be false or omitted"
+                )
             if parameters.get("allowed_merge_methods") != ["squash"]:
                 errors.append("allowed_merge_methods must equal ['squash']")
 
@@ -189,6 +204,10 @@ def validate_release_tags(document: dict) -> list[str]:
     )
     grouped = _rules_by_type(document)
 
+    unexpected_rule_types = sorted(set(grouped) - RELEASE_TAG_RULES)
+    if unexpected_rule_types:
+        errors.append(f"unexpected release tag rule types: {unexpected_rule_types!r}")
+
     update_rules = grouped.get("update", [])
     if len(update_rules) != 1:
         errors.append("release tag update restriction is required")
@@ -203,10 +222,6 @@ def validate_release_tags(document: dict) -> list[str]:
     deletion_rules = grouped.get("deletion", [])
     if len(deletion_rules) != 1:
         errors.append("release tag deletion restriction is required")
-
-    for forbidden_type in ("pull_request", "required_status_checks"):
-        if forbidden_type in grouped:
-            errors.append(f"{forbidden_type} is not allowed for release tags")
 
     return errors
 
