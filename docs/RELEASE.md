@@ -6,26 +6,30 @@ The release pipeline is split into two trust zones.
 
 ### Zone A: secret-free build
 
-The application repository builds and tests the app without release credentials. The output is an **unsigned `.app` artifact**.
+The application repository builds and tests the app without release credentials. The output is an **unsigned `.app` bundle packaged inside a `.tar.gz` archive** before it is handed to GitHub Actions Artifact.
+
+Do not upload the `.app` directory directly with `actions/upload-artifact`. Actions Artifact storage does not preserve the executable mode of bundle files. Packaging the bundle first keeps the `Contents/MacOS/*` mode bits inside the tar payload while allowing the outer archive file itself to be normalized safely.
 
 ### Zone B: privileged release
 
-A protected macOS release job downloads only that artifact and performs:
+A protected macOS release job downloads only that archive and performs:
 
-1. temporary keychain creation
-2. Developer ID certificate import
-3. app signing
-4. signature verification
-5. DMG creation
-6. DMG signing
-7. Apple notarization
-8. ticket stapling
-9. Gatekeeper/signature validation
-10. SHA-256 generation
-11. GitHub Release publication
-12. optional Homebrew Cask update
+1. archive member validation and extraction
+2. `CFBundleExecutable` existence/executable-mode verification
+3. temporary keychain creation
+4. Developer ID certificate import
+5. app signing
+6. signature verification
+7. DMG creation
+8. DMG signing
+9. Apple notarization
+10. ticket stapling
+11. Gatekeeper/signature/executable validation
+12. SHA-256 generation
+13. GitHub Release publication
+14. optional Homebrew Cask update
 
-The privileged job must not execute arbitrary build/test commands supplied by the application repository.
+The privileged job must not execute arbitrary build/test commands supplied by the application repository or from the downloaded app artifact.
 
 ## Caller workflow pattern
 
@@ -43,10 +47,15 @@ jobs:
           persist-credentials: false
       - name: Build and test
         run: ./scripts/ci/build-release-artifact.sh
+      - name: Package unsigned application
+        env:
+          APP_PATH: build/MyApp.app
+          OUTPUT_ARCHIVE: build/unsigned-macos-app.tar.gz
+        run: bash scripts/release/package-app-artifact.sh
       - uses: actions/upload-artifact@<full-commit-sha>
         with:
           name: unsigned-macos-app
-          path: build/MyApp.app
+          path: build/unsigned-macos-app.tar.gz
 
   release:
     needs: build
@@ -55,6 +64,7 @@ jobs:
     uses: ./.github/workflows/reusable-macos-release.yml
     with:
       artifact_name: unsigned-macos-app
+      artifact_archive_name: unsigned-macos-app.tar.gz
       app_name: MyApp
       app_path: MyApp.app
       bundle_id: com.example.MyApp
@@ -63,9 +73,29 @@ jobs:
       entitlements_path: MyApp/MyApp.entitlements
 ```
 
-See `examples/app-release.yml` for an end-to-end build → signed release → Homebrew update example.
+See `examples/app-release.yml` for an end-to-end build → archived artifact handoff → signed release → Homebrew update example.
 
 The called workflow's privileged job declares `environment: release` and reads Apple credentials directly from that protected Environment. GitHub does not support passing Environment secrets through `on.workflow_call`, so the caller intentionally has no Apple `secrets:` block. See [`SECRETS.md`](SECRETS.md).
+
+## Artifact handoff contract
+
+The unsigned application handoff is deliberately a single archive file:
+
+```text
+build/MyApp.app
+  -> package-app-artifact.sh
+  -> unsigned-macos-app.tar.gz
+  -> actions/upload-artifact
+  -> actions/download-artifact
+  -> extract-app-artifact.sh
+  -> release-input/MyApp.app
+```
+
+`extract-app-artifact.sh` rejects absolute paths, `..` traversal components, members outside the expected app bundle, and an extracted top-level app symlink before release processing continues.
+
+After extraction, the release workflow reads `CFBundleExecutable` from `Contents/Info.plist` and requires `Contents/MacOS/$CFBundleExecutable` to be a regular executable file. `verify-release.sh` repeats that executable-mode check on both the signed source bundle and the exact application mounted from the final DMG.
+
+The repository Quality workflow contains both a shell-level regression test and a real Actions Artifact upload/download round-trip fixture. A change that reintroduces direct `.app` artifact handoff or loses the executable bit must fail CI.
 
 ## Trusted release context
 
@@ -73,10 +103,13 @@ The reusable release workflow accepts only a stable `vX.Y.Z` tag context. Config
 
 The workflow additionally verifies:
 
-- `app_path` is relative
+- `app_path` is a `.app` basename
+- `artifact_archive_name` is a `.tar.gz` basename
 - `dmg_name` is a basename ending in `.dmg`
+- archive members remain under the expected app bundle
 - `CFBundleIdentifier` matches the configured bundle ID
 - `CFBundleShortVersionString` matches the release tag without the leading `v`
+- `CFBundleExecutable` resolves to an existing executable file
 
 Any mismatch blocks release before signing.
 
@@ -118,6 +151,7 @@ The expected order is:
 
 ```text
 unsigned .app
+  -> verify executable permission after artifact handoff
   -> sign nested code if the project requires it
   -> sign root .app
   -> verify app signature
@@ -125,10 +159,10 @@ unsigned .app
   -> sign DMG
   -> notarize DMG
   -> staple ticket
-  -> verify DMG/ticket/Gatekeeper
+  -> verify DMG/ticket/Gatekeeper/executable permission
 ```
 
-The shared `sign-app.sh` intentionally does **not** use `codesign --deep` for signing. Applications with frameworks, helpers, XPC services, login items, system extensions, privileged helpers, or other nested code should add a project-specific inside-out signing adapter before the shared root-bundle signing step.
+The shared `sign-app.sh` intentionally does **not** use `codesign --deep` for signing. Applications with frameworks, helpers, XPC services, login items, system extensions, privileged helpers, or other nested code need an explicit inside-out signing policy. A later template phase should represent that policy as reviewed signing data rather than executing arbitrary downloaded hooks in the privileged job.
 
 ## Entitlements
 
@@ -142,6 +176,7 @@ A failed notarization must stop publication. Preserve the notarization submissio
 
 Typical failure classes:
 
+- artifact handoff lost executable permission
 - unsigned nested component
 - invalid/missing hardened runtime
 - invalid entitlement
@@ -149,7 +184,7 @@ Typical failure classes:
 - bundle metadata mismatch
 - malformed DMG
 
-Never bypass Gatekeeper/notarization checks to make a release green.
+Never bypass Gatekeeper/notarization/executable checks to make a release green.
 
 ## Homebrew
 
