@@ -14,7 +14,11 @@ final class VisualManifestTests: XCTestCase {
     }
 
     func testRejectsUnsupportedSchemaVersion() {
-        assertManifestFails(validManifest.replacingOccurrences(of: "\"schemaVersion\": 1", with: "\"schemaVersion\": 2"))
+        let invalid = validManifest.replacingOccurrences(
+            of: "\"schemaVersion\": 1",
+            with: "\"schemaVersion\": 2"
+        )
+        assertManifestFails(invalid)
     }
 
     func testRejectsAbsoluteCurrentPath() {
@@ -92,10 +96,20 @@ final class VisualManifestTests: XCTestCase {
     }
 
     func testRejectsExpectedPathOnRollingCase() {
-        let invalid = validManifest.replacingOccurrences(
-            of: "\"current\": \"artifacts/visual/current/large-dynamic-screen.png\",\n      \"maxChangedPixelRatio\"",
-            with: "\"current\": \"artifacts/visual/current/large-dynamic-screen.png\",\n      \"expected\": \"Tests/VisualBaselines/macos-26-arm64-xcode-26.6/rolling.png\",\n      \"maxChangedPixelRatio\""
-        )
+        let invalid = """
+        {
+          "schemaVersion": 1,
+          "profile": "macos-26-arm64-xcode-26.6",
+          "cases": [{
+            "id": "large-dynamic-screen",
+            "baseline": "rolling-main",
+            "current": "artifacts/visual/current/large-dynamic-screen.png",
+            "expected": "Tests/VisualBaselines/macos-26-arm64-xcode-26.6/rolling.png",
+            "maxChangedPixelRatio": 0.001,
+            "maxChannelDelta": 8
+          }]
+        }
+        """
         assertManifestFails(invalid)
     }
 
