@@ -57,6 +57,18 @@ if APP_PATH="${RESTORED_APP}" \
 fi
 chmod 0755 "${RESTORED_EXECUTABLE}"
 
+rm -f "${RESTORED_EXECUTABLE}"
+ln -s /bin/sh "${RESTORED_EXECUTABLE}"
+if APP_PATH="${RESTORED_APP}" \
+  EXECUTABLE_NAME="TestApp" \
+  bash "${ROOT_DIR}/scripts/release/verify-app-executable.sh"; then
+  echo "Symlinked bundle executable was incorrectly accepted." >&2
+  exit 1
+fi
+rm -f "${RESTORED_EXECUTABLE}"
+printf '#!/usr/bin/env bash\nexit 0\n' >"${RESTORED_EXECUTABLE}"
+chmod 0755 "${RESTORED_EXECUTABLE}"
+
 UNSAFE_ARCHIVE="${TMP_ROOT}/artifact/unsafe-symlink.tar.gz"
 UNSAFE_EXTRACT_ROOT="${TMP_ROOT}/unsafe-downloaded"
 python3 - "${UNSAFE_ARCHIVE}" <<'PY'
