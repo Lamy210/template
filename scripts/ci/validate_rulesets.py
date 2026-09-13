@@ -13,6 +13,14 @@ RUNTIME_ONLY_FIELDS = {
     "created_at",
     "updated_at",
 }
+TOP_LEVEL_FIELDS = {
+    "name",
+    "target",
+    "enforcement",
+    "bypass_actors",
+    "conditions",
+    "rules",
+}
 CANONICAL_CHECKS = {
     "Required gate",
     "swift-quality / Swift quality",
@@ -22,6 +30,25 @@ SINGLETON_MAIN_RULES = {
     "non_fast_forward",
     "required_linear_history",
     "pull_request",
+    "required_status_checks",
+}
+SIMPLE_MAIN_RULES = {
+    "deletion",
+    "non_fast_forward",
+    "required_linear_history",
+}
+PULL_REQUEST_PARAMETERS = {
+    "required_approving_review_count",
+    "dismiss_stale_reviews_on_push",
+    "require_code_owner_review",
+    "require_last_push_approval",
+    "required_review_thread_resolution",
+    "allowed_merge_methods",
+    "required_reviewers",
+    "require_extra_approval_for_unattributed_changes",
+}
+STATUS_CHECK_PARAMETERS = {
+    "strict_required_status_checks_policy",
     "required_status_checks",
 }
 RELEASE_TAG_RULES = {
@@ -81,6 +108,10 @@ def _validate_common(
 ) -> list[str]:
     errors = _runtime_metadata_errors(document)
 
+    unexpected_top_level_fields = sorted(set(document) - TOP_LEVEL_FIELDS)
+    if unexpected_top_level_fields:
+        errors.append(f"unexpected top-level fields: {unexpected_top_level_fields!r}")
+
     name = document.get("name")
     if not isinstance(name, str) or not name.strip():
         errors.append("name must be a non-empty string")
@@ -99,6 +130,8 @@ def _validate_common(
     if ref_name is None:
         errors.append("conditions.ref_name must be an object")
     else:
+        if set(ref_name) != {"include", "exclude"}:
+            errors.append("conditions.ref_name must contain only include and exclude")
         if ref_name.get("include") != expected_include:
             errors.append(f"ref_name.include must equal {expected_include!r}")
         if ref_name.get("exclude") != []:
@@ -149,12 +182,25 @@ def validate_main_solo(document: dict) -> list[str]:
     for rule_type in sorted(SINGLETON_MAIN_RULES):
         _single_rule(grouped, rule_type, errors)
 
+    for rule_type in sorted(SIMPLE_MAIN_RULES):
+        rules = grouped.get(rule_type, [])
+        if len(rules) == 1 and set(rules[0]) != {"type"}:
+            errors.append(f"{rule_type} rule must contain only type")
+
     pull_request_rules = grouped.get("pull_request", [])
     if len(pull_request_rules) == 1:
-        parameters = pull_request_rules[0].get("parameters")
+        rule = pull_request_rules[0]
+        if set(rule) - {"type", "parameters"}:
+            errors.append("pull_request rule contains unexpected fields")
+        parameters = rule.get("parameters")
         if not isinstance(parameters, dict):
             errors.append("pull_request.parameters must be an object")
         else:
+            unexpected_parameters = sorted(set(parameters) - PULL_REQUEST_PARAMETERS)
+            if unexpected_parameters:
+                errors.append(
+                    f"unexpected pull_request parameters: {unexpected_parameters!r}"
+                )
             if parameters.get("required_approving_review_count") != 0:
                 errors.append("required_approving_review_count must equal 0")
             if parameters.get("required_review_thread_resolution") is not True:
@@ -177,10 +223,19 @@ def validate_main_solo(document: dict) -> list[str]:
 
     status_rules = grouped.get("required_status_checks", [])
     if len(status_rules) == 1:
-        parameters = status_rules[0].get("parameters")
+        rule = status_rules[0]
+        if set(rule) - {"type", "parameters"}:
+            errors.append("required_status_checks rule contains unexpected fields")
+        parameters = rule.get("parameters")
         if not isinstance(parameters, dict):
             errors.append("required_status_checks.parameters must be an object")
         else:
+            unexpected_parameters = sorted(set(parameters) - STATUS_CHECK_PARAMETERS)
+            if unexpected_parameters:
+                errors.append(
+                    "unexpected required_status_checks parameters: "
+                    f"{unexpected_parameters!r}"
+                )
             if parameters.get("strict_required_status_checks_policy") is not True:
                 errors.append("strict_required_status_checks_policy must be true")
             checks = parameters.get("required_status_checks")
@@ -237,7 +292,10 @@ def validate_release_tags(document: dict) -> list[str]:
     if len(update_rules) != 1:
         errors.append("release tag update restriction is required")
     else:
-        parameters = update_rules[0].get("parameters")
+        update_rule = update_rules[0]
+        if set(update_rule) - {"type", "parameters"}:
+            errors.append("release tag update rule contains unexpected fields")
+        parameters = update_rule.get("parameters")
         if parameters != {"update_allows_fetch_and_merge": False}:
             errors.append(
                 "release tag update parameters must equal "
@@ -247,6 +305,8 @@ def validate_release_tags(document: dict) -> list[str]:
     deletion_rules = grouped.get("deletion", [])
     if len(deletion_rules) != 1:
         errors.append("release tag deletion restriction is required")
+    elif set(deletion_rules[0]) != {"type"}:
+        errors.append("deletion rule must contain only type")
 
     return errors
 
