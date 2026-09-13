@@ -101,6 +101,9 @@ def _single_rule(
     errors: list[str],
 ) -> dict | None:
     rules = grouped.get(rule_type, [])
+    if not rules:
+        errors.append(f"{rule_type} rule is required")
+        return None
     if len(rules) != 1:
         errors.append(f"{rule_type} rule must appear exactly once")
         return None
