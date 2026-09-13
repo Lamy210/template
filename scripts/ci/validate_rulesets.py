@@ -81,12 +81,19 @@ def _validate_common(
 ) -> list[str]:
     errors = _runtime_metadata_errors(document)
 
+    name = document.get("name")
+    if not isinstance(name, str) or not name.strip():
+        errors.append("name must be a non-empty string")
     if document.get("target") != target:
         errors.append(f"target must equal '{target}'")
     if document.get("enforcement") != "active":
         errors.append("enforcement must equal 'active'")
     if document.get("bypass_actors") != []:
         errors.append("bypass_actors must be empty")
+
+    conditions = document.get("conditions")
+    if isinstance(conditions, dict) and set(conditions) != {"ref_name"}:
+        errors.append("conditions must contain only ref_name")
 
     ref_name = _ref_name(document)
     if ref_name is None:
@@ -97,8 +104,14 @@ def _validate_common(
         if ref_name.get("exclude") != []:
             errors.append("ref_name.exclude must be empty")
 
-    if not isinstance(document.get("rules"), list):
+    rules = document.get("rules")
+    if not isinstance(rules, list):
         errors.append("rules must be an array")
+    elif any(
+        not isinstance(rule, dict) or not isinstance(rule.get("type"), str)
+        for rule in rules
+    ):
+        errors.append("rules entries must be objects with string type")
 
     return errors
 
