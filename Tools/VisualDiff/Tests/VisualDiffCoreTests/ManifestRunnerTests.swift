@@ -1,6 +1,6 @@
 import Foundation
-import XCTest
 @testable import VisualDiffCore
+import XCTest
 
 final class ManifestRunnerTests: XCTestCase {
     func testCurrentProfileMismatchFailsBeforeCaptureLookup() throws {
@@ -86,11 +86,11 @@ final class ManifestRunnerTests: XCTestCase {
         try expected.writePNG(to: expectedURL)
         try actual.writePNG(to: actualURL)
 
-        let approval = VisualApproval(
+        let approval = try VisualApproval(
             schemaVersion: 1,
             caseID: testCase.id,
-            fromDigest: try ImageDigest.sha256(fileAt: expectedURL),
-            toDigest: try ImageDigest.sha256(fileAt: actualURL),
+            fromDigest: ImageDigest.sha256(fileAt: expectedURL),
+            toDigest: ImageDigest.sha256(fileAt: actualURL),
             profileFingerprint: manifest.profile,
             reason: "Intentional redesign"
         )
@@ -121,10 +121,10 @@ final class ManifestRunnerTests: XCTestCase {
         try expected.writePNG(to: expectedURL)
         try actual.writePNG(to: actualURL)
 
-        let approval = VisualApproval(
+        let approval = try VisualApproval(
             schemaVersion: 1,
             caseID: testCase.id,
-            fromDigest: try ImageDigest.sha256(fileAt: expectedURL),
+            fromDigest: ImageDigest.sha256(fileAt: expectedURL),
             toDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             profileFingerprint: manifest.profile,
             reason: "Approval for an older capture"
