@@ -89,7 +89,7 @@ enum ManifestCaseExecutor {
 
         guard let expectedURL = rollingBaseline.imageURL(caseID: testCase.id) else {
             return try writeBootstrapReport(
-                testCase,
+                testCase: testCase,
                 currentURL: currentURL,
                 executionProfile: executionProfile,
                 configuration: configuration
@@ -133,10 +133,10 @@ enum ManifestCaseExecutor {
     ) throws -> VisualCaseRunReport {
         let expected = try PixelImage.loadPNG(from: expectedURL)
         let actual = try PixelImage.loadPNG(from: currentURL)
-        let result = VisualComparator.compare(
+        let result = try VisualComparator.compare(
             expected: expected,
             actual: actual,
-            policy: try ComparisonPolicy(
+            policy: ComparisonPolicy(
                 maxChangedPixelRatio: testCase.maxChangedPixelRatio,
                 maxChannelDelta: testCase.maxChannelDelta
             )
