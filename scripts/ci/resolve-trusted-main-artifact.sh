@@ -5,6 +5,7 @@ readonly EXIT_USAGE=2
 readonly EXIT_INFRA=3
 readonly EXIT_NOT_FOUND=4
 readonly EXIT_UNSAFE_ARCHIVE=5
+readonly EXIT_INTEGRITY=6
 
 usage() {
   cat >&2 <<'EOF'
@@ -221,9 +222,28 @@ done <"${candidates_file}"
 
 [[ -n "${selected_run_id}" ]] || die "${EXIT_NOT_FOUND}" 'no trusted main artifact candidate found'
 
+if [[ ! "${selected_artifact_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  die "${EXIT_INTEGRITY}" 'trusted artifact is missing a valid SHA-256 digest'
+fi
+
 archive_path="${work_root}/artifact.zip"
 archive_endpoint="repos/${repository}/actions/artifacts/${selected_artifact_id}/zip"
 api_to_file "${archive_endpoint}" "${archive_path}" || die "${EXIT_INFRA}" 'failed to download artifact archive'
+
+actual_archive_digest="$(python3 - "${archive_path}" <<'PY'
+import hashlib
+import sys
+
+hasher = hashlib.sha256()
+with open(sys.argv[1], "rb") as handle:
+    for block in iter(lambda: handle.read(1024 * 1024), b""):
+        hasher.update(block)
+print("sha256:" + hasher.hexdigest())
+PY
+)"
+if [[ "${actual_archive_digest}" != "${selected_artifact_digest}" ]]; then
+  die "${EXIT_INTEGRITY}" "artifact digest mismatch: expected ${selected_artifact_digest}, got ${actual_archive_digest}"
+fi
 
 stage_dir="${work_root}/stage"
 mkdir -p "${stage_dir}"
@@ -356,7 +376,7 @@ payload = {
     "sourceSHA": source_sha,
     "artifactId": int(artifact_id),
     "artifactName": artifact_name,
-    "artifactDigest": artifact_digest or None,
+    "artifactDigest": artifact_digest,
     "retrievedAt": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
 }
 with open(output, "w", encoding="utf-8") as handle:
