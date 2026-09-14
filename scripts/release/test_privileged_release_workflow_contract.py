@@ -66,6 +66,21 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertLess(extractor, certificate)
         self.assertIn("inputs.archive_sha256", text)
 
+    def test_tag_binding_is_rechecked_before_secrets_and_publication(self) -> None:
+        text = self.release_text()
+        before_secrets = text.index("- name: Rebind release tag before secrets")
+        certificate = text.index("scripts/release/import-certificate.sh")
+        before_publication = text.index("- name: Rebind release tag before publication")
+        publication = text.index("scripts/release/publish-github-release.sh")
+
+        self.assertLess(before_secrets, certificate)
+        self.assertLess(certificate, before_publication)
+        self.assertLess(before_publication, publication)
+        self.assertGreaterEqual(text.count("scripts/release/verify-release-source.sh"), 2)
+        self.assertGreaterEqual(text.count("SOURCE_TAG: ${{ inputs.source_tag }}"), 2)
+        self.assertGreaterEqual(text.count("SOURCE_SHA: ${{ inputs.source_sha }}"), 2)
+        self.assertGreaterEqual(text.count("PUBLISHER_SHA: ${{ github.sha }}"), 2)
+
     def test_github_release_uses_validated_source_tag(self) -> None:
         text = self.release_text()
         self.assertIn("TAG_NAME: ${{ inputs.source_tag }}", text)
