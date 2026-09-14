@@ -66,6 +66,11 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertLess(extractor, certificate)
         self.assertIn("inputs.archive_sha256", text)
 
+    def test_validated_metadata_is_rebound_to_current_publisher_attempt(self) -> None:
+        text = self.release_text()
+        self.assertIn('--publisher-run-id "${GITHUB_RUN_ID}"', text)
+        self.assertIn('--publisher-run-attempt "${GITHUB_RUN_ATTEMPT}"', text)
+
     def test_tag_binding_is_rechecked_before_secrets_and_publication(self) -> None:
         text = self.release_text()
         before_secrets = text.index("- name: Rebind release tag before secrets")
