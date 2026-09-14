@@ -11,6 +11,8 @@ from scripts.release.validated_release_metadata import ExpectedValidatedRelease,
 
 SOURCE_SHA = "0123456789abcdef0123456789abcdef01234567"
 PUBLISHER_SHA = "1123456789abcdef0123456789abcdef01234567"
+PUBLISHER_RUN_ID = 99887766
+PUBLISHER_RUN_ATTEMPT = 4
 ARTIFACT_DIGEST = "sha256:" + "b" * 64
 
 
@@ -23,6 +25,8 @@ def expected(archive_digest: str) -> ExpectedValidatedRelease:
         source_tag="v1.2.3",
         source_version="1.2.3",
         publisher_sha=PUBLISHER_SHA,
+        publisher_run_id=PUBLISHER_RUN_ID,
+        publisher_run_attempt=PUBLISHER_RUN_ATTEMPT,
         archive_sha256=archive_digest,
         app_basename="MyApp.app",
         bundle_id="com.example.MyApp",
@@ -41,6 +45,8 @@ def metadata(archive_digest: str) -> dict:
         "sourceArtifactDigest": ARTIFACT_DIGEST,
         "archiveSha256": archive_digest,
         "publisherSHA": PUBLISHER_SHA,
+        "publisherRunId": PUBLISHER_RUN_ID,
+        "publisherRunAttempt": PUBLISHER_RUN_ATTEMPT,
         "appBasename": "MyApp.app",
         "bundleId": "com.example.MyApp",
         "version": "1.2.3",
@@ -81,8 +87,10 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
         archive, digest = self.fixture()
         document = metadata(digest)
         document["sourceRunId"] = True
+        document["publisherRunAttempt"] = True
         errors = verify_validated_release_metadata(document, archive, expected(digest))
         self.assertTrue(any("sourceRunId" in error for error in errors))
+        self.assertTrue(any("publisherRunAttempt" in error for error in errors))
 
     def test_rejects_metadata_source_identity_drift(self) -> None:
         archive, digest = self.fixture()
@@ -93,6 +101,8 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
             ("tag", "v1.2.4"),
             ("version", "1.2.4"),
             ("publisherSHA", "3" * 40),
+            ("publisherRunId", PUBLISHER_RUN_ID + 1),
+            ("publisherRunAttempt", PUBLISHER_RUN_ATTEMPT + 1),
             ("appBasename", "Other.app"),
             ("bundleId", "com.attacker.Other"),
         )
