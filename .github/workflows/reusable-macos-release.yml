@@ -234,6 +234,7 @@ jobs:
       - name: Rebind release tag before secrets
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           SOURCE_TAG: ${{ inputs.source_tag }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           PUBLISHER_SHA: ${{ github.sha }}
@@ -308,6 +309,7 @@ jobs:
         if: ${{ inputs.publish_github_release }}
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           SOURCE_TAG: ${{ inputs.source_tag }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           PUBLISHER_SHA: ${{ github.sha }}
