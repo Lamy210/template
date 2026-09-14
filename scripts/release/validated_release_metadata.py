@@ -17,6 +17,8 @@ METADATA_FIELDS = {
     "sourceArtifactDigest",
     "archiveSha256",
     "publisherSHA",
+    "publisherRunId",
+    "publisherRunAttempt",
     "appBasename",
     "bundleId",
     "version",
@@ -35,6 +37,8 @@ class ExpectedValidatedRelease:
     source_tag: str
     source_version: str
     publisher_sha: str
+    publisher_run_id: int
+    publisher_run_attempt: int
     archive_sha256: str
     app_basename: str
     bundle_id: str
@@ -80,7 +84,13 @@ def verify_validated_release_metadata(
     if type(schema_version) is not int or schema_version != 1:
         errors.append("schemaVersion must equal integer 1")
 
-    for field in ("sourceRunId", "sourceRunAttempt", "sourceArtifactId"):
+    for field in (
+        "sourceRunId",
+        "sourceRunAttempt",
+        "sourceArtifactId",
+        "publisherRunId",
+        "publisherRunAttempt",
+    ):
         value = document.get(field)
         if type(value) is not int or value <= 0:
             errors.append(f"{field} must be a positive integer")
@@ -119,6 +129,8 @@ def verify_validated_release_metadata(
         "tag": expected.source_tag,
         "version": expected.source_version,
         "publisherSHA": expected.publisher_sha,
+        "publisherRunId": expected.publisher_run_id,
+        "publisherRunAttempt": expected.publisher_run_attempt,
         "archiveSha256": expected.archive_sha256,
         "appBasename": expected.app_basename,
         "bundleId": expected.bundle_id,
