@@ -26,6 +26,14 @@ jobs:
     permissions:
       actions: read
       contents: read
+    outputs:
+      validated_artifact_name: ${{ steps.release_outputs.outputs.validated_artifact_name }}
+      source_tag: ${{ steps.release_outputs.outputs.source_tag }}
+      source_sha: ${{ steps.release_outputs.outputs.source_sha }}
+      source_version: ${{ steps.release_outputs.outputs.source_version }}
+      source_run_id: ${{ steps.release_outputs.outputs.source_run_id }}
+      source_run_attempt: ${{ steps.release_outputs.outputs.source_run_attempt }}
+      archive_sha256: ${{ steps.release_outputs.outputs.archive_sha256 }}
 
     steps:
       - name: Checkout trusted publisher control code
@@ -104,6 +112,33 @@ jobs:
           cp source-artifact/release-input/unsigned-macos-app.tar.gz \
             validated-release-input/unsigned-macos-app.tar.gz
 
+      - name: Export validated release identity
+        id: release_outputs
+        shell: bash
+        env:
+          VALIDATED_ARTIFACT_NAME: validated-release-input-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >>"${GITHUB_OUTPUT}"
+          import json
+          import os
+
+          with open("validated-release-input/validated-release-metadata.json", encoding="utf-8") as handle:
+              metadata = json.load(handle)
+
+          output_values = {
+              "validated_artifact_name": os.environ["VALIDATED_ARTIFACT_NAME"],
+              "source_tag": metadata["tag"],
+              "source_sha": metadata["sourceSHA"],
+              "source_version": metadata["version"],
+              "source_run_id": metadata["sourceRunId"],
+              "source_run_attempt": metadata["sourceRunAttempt"],
+              "archive_sha256": metadata["archiveSha256"],
+          }
+          for key, value in output_values.items():
+              print(f"{key}={value}")
+          PY
+
       - name: Re-handoff validated release input inside publisher run
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -113,3 +148,27 @@ jobs:
             validated-release-input/validated-release-metadata.json
           if-no-files-found: error
           retention-days: 1
+
+  sign-and-publish:
+    name: Sign and publish validated release
+    needs: validate
+    if: ${{ needs.validate.result == 'success' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/reusable-macos-release.yml
+    with:
+      validated_artifact_name: ${{ needs.validate.outputs.validated_artifact_name }}
+      source_tag: ${{ needs.validate.outputs.source_tag }}
+      source_sha: ${{ needs.validate.outputs.source_sha }}
+      source_version: ${{ needs.validate.outputs.source_version }}
+      source_run_id: ${{ needs.validate.outputs.source_run_id }}
+      source_run_attempt: ${{ needs.validate.outputs.source_run_attempt }}
+      archive_sha256: ${{ needs.validate.outputs.archive_sha256 }}
+      app_name: MyApp
+      app_path: MyApp.app
+      bundle_id: com.example.MyApp
+      dmg_name: MyApp-${{ needs.validate.outputs.source_version }}.dmg
+      signing_identity: "Developer ID Application: Example Developer (TEAMID)"
+      entitlements_path: ""
+      publish_github_release: true
+    secrets: inherit
