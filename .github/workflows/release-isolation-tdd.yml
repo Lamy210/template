@@ -29,6 +29,7 @@ jobs:
             scripts.release.test_release_provenance \
             scripts.release.test_validate_actions_artifact \
             scripts.release.test_validate_release_input \
+            scripts.release.test_release_workflow_contract \
             -v
 
       - name: Exact release build artifact resolver
