@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 from scripts.release.release_provenance import ExpectedBuild, validate_build_provenance
@@ -8,6 +14,7 @@ from scripts.release.release_provenance import ExpectedBuild, validate_build_pro
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
 DIGEST = "sha256:" + "a" * 64
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def valid_document() -> dict:
@@ -161,6 +168,59 @@ class ReleaseProvenanceTests(unittest.TestCase):
         document["bundleId"] = ""
         errors = validate_build_provenance(document, expected_build())
         self.assertTrue(any("bundleId" in error for error in errors))
+
+
+class BuildProvenanceWriterTests(unittest.TestCase):
+    def test_writer_hashes_archive_and_emits_valid_canonical_document(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            archive = root / "unsigned-macos-app.tar.gz"
+            output = root / "build-provenance.json"
+            payload = b"deterministic release archive fixture\n"
+            archive.write_bytes(payload)
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts/release/write-build-provenance.py"),
+                    "--repository",
+                    "example/MyApp",
+                    "--workflow-name",
+                    "Release Build",
+                    "--workflow-path",
+                    ".github/workflows/release-build.yml",
+                    "--run-id",
+                    "123456789",
+                    "--run-attempt",
+                    "2",
+                    "--source-sha",
+                    SHA,
+                    "--tag",
+                    "v1.2.3",
+                    "--archive-path",
+                    str(archive),
+                    "--app-basename",
+                    "MyApp.app",
+                    "--bundle-id",
+                    "com.example.MyApp",
+                    "--output",
+                    str(output),
+                ],
+                cwd=REPO_ROOT,
+                check=True,
+            )
+
+            document = json.loads(output.read_text(encoding="utf-8"))
+            expected_digest = "sha256:" + hashlib.sha256(payload).hexdigest()
+            self.assertEqual(expected_digest, document["archiveSha256"])
+            self.assertEqual("refs/tags/v1.2.3", document["sourceRef"])
+            self.assertEqual("1.2.3", document["version"])
+            self.assertEqual("unsigned-macos-release-123456789-2", document["artifactName"])
+            self.assertEqual([], validate_build_provenance(document, expected_build()))
+
+            serialized = output.read_text(encoding="utf-8")
+            self.assertTrue(serialized.endswith("\n"))
+            self.assertLess(serialized.index('"appBasename"'), serialized.index('"artifactName"'))
 
 
 if __name__ == "__main__":
