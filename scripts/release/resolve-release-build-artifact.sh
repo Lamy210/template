@@ -250,7 +250,8 @@ IFS=$'\t' read -r artifact_id artifact_digest <"${artifact_file}"
 archive_path="${work_root}/artifact.zip"
 api_to_file "repos/${repository}/actions/artifacts/${artifact_id}/zip" "${archive_path}" || die "${EXIT_INFRA}" 'failed to download exact release artifact'
 
-actual_digest="$(python3 - "${archive_path}" <<'PY'
+actual_digest="$(
+  python3 - "${archive_path}" <<'PY'
 import hashlib
 import sys
 hasher = hashlib.sha256()
