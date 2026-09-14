@@ -175,7 +175,6 @@ jobs:
       signing_identity: "Developer ID Application: Example Developer (TEAMID)"
       entitlements_path: ""
       publish_github_release: true
-    secrets: inherit
 
   homebrew:
     name: Propose Homebrew Cask update
