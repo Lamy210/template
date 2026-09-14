@@ -188,6 +188,8 @@ jobs:
             --source-tag "${SOURCE_TAG}" \
             --source-version "${SOURCE_VERSION}" \
             --publisher-sha "${GITHUB_SHA}" \
+            --publisher-run-id "${GITHUB_RUN_ID}" \
+            --publisher-run-attempt "${GITHUB_RUN_ATTEMPT}" \
             --archive-sha256 "${ARCHIVE_SHA256}" \
             --app-basename "${APP_BASENAME}" \
             --bundle-id "${EXPECTED_BUNDLE_ID}"
