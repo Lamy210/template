@@ -206,8 +206,13 @@ def validate_main_solo(document: dict) -> list[str]:
             approval_count = parameters.get("required_approving_review_count")
             if type(approval_count) is not int or approval_count != 0:
                 errors.append("required_approving_review_count must equal 0")
-            if parameters.get("dismiss_stale_reviews_on_push") is not True:
+
+            dismiss_stale_reviews = parameters.get("dismiss_stale_reviews_on_push")
+            if type(dismiss_stale_reviews) is not bool:
+                errors.append("dismiss_stale_reviews_on_push must be a boolean")
+            elif dismiss_stale_reviews is not True:
                 errors.append("dismiss_stale_reviews_on_push must be true")
+
             if parameters.get("required_review_thread_resolution") is not True:
                 errors.append("required_review_thread_resolution must be true")
             if parameters.get("require_code_owner_review") is not False:
