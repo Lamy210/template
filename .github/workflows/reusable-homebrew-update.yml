@@ -129,6 +129,7 @@ jobs:
         id: branch
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.tap_token }}
           SOURCE_TAG: ${{ inputs.source_tag }}
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           CASK_TOKEN: ${{ inputs.cask_token }}
@@ -178,6 +179,7 @@ jobs:
         id: push
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.tap_token }}
           SOURCE_TAG: ${{ inputs.source_tag }}
           CASK_TOKEN: ${{ inputs.cask_token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
