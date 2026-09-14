@@ -20,6 +20,8 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         text = self.release_text()
         for input_name in (
             "validated_artifact_name:",
+            "validated_artifact_id:",
+            "validated_artifact_digest:",
             "source_tag:",
             "source_sha:",
             "source_version:",
@@ -48,6 +50,13 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("persist-credentials: false", text)
         self.assertNotIn("Checkout tagged release source", text)
 
+    def test_downloads_exact_validated_artifact_id(self) -> None:
+        text = self.release_text()
+        self.assertIn("actions: read", text)
+        self.assertIn("artifact-ids: ${{ inputs.validated_artifact_id }}", text)
+        self.assertNotIn("name: ${{ inputs.validated_artifact_name }}", text)
+        self.assertIn("VALIDATED_ARTIFACT_DIGEST: ${{ inputs.validated_artifact_digest }}", text)
+
     def test_validated_metadata_and_archive_are_reverified_before_certificate_import(self) -> None:
         text = self.release_text()
         verifier = text.index("scripts/release/verify-validated-release-metadata.py")
@@ -72,6 +81,11 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("needs: validate", text)
         self.assertIn("uses: ./.github/workflows/reusable-macos-release.yml", text)
         self.assertIn("validated_artifact_name: ${{ needs.validate.outputs.validated_artifact_name }}", text)
+        self.assertIn("validated_artifact_id: ${{ needs.validate.outputs.validated_artifact_id }}", text)
+        self.assertIn(
+            "validated_artifact_digest: ${{ needs.validate.outputs.validated_artifact_digest }}",
+            text,
+        )
         self.assertIn("source_tag: ${{ needs.validate.outputs.source_tag }}", text)
         self.assertIn("source_sha: ${{ needs.validate.outputs.source_sha }}", text)
         self.assertIn("source_version: ${{ needs.validate.outputs.source_version }}", text)
