@@ -86,6 +86,11 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("--publisher-sha \"${GITHUB_SHA}\"", block)
         self.assertIn("--source-is-ancestor true", block)
 
+    def test_validated_metadata_is_bound_to_current_publisher_attempt(self) -> None:
+        block = job_block(self.workflow_text(), "validate")
+        self.assertIn('--publisher-run-id "${GITHUB_RUN_ID}"', block)
+        self.assertIn('--publisher-run-attempt "${GITHUB_RUN_ATTEMPT}"', block)
+
     def test_reuploads_validated_input_inside_publisher_run(self) -> None:
         block = job_block(self.workflow_text(), "validate")
         self.assertIn(
