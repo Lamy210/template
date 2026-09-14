@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VERIFIER="${REPO_ROOT}/scripts/release/verify-release-source.sh"
 TEMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "${TEMP_ROOT}"' EXIT
+REAL_GIT="$(command -v git)"
 
 origin="${TEMP_ROOT}/origin.git"
 work="${TEMP_ROOT}/work"
@@ -47,13 +48,63 @@ unrelated="${shas[2]}"
 clone="${TEMP_ROOT}/clone"
 git clone --no-tags "${origin}" "${clone}" >/dev/null 2>&1
 
+STUB_BIN="${TEMP_ROOT}/bin"
+mkdir -p "${STUB_BIN}"
+
+cat >"${STUB_BIN}/git" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == fetch ]]; then
+  echo 'verify-release-source must not depend on credential-persisted git fetch' >&2
+  exit 91
+fi
+exec "${REAL_GIT}" "\$@"
+STUB
+chmod +x "${STUB_BIN}/git"
+
+cat >"${STUB_BIN}/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${GH_TOKEN:?GH_TOKEN is required}"
+: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+: "${TEST_FIRST_SHA:?TEST_FIRST_SHA is required}"
+: "${TEST_UNRELATED_SHA:?TEST_UNRELATED_SHA is required}"
+args="$*"
+annotated_sha='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+case "${args}" in
+  *"/git/ref/tags/v1.0.0"*)
+    printf '{"ref":"refs/tags/v1.0.0","object":{"type":"commit","sha":"%s"}}' "${TEST_FIRST_SHA}"
+    ;;
+  *"/git/ref/tags/v1.0.1"*)
+    printf '{"ref":"refs/tags/v1.0.1","object":{"type":"tag","sha":"%s"}}' "${annotated_sha}"
+    ;;
+  *"/git/tags/${annotated_sha}"*)
+    printf '{"sha":"%s","object":{"type":"commit","sha":"%s"}}' "${annotated_sha}" "${TEST_FIRST_SHA}"
+    ;;
+  *"/git/ref/tags/v9.9.9"*)
+    printf '{"ref":"refs/tags/v9.9.9","object":{"type":"commit","sha":"%s"}}' "${TEST_UNRELATED_SHA}"
+    ;;
+  *)
+    printf 'unexpected gh invocation: %s\n' "${args}" >&2
+    exit 2
+    ;;
+esac
+STUB
+chmod +x "${STUB_BIN}/gh"
+
 run_verify() {
   local tag="$1"
   local source_sha="$2"
   local publisher_sha="$3"
   (
     cd "${clone}"
-    SOURCE_TAG="${tag}" \
+    PATH="${STUB_BIN}:${PATH}" \
+      GH_TOKEN="test-token" \
+      GITHUB_REPOSITORY="Lamy210/template" \
+      TEST_FIRST_SHA="${first}" \
+      TEST_UNRELATED_SHA="${unrelated}" \
+      SOURCE_TAG="${tag}" \
       SOURCE_SHA="${source_sha}" \
       PUBLISHER_SHA="${publisher_sha}" \
       bash "${VERIFIER}"
