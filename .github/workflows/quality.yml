@@ -60,6 +60,16 @@ jobs:
             shfmt -d -i 2 -ci scripts
           fi
 
+      - name: Ruleset governance validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest \
+            scripts.ci.test_validate_rulesets \
+            scripts.ci.test_validate_rulesets_portability \
+            -v
+          python3 scripts/ci/validate_rulesets.py
+
       - name: Release artifact handoff regression
         shell: bash
         run: bash scripts/release/test-app-artifact-handoff.sh
