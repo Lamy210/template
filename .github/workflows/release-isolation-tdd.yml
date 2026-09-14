@@ -35,3 +35,7 @@ jobs:
       - name: Exact release build artifact resolver
         shell: bash
         run: bash scripts/release/test-resolve-release-build-artifact.sh
+
+      - name: Release source binding
+        shell: bash
+        run: bash scripts/release/test-verify-release-source.sh
