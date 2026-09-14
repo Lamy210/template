@@ -110,6 +110,8 @@ def validate_release_input(
     resolved_tag_sha: str,
     source_is_ancestor: bool,
     publisher_sha: str,
+    publisher_run_id: int,
+    publisher_run_attempt: int,
     release_scripts_root: Path,
 ) -> tuple[list[str], dict[str, object] | None]:
     errors = _validate_source_metadata(
@@ -120,6 +122,10 @@ def validate_release_input(
 
     if not isinstance(publisher_sha, str) or SHA_RE.fullmatch(publisher_sha) is None:
         errors.append("publisher SHA must be 40 lowercase hexadecimal characters")
+    if type(publisher_run_id) is not int or publisher_run_id <= 0:
+        errors.append("publisher run ID must be a positive integer")
+    if type(publisher_run_attempt) is not int or publisher_run_attempt <= 0:
+        errors.append("publisher run attempt must be a positive integer")
     if not isinstance(resolved_tag_sha, str) or SHA_RE.fullmatch(resolved_tag_sha) is None:
         errors.append("resolved tag SHA must be 40 lowercase hexadecimal characters")
     if source_is_ancestor is not True:
@@ -260,6 +266,8 @@ def validate_release_input(
         "sourceArtifactDigest": source_metadata["artifactDigest"],
         "archiveSha256": actual_archive_digest,
         "publisherSHA": publisher_sha,
+        "publisherRunId": publisher_run_id,
+        "publisherRunAttempt": publisher_run_attempt,
         "appBasename": expected_app_basename,
         "bundleId": expected_bundle_id,
         "version": version,
