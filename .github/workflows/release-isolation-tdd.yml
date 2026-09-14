@@ -32,6 +32,7 @@ jobs:
             scripts.release.test_release_workflow_contract \
             scripts.release.test_release_publisher_workflow_contract \
             scripts.release.test_privileged_release_workflow_contract \
+            scripts.release.test_verify_validated_release_metadata \
             -v
 
       - name: Exact release build artifact resolver
