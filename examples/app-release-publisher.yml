@@ -47,13 +47,15 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
           bash scripts/release/resolve-release-build-artifact.sh \
             --repository "${GITHUB_REPOSITORY}" \
             --workflow-path .github/workflows/release-build.yml \
-            --run-id "${{ github.event.workflow_run.id }}" \
-            --run-attempt "${{ github.event.workflow_run.run_attempt }}" \
+            --run-id "${SOURCE_RUN_ID}" \
+            --run-attempt "${SOURCE_RUN_ATTEMPT}" \
             --output source-artifact
 
       - name: Read candidate tag and validated source SHA
@@ -94,6 +96,8 @@ jobs:
 
       - name: Validate archive provenance and application identity
         shell: bash
+        env:
+          RESOLVED_TAG_SHA: ${{ steps.source.outputs.resolved_sha }}
         run: |
           set -euo pipefail
           mkdir -p validated-release-input
@@ -105,7 +109,7 @@ jobs:
             --workflow-path .github/workflows/release-build.yml \
             --app-basename MyApp.app \
             --bundle-id com.example.MyApp \
-            --resolved-tag-sha "${{ steps.source.outputs.resolved_sha }}" \
+            --resolved-tag-sha "${RESOLVED_TAG_SHA}" \
             --source-is-ancestor true \
             --publisher-sha "${GITHUB_SHA}" \
             --output validated-release-input/validated-release-metadata.json
@@ -172,3 +176,23 @@ jobs:
       entitlements_path: ""
       publish_github_release: true
     secrets: inherit
+
+  homebrew:
+    name: Propose Homebrew Cask update
+    needs: [validate, sign-and-publish]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-homebrew-update.yml
+    with:
+      source_tag: ${{ needs.validate.outputs.source_tag }}
+      tap_repository: Lamy210/homebrew-tap
+      tap_default_branch: main
+      cask_token: my-app
+      app_name: MyApp
+      bundle_id: com.example.MyApp
+      description: Example macOS application
+      homepage: https://github.com/example/MyApp
+      dmg_name: MyApp-${{ needs.validate.outputs.source_version }}.dmg
+      dmg_basename_template: MyApp-v#{version}.dmg
+    secrets:
+      tap_token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
