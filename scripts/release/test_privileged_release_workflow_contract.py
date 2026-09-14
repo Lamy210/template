@@ -76,7 +76,10 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("source_sha: ${{ needs.validate.outputs.source_sha }}", text)
         self.assertIn("source_version: ${{ needs.validate.outputs.source_version }}", text)
         self.assertIn("archive_sha256: ${{ needs.validate.outputs.archive_sha256 }}", text)
-        self.assertIn("secrets: inherit", text)
+
+    def test_publisher_does_not_inherit_repository_or_organization_secrets(self) -> None:
+        text = self.publisher_text()
+        self.assertNotIn("secrets: inherit", text)
 
 
 if __name__ == "__main__":
