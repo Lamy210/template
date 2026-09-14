@@ -89,21 +89,30 @@ jobs:
 
       - name: Reverify publisher-owned metadata and archive digest
         shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_VERSION: ${{ inputs.source_version }}
+          ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+          APP_BASENAME: ${{ inputs.app_path }}
+          EXPECTED_BUNDLE_ID: ${{ inputs.bundle_id }}
         run: |
           set -euo pipefail
           python3 scripts/release/verify-validated-release-metadata.py \
             --metadata validated-release-input/validated-release-metadata.json \
             --archive validated-release-input/unsigned-macos-app.tar.gz \
             --repository "${GITHUB_REPOSITORY}" \
-            --source-run-id "${{ inputs.source_run_id }}" \
-            --source-run-attempt "${{ inputs.source_run_attempt }}" \
-            --source-sha "${{ inputs.source_sha }}" \
-            --source-tag "${{ inputs.source_tag }}" \
-            --source-version "${{ inputs.source_version }}" \
+            --source-run-id "${SOURCE_RUN_ID}" \
+            --source-run-attempt "${SOURCE_RUN_ATTEMPT}" \
+            --source-sha "${SOURCE_SHA}" \
+            --source-tag "${SOURCE_TAG}" \
+            --source-version "${SOURCE_VERSION}" \
             --publisher-sha "${GITHUB_SHA}" \
-            --archive-sha256 "${{ inputs.archive_sha256 }}" \
-            --app-basename "${{ inputs.app_path }}" \
-            --bundle-id "${{ inputs.bundle_id }}"
+            --archive-sha256 "${ARCHIVE_SHA256}" \
+            --app-basename "${APP_BASENAME}" \
+            --bundle-id "${EXPECTED_BUNDLE_ID}"
 
       - name: Extract validated unsigned application archive
         shell: bash
