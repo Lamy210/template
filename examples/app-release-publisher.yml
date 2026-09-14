@@ -115,6 +115,8 @@ jobs:
             --resolved-tag-sha "${RESOLVED_TAG_SHA}" \
             --source-is-ancestor true \
             --publisher-sha "${GITHUB_SHA}" \
+            --publisher-run-id "${GITHUB_RUN_ID}" \
+            --publisher-run-attempt "${GITHUB_RUN_ATTEMPT}" \
             --output validated-release-input/validated-release-metadata.json
           cp source-artifact/release-input/unsigned-macos-app.tar.gz \
             validated-release-input/unsigned-macos-app.tar.gz
