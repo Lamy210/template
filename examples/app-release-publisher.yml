@@ -28,6 +28,8 @@ jobs:
       contents: read
     outputs:
       validated_artifact_name: ${{ steps.release_outputs.outputs.validated_artifact_name }}
+      validated_artifact_id: ${{ steps.validated_upload.outputs.artifact-id }}
+      validated_artifact_digest: ${{ steps.validated_upload.outputs.artifact-digest }}
       source_tag: ${{ steps.release_outputs.outputs.source_tag }}
       source_sha: ${{ steps.release_outputs.outputs.source_sha }}
       source_version: ${{ steps.release_outputs.outputs.source_version }}
@@ -120,7 +122,7 @@ jobs:
         id: release_outputs
         shell: bash
         env:
-          VALIDATED_ARTIFACT_NAME: validated-release-input-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          VALIDATED_ARTIFACT_NAME: validated-release-input-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
           python3 - <<'PY' >>"${GITHUB_OUTPUT}"
@@ -144,9 +146,10 @@ jobs:
           PY
 
       - name: Re-handoff validated release input inside publisher run
+        id: validated_upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: validated-release-input-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          name: validated-release-input-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
           path: |
             validated-release-input/unsigned-macos-app.tar.gz
             validated-release-input/validated-release-metadata.json
@@ -158,10 +161,13 @@ jobs:
     needs: validate
     if: ${{ needs.validate.result == 'success' }}
     permissions:
+      actions: read
       contents: write
     uses: ./.github/workflows/reusable-macos-release.yml
     with:
       validated_artifact_name: ${{ needs.validate.outputs.validated_artifact_name }}
+      validated_artifact_id: ${{ needs.validate.outputs.validated_artifact_id }}
+      validated_artifact_digest: ${{ needs.validate.outputs.validated_artifact_digest }}
       source_tag: ${{ needs.validate.outputs.source_tag }}
       source_sha: ${{ needs.validate.outputs.source_sha }}
       source_version: ${{ needs.validate.outputs.source_version }}
