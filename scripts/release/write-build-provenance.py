@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from scripts.release.release_provenance import ExpectedBuild, build_provenance
+from release_provenance import ExpectedBuild, build_provenance
 
 
 def sha256_file(path: Path) -> str:
