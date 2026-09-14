@@ -89,7 +89,7 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
     def test_reuploads_validated_input_inside_publisher_run(self) -> None:
         block = job_block(self.workflow_text(), "validate")
         self.assertIn(
-            "validated-release-input-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}",
+            "validated-release-input-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}",
             block,
         )
         self.assertRegex(
@@ -100,6 +100,28 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
                 r"\s+validated-release-input/validated-release-metadata\.json",
                 re.MULTILINE,
             ),
+        )
+
+    def test_exports_exact_validated_artifact_identity(self) -> None:
+        block = job_block(self.workflow_text(), "validate")
+        self.assertIn("id: validated_upload", block)
+        self.assertIn(
+            "validated_artifact_id: ${{ steps.validated_upload.outputs.artifact-id }}",
+            block,
+        )
+        self.assertIn(
+            "validated_artifact_digest: ${{ steps.validated_upload.outputs.artifact-digest }}",
+            block,
+        )
+
+        privileged = job_block(self.workflow_text(), "sign-and-publish")
+        self.assertIn(
+            "validated_artifact_id: ${{ needs.validate.outputs.validated_artifact_id }}",
+            privileged,
+        )
+        self.assertIn(
+            "validated_artifact_digest: ${{ needs.validate.outputs.validated_artifact_digest }}",
+            privileged,
         )
 
     def test_concurrency_is_per_source_run_and_never_cancels_in_progress_release(self) -> None:
