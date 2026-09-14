@@ -23,4 +23,9 @@ jobs:
 
       - name: Release provenance tests
         shell: bash
-        run: python3 -m unittest scripts.release.test_release_provenance -v
+        run: |
+          set -euo pipefail
+          python3 -m unittest \
+            scripts.release.test_release_provenance \
+            scripts.release.test_validate_actions_artifact \
+            -v
