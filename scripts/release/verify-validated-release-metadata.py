@@ -27,6 +27,8 @@ def main() -> int:
     parser.add_argument("--source-tag", required=True)
     parser.add_argument("--source-version", required=True)
     parser.add_argument("--publisher-sha", required=True)
+    parser.add_argument("--publisher-run-id", required=True, type=int)
+    parser.add_argument("--publisher-run-attempt", required=True, type=int)
     parser.add_argument("--archive-sha256", required=True)
     parser.add_argument("--app-basename", required=True)
     parser.add_argument("--bundle-id", required=True)
@@ -40,6 +42,8 @@ def main() -> int:
         source_tag=args.source_tag,
         source_version=args.source_version,
         publisher_sha=args.publisher_sha,
+        publisher_run_id=args.publisher_run_id,
+        publisher_run_attempt=args.publisher_run_attempt,
         archive_sha256=args.archive_sha256,
         app_basename=args.app_basename,
         bundle_id=args.bundle_id,
