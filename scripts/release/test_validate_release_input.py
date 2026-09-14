@@ -15,6 +15,8 @@ from scripts.release.test_release_provenance import SHA, valid_document
 
 
 PUBLISHER_SHA = "1123456789abcdef0123456789abcdef01234567"
+PUBLISHER_RUN_ID = 99887766
+PUBLISHER_RUN_ATTEMPT = 4
 
 
 def create_app_archive(path: Path, *, bundle_id: str = "com.example.MyApp", version: str = "1.2.3") -> str:
@@ -84,6 +86,8 @@ class ReleaseInputValidationTests(unittest.TestCase):
         app_version: str = "1.2.3",
         resolved_tag_sha: str = SHA,
         source_is_ancestor: bool = True,
+        publisher_run_id: int = PUBLISHER_RUN_ID,
+        publisher_run_attempt: int = PUBLISHER_RUN_ATTEMPT,
     ):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -107,6 +111,8 @@ class ReleaseInputValidationTests(unittest.TestCase):
                 resolved_tag_sha=resolved_tag_sha,
                 source_is_ancestor=source_is_ancestor,
                 publisher_sha=PUBLISHER_SHA,
+                publisher_run_id=publisher_run_id,
+                publisher_run_attempt=publisher_run_attempt,
                 release_scripts_root=Path(__file__).resolve().parent,
             )
             return errors, validated
@@ -120,6 +126,8 @@ class ReleaseInputValidationTests(unittest.TestCase):
         self.assertEqual("v1.2.3", validated["tag"])
         self.assertEqual(SHA, validated["sourceSHA"])
         self.assertEqual(PUBLISHER_SHA, validated["publisherSHA"])
+        self.assertEqual(PUBLISHER_RUN_ID, validated["publisherRunId"])
+        self.assertEqual(PUBLISHER_RUN_ATTEMPT, validated["publisherRunAttempt"])
         self.assertEqual("com.example.MyApp", validated["bundleId"])
 
     def test_rejects_provenance_run_identity_mismatch(self) -> None:
@@ -180,9 +188,16 @@ class ReleaseInputValidationTests(unittest.TestCase):
                 resolved_tag_sha=SHA,
                 source_is_ancestor=True,
                 publisher_sha="INVALID",
+                publisher_run_id=PUBLISHER_RUN_ID,
+                publisher_run_attempt=PUBLISHER_RUN_ATTEMPT,
                 release_scripts_root=Path(__file__).resolve().parent,
             )
         self.assertTrue(any("publisher SHA" in error for error in errors))
+
+    def test_rejects_invalid_publisher_run_identity(self) -> None:
+        errors, _ = self.validate_fixture(publisher_run_id=True, publisher_run_attempt=0)
+        self.assertTrue(any("publisher run ID" in error for error in errors))
+        self.assertTrue(any("publisher run attempt" in error for error in errors))
 
 
 if __name__ == "__main__":
