@@ -73,8 +73,10 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
     def test_resolves_exact_triggering_run_and_attempt(self) -> None:
         block = job_block(self.workflow_text(), "validate")
         self.assertIn("scripts/release/resolve-release-build-artifact.sh", block)
-        self.assertIn('--run-id "${{ github.event.workflow_run.id }}"', block)
-        self.assertIn('--run-attempt "${{ github.event.workflow_run.run_attempt }}"', block)
+        self.assertIn("SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}", block)
+        self.assertIn("SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}", block)
+        self.assertIn('--run-id "${SOURCE_RUN_ID}"', block)
+        self.assertIn('--run-attempt "${SOURCE_RUN_ATTEMPT}"', block)
         self.assertIn("--workflow-path .github/workflows/release-build.yml", block)
 
     def test_independently_verifies_tag_binding_and_release_input(self) -> None:
