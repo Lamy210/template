@@ -7,6 +7,14 @@ on:
         description: Publisher-run artifact containing validated release metadata and the unsigned app archive.
         required: true
         type: string
+      validated_artifact_id:
+        description: Exact Actions Artifact ID produced by the current publisher validation attempt.
+        required: true
+        type: string
+      validated_artifact_digest:
+        description: GitHub-provided sha256 digest for the current publisher validation artifact.
+        required: true
+        type: string
       source_tag:
         description: Validated stable release tag, for example v1.2.3.
         required: true
@@ -71,6 +79,7 @@ jobs:
     timeout-minutes: 30
     environment: release
     permissions:
+      actions: read
       contents: write
 
     steps:
@@ -81,11 +90,80 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Download validated release input
+      - name: Verify validated handoff artifact identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATED_ARTIFACT_ID: ${{ inputs.validated_artifact_id }}
+          VALIDATED_ARTIFACT_NAME: ${{ inputs.validated_artifact_name }}
+          VALIDATED_ARTIFACT_DIGEST: ${{ inputs.validated_artifact_digest }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          PUBLISHER_RUN_ID: ${{ github.run_id }}
+          PUBLISHER_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          artifact_id = os.environ["VALIDATED_ARTIFACT_ID"]
+          artifact_name = os.environ["VALIDATED_ARTIFACT_NAME"]
+          artifact_digest = os.environ["VALIDATED_ARTIFACT_DIGEST"]
+          publisher_run_id = os.environ["PUBLISHER_RUN_ID"]
+          publisher_run_attempt = os.environ["PUBLISHER_RUN_ATTEMPT"]
+          source_run_id = os.environ["SOURCE_RUN_ID"]
+          source_run_attempt = os.environ["SOURCE_RUN_ATTEMPT"]
+
+          if not artifact_id.isdigit() or int(artifact_id) <= 0:
+              raise SystemExit("validated artifact ID must be a positive integer")
+          if re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_digest) is None:
+              raise SystemExit("validated artifact digest must use sha256:<64 lowercase hex>")
+          for label, value in (
+              ("publisher run ID", publisher_run_id),
+              ("publisher run attempt", publisher_run_attempt),
+              ("source run ID", source_run_id),
+              ("source run attempt", source_run_attempt),
+          ):
+              if not value.isdigit() or int(value) <= 0:
+                  raise SystemExit(f"{label} must be a positive integer")
+
+          expected_name = (
+              f"validated-release-input-{publisher_run_id}-{publisher_run_attempt}-"
+              f"{source_run_id}-{source_run_attempt}"
+          )
+          if artifact_name != expected_name:
+              raise SystemExit(
+                  f"validated artifact name mismatch: expected {expected_name}, got {artifact_name}"
+              )
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          raw = subprocess.check_output(
+              ["gh", "api", f"/repos/{repository}/actions/artifacts/{artifact_id}"],
+              text=True,
+          )
+          metadata = json.loads(raw)
+          if metadata.get("id") != int(artifact_id):
+              raise SystemExit("validated artifact API identity mismatch")
+          if metadata.get("name") != expected_name:
+              raise SystemExit("validated artifact API name mismatch")
+          if metadata.get("expired") is not False:
+              raise SystemExit("validated artifact is expired or has invalid expiration state")
+          if metadata.get("digest") != artifact_digest:
+              raise SystemExit("validated artifact API digest mismatch")
+          workflow_run = metadata.get("workflow_run")
+          if not isinstance(workflow_run, dict) or workflow_run.get("id") != int(publisher_run_id):
+              raise SystemExit("validated artifact does not belong to the current publisher run")
+          PY
+
+      - name: Download exact validated release input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.validated_artifact_name }}
+          artifact-ids: ${{ inputs.validated_artifact_id }}
           path: validated-release-input
+          merge-multiple: true
 
       - name: Reverify publisher-owned metadata and archive digest
         shell: bash
