@@ -231,6 +231,14 @@ jobs:
             EXECUTABLE_NAME="${actual_executable}" \
             bash scripts/release/verify-app-executable.sh
 
+      - name: Rebind release tag before secrets
+        shell: bash
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: bash scripts/release/verify-release-source.sh >/dev/null
+
       - name: Import Developer ID certificate
         id: certificate
         shell: bash
@@ -295,6 +303,15 @@ jobs:
             release-output/${{ inputs.dmg_name }}.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Rebind release tag before publication
+        if: ${{ inputs.publish_github_release }}
+        shell: bash
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: bash scripts/release/verify-release-source.sh >/dev/null
 
       - name: Publish immutable GitHub Release
         if: ${{ inputs.publish_github_release }}
