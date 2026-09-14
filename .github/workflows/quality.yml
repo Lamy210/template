@@ -60,6 +60,23 @@ jobs:
             shfmt -d -i 2 -ci scripts
           fi
 
+      - name: Release isolation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest \
+            scripts.release.test_release_provenance \
+            scripts.release.test_validate_actions_artifact \
+            scripts.release.test_validate_release_input \
+            scripts.release.test_release_workflow_contract \
+            scripts.release.test_release_publisher_workflow_contract \
+            scripts.release.test_privileged_release_workflow_contract \
+            scripts.release.test_homebrew_publisher_workflow_contract \
+            scripts.release.test_verify_validated_release_metadata \
+            -v
+          bash scripts/release/test-resolve-release-build-artifact.sh
+          bash scripts/release/test-verify-release-source.sh
+
       - name: Release artifact handoff regression
         shell: bash
         run: bash scripts/release/test-app-artifact-handoff.sh
