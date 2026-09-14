@@ -7,6 +7,7 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILD_WORKFLOW = REPO_ROOT / "examples/app-release-build.yml"
+LEGACY_WORKFLOW = REPO_ROOT / "examples/app-release.yml"
 
 
 class ReleaseBuildWorkflowContractTests(unittest.TestCase):
@@ -73,6 +74,15 @@ class ReleaseBuildWorkflowContractTests(unittest.TestCase):
         text = self.workflow_text()
         self.assertNotIn("reusable-macos-release.yml", text)
         self.assertNotIn("reusable-homebrew-update.yml", text)
+
+    def test_legacy_monolithic_example_is_migration_only(self) -> None:
+        text = LEGACY_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("MIGRATION ONLY", text)
+        self.assertIn("app-release-build.yml", text)
+        self.assertIn("app-release-publisher.yml", text)
+        self.assertNotIn("uses: ./.github/workflows/reusable-macos-release.yml", text)
+        self.assertNotIn("contents: write", text)
+        self.assertNotIn("environment: release", text)
 
 
 if __name__ == "__main__":
