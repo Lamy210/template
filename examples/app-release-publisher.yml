@@ -1,0 +1,115 @@
+# Copy/adapt this file to .github/workflows/release-publisher.yml in an application repository.
+# This workflow must live on the default branch. GitHub loads workflow_run workflows
+# from the default branch, which keeps publisher control code independent of the tag commit.
+
+name: Release Publisher
+
+on:
+  workflow_run:
+    workflows:
+      - "Release Build"
+    types:
+      - completed
+
+permissions: {}
+
+concurrency:
+  group: release-publisher-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release input without secrets
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout trusted publisher control code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve exact triggering build artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/resolve-release-build-artifact.sh \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow-path .github/workflows/release-build.yml \
+            --run-id "${{ github.event.workflow_run.id }}" \
+            --run-attempt "${{ github.event.workflow_run.run_attempt }}" \
+            --output source-artifact
+
+      - name: Read candidate tag and validated source SHA
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >>"${GITHUB_OUTPUT}"
+          import json
+          import re
+
+          with open("source-artifact/release-input/build-provenance.json", encoding="utf-8") as handle:
+              provenance = json.load(handle)
+          with open("source-artifact/source-artifact-metadata.json", encoding="utf-8") as handle:
+              metadata = json.load(handle)
+
+          tag = provenance.get("tag")
+          source_sha = metadata.get("sourceSHA")
+          if not isinstance(tag, str) or re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag) is None:
+              raise SystemExit("candidate tag is not a stable release tag")
+          if not isinstance(source_sha, str) or re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
+              raise SystemExit("resolved source metadata contains an invalid SHA")
+          print(f"tag={tag}")
+          print(f"source_sha={source_sha}")
+          PY
+
+      - name: Independently bind tag to source and trusted history
+        id: source
+        shell: bash
+        env:
+          SOURCE_TAG: ${{ steps.candidate.outputs.tag }}
+          SOURCE_SHA: ${{ steps.candidate.outputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          resolved_sha="$(bash scripts/release/verify-release-source.sh)"
+          printf 'resolved_sha=%s\n' "${resolved_sha}" >>"${GITHUB_OUTPUT}"
+
+      - name: Validate archive provenance and application identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p validated-release-input
+          python3 scripts/release/validate-release-input.py \
+            --provenance source-artifact/release-input/build-provenance.json \
+            --source-metadata source-artifact/source-artifact-metadata.json \
+            --archive source-artifact/release-input/unsigned-macos-app.tar.gz \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow-path .github/workflows/release-build.yml \
+            --app-basename MyApp.app \
+            --bundle-id com.example.MyApp \
+            --resolved-tag-sha "${{ steps.source.outputs.resolved_sha }}" \
+            --source-is-ancestor true \
+            --publisher-sha "${GITHUB_SHA}" \
+            --output validated-release-input/validated-release-metadata.json
+          cp source-artifact/release-input/unsigned-macos-app.tar.gz \
+            validated-release-input/unsigned-macos-app.tar.gz
+
+      - name: Re-handoff validated release input inside publisher run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: validated-release-input-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: |
+            validated-release-input/unsigned-macos-app.tar.gz
+            validated-release-input/validated-release-metadata.json
+          if-no-files-found: error
+          retention-days: 1
