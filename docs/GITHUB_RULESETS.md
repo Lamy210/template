@@ -29,6 +29,7 @@ The default-branch profile requires:
 - zero required approvals for a one-maintainer repository;
 - no path-specific `required_reviewers` approval requirement;
 - no extra approval requirement for unattributed changes;
+- stale review approvals are dismissed when new commits are pushed (`dismiss_stale_reviews_on_push=true`);
 - all review conversations resolved;
 - squash as the allowed merge method in the Ruleset contract;
 - linear history;
@@ -133,6 +134,7 @@ In GitHub:
    - target is the default branch only;
    - approval count is `0`;
    - no path-specific required reviewers were introduced;
+   - stale approvals are dismissed when new commits are pushed;
    - conversation resolution is enabled;
    - linear history is enabled;
    - `Required gate` is required;
@@ -203,6 +205,7 @@ The validator rejects policy weakening, noncanonical state, or lockout regressio
 - approval count becoming non-zero;
 - path-specific `required_reviewers` being added to the Solo profile;
 - an extra approval requirement for unattributed changes being enabled;
+- `dismiss_stale_reviews_on_push` being missing, non-boolean, or `false`;
 - `release*` branches being added to the default-branch profile;
 - either canonical required check being removed or renamed;
 - duplicate or non-string required check contexts;
