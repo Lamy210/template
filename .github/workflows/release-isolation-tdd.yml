@@ -29,3 +29,7 @@ jobs:
             scripts.release.test_release_provenance \
             scripts.release.test_validate_actions_artifact \
             -v
+
+      - name: Exact release build artifact resolver
+        shell: bash
+        run: bash scripts/release/test-resolve-release-build-artifact.sh
