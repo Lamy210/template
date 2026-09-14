@@ -76,7 +76,62 @@ The secret-free validator still independently verifies:
 
 Only validator-generated outputs/artifacts may cross into the release Environment job.
 
-## 6. Rollout gate
+## 6. Privileged release policy comes only from the trusted publisher checkout
+
+The release-tag build may claim application metadata, but it MUST NOT choose privileged signing/publication policy.
+
+The trusted default-branch publisher configuration is authoritative for at least:
+
+- expected application basename;
+- expected bundle identifier;
+- Developer ID signing identity;
+- entitlements path/content;
+- DMG naming policy;
+- GitHub Release publication policy;
+- Homebrew tap repository/default branch/cask identity;
+- any external write destination or credential selection.
+
+Build provenance is cross-checked against this trusted configuration where fields overlap. It never overrides it.
+
+Implementation may keep these values directly in the publisher workflow or in a small reviewed release-policy file from the same trusted publisher SHA. It MUST NOT load them from the release-tag checkout.
+
+## 7. Homebrew write credentials are part of the privileged boundary
+
+The current example passes `HOMEBREW_TAP_TOKEN` to a same-repository local reusable workflow selected from the tag commit. The two-stage migration MUST remove that path.
+
+The unprivileged tag-build workflow receives no Homebrew token.
+
+After immutable GitHub Release publication, Homebrew update should run from current trusted publisher control code in a separate least-privilege job. That job should receive only the permissions/secret needed for the tap update and should not receive Apple signing credentials.
+
+A failure to update Homebrew MUST NOT cause already-published immutable GitHub Release assets to be replaced. Recovery is a retry of the trusted Homebrew-update job against the same verified release metadata.
+
+## 8. Validator-to-signer handoff is bound to the publisher attempt
+
+The validated handoff artifact MUST be unique to the publisher run **and run attempt**, not only to the source build run.
+
+A canonical name should include at least:
+
+```text
+validated-release-input-<publisher-run-id>-<publisher-run-attempt>-<source-run-id>-<source-run-attempt>
+```
+
+The upload step's artifact ID and artifact digest MUST be captured as validator job outputs/metadata. The signing job downloads the exact validator-produced artifact for the current publisher attempt and rejects ambiguity or fallback to an artifact from an older publisher attempt.
+
+This avoids Actions Artifact v4 name collisions and stale trust decisions when the publisher workflow is re-run.
+
+The signing job also recomputes the tar SHA-256 and compares it with validator-generated metadata before extraction.
+
+## 9. Historical commits before the split fail safe
+
+The security goal does not require every historical commit to remain releasable automatically.
+
+A tag pointing to an ancestor that predates the unprivileged `release-build.yml` workflow may produce no Release Build run at all. That is a safe failure mode.
+
+The required old-ancestor acceptance test therefore uses an ancestor **after** the two-stage build workflow exists, and proves that the tag selects historical application bytes while the downstream publisher still runs current default-branch control code.
+
+Do not add a fallback that executes an old privileged workflow merely to support pre-migration commits.
+
+## 10. Rollout gate
 
 The implementation rollout is amended to require this order:
 
@@ -84,12 +139,12 @@ The implementation rollout is amended to require this order:
 2. merge/import PR #4 repository governance;
 3. verify the effective `refs/tags/v*` Ruleset blocks update and deletion;
 4. implement and test the two-stage release path;
-5. verify old-ancestor tags use current default-branch publisher code in a disposable/test repository;
+5. verify old-ancestor tags created after the build/publisher split use current default-branch publisher code in a disposable/test repository;
 6. verify tag-move attempts are rejected by the effective Ruleset;
 7. only then enable the two-stage publisher as the production template path;
-8. remove the obsolete tag-selected privileged path.
+8. remove the obsolete tag-selected privileged signing path **and** the obsolete tag-selected Homebrew-token path.
 
-## 7. Added acceptance tests
+## 11. Added acceptance tests
 
 Implementation must additionally cover:
 
@@ -100,10 +155,16 @@ Implementation must additionally cover:
 - unsafe or symlinked `CFBundleExecutable` rejected before the release Environment;
 - tag binding rechecked in the privileged job;
 - tag binding rechecked immediately before publication;
-- production rollout documentation refuses enablement when the immutable `v*` Ruleset is not verified.
+- production rollout documentation refuses enablement when the immutable `v*` Ruleset is not verified;
+- release-tag provenance cannot override trusted signing identity, entitlements, bundle policy, DMG naming, or publication target;
+- tag-selected code cannot receive `HOMEBREW_TAP_TOKEN`;
+- Homebrew update runs from trusted publisher control code after immutable release publication;
+- validator handoff name includes publisher run ID/attempt;
+- signing job rejects a validator artifact from a previous publisher attempt;
+- an ancestor predating the split fails safely instead of falling back to old privileged release code.
 
 These amendments preserve the core design decision:
 
 > Tag commit selects application bytes; current default branch selects privileged release-control code.
 
-They strengthen it by making immutable tag governance and repeated ref binding explicit parts of the privileged release trust boundary.
+They strengthen it by making immutable tag governance, repeated ref binding, trusted release-policy ownership, external write-token isolation, and publisher-attempt-bound handoff explicit parts of the privileged release trust boundary.
