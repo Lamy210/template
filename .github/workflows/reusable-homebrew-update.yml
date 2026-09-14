@@ -3,6 +3,10 @@ name: Reusable Homebrew Update
 on:
   workflow_call:
     inputs:
+      source_tag:
+        description: Validated stable release tag produced by the publisher, for example v1.2.3.
+        required: true
+        type: string
       tap_repository:
         description: Homebrew tap repository in owner/repo form.
         required: true
@@ -51,16 +55,17 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Validate release context and inputs
+      - name: Validate release identity and inputs
         shell: bash
         env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
           CASK_TOKEN: ${{ inputs.cask_token }}
           TAP_REPOSITORY: ${{ inputs.tap_repository }}
           DMG_NAME: ${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF_TYPE}" != "tag" || ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Homebrew update must run from a stable vX.Y.Z release tag." >&2
+          if [[ ! "${SOURCE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "source_tag must use stable SemVer form vX.Y.Z." >&2
             exit 1
           fi
           if [[ ! "${CASK_TOKEN}" =~ ^[a-z0-9][a-z0-9._+-]*$ ]]; then
@@ -76,9 +81,10 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout release automation
+      - name: Checkout trusted publisher automation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
           path: source
 
@@ -86,11 +92,12 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
           DMG_NAME: ${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          gh release download "${GITHUB_REF_NAME}" \
+          gh release download "${SOURCE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
             --pattern "${DMG_NAME}.sha256" \
             --dir release-assets
@@ -106,7 +113,7 @@ jobs:
             echo "Invalid SHA-256 value in ${checksum_file}" >&2
             exit 1
           fi
-          echo "SHA256=${sha256,,}" >> "${GITHUB_ENV}"
+          echo "SHA256=${sha256,,}" >>"${GITHUB_ENV}"
 
       - name: Clone tap repository
         shell: bash
@@ -122,11 +129,12 @@ jobs:
         id: branch
         shell: bash
         env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           CASK_TOKEN: ${{ inputs.cask_token }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${SOURCE_TAG#v}"
           branch="automation/${CASK_TOKEN}-v${version}"
 
           cd tap
@@ -143,14 +151,14 @@ jobs:
             git switch -c "${branch}"
           fi
 
-          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+          echo "branch=${branch}" >>"${GITHUB_OUTPUT}"
 
       - name: Render Cask
         shell: bash
         env:
           CASK_TEMPLATE: source/templates/homebrew/Cask.rb.template
           CASK_TOKEN: ${{ inputs.cask_token }}
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ inputs.source_tag }}
           SOURCE_REPOSITORY: ${{ github.repository }}
           DMG_BASENAME: ${{ inputs.dmg_basename_template }}
           APP_NAME: ${{ inputs.app_name }}
@@ -170,20 +178,21 @@ jobs:
         id: push
         shell: bash
         env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
           CASK_TOKEN: ${{ inputs.cask_token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${SOURCE_TAG#v}"
           cd tap
           git add "Casks/${CASK_TOKEN}.rb"
 
           if git diff --cached --quiet; then
-            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "changed=false" >>"${GITHUB_OUTPUT}"
           else
             git commit -m "chore(cask): update ${CASK_TOKEN} to ${version}"
             git push --set-upstream origin "${BRANCH}"
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo "changed=true" >>"${GITHUB_OUTPUT}"
           fi
 
       - name: Open or reuse tap pull request
@@ -191,13 +200,14 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.tap_token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
           TAP_REPOSITORY: ${{ inputs.tap_repository }}
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           CASK_TOKEN: ${{ inputs.cask_token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${SOURCE_TAG#v}"
           if gh pr view "${BRANCH}" --repo "${TAP_REPOSITORY}" >/dev/null 2>&1; then
             gh pr view "${BRANCH}" --repo "${TAP_REPOSITORY}" --web=false
           else
@@ -206,5 +216,5 @@ jobs:
               --base "${TAP_DEFAULT_BRANCH}" \
               --head "${BRANCH}" \
               --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
-              --body "Automated Cask update for ${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}. Verify tap CI before merging."
+              --body "Automated Cask update for ${GITHUB_REPOSITORY}@${SOURCE_TAG}. Verify tap CI before merging."
           fi
