@@ -24,11 +24,20 @@ import zipfile
 
 scenario = sys.argv[1]
 buffer = io.BytesIO()
-with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+
+
+def add_file(archive: zipfile.ZipFile, name: str, payload: bytes) -> None:
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o100644 << 16
+    archive.writestr(info, payload)
+
+
+with zipfile.ZipFile(buffer, "w") as archive:
     if scenario == "traversal":
-        archive.writestr("../escape", "bad")
-    archive.writestr("release-input/unsigned-macos-app.tar.gz", b"archive-fixture")
-    archive.writestr("release-input/build-provenance.json", b"{}")
+        add_file(archive, "../escape", b"bad")
+    add_file(archive, "release-input/unsigned-macos-app.tar.gz", b"archive-fixture")
+    add_file(archive, "release-input/build-provenance.json", b"{}")
 sys.stdout.buffer.write(buffer.getvalue())
 PY
 }
