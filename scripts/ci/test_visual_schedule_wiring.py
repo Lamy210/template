@@ -49,6 +49,7 @@ class VisualScheduleWiringTests(unittest.TestCase):
         )
         self.assertIn("TRUSTED_EVENTS: ${{ inputs.trusted_events }}", self.reusable_visual)
         self.assertIn('--trusted-events "${TRUSTED_EVENTS}"', self.reusable_visual)
+        self.assertIn('--expected-events "${TRUSTED_EVENTS}"', self.reusable_visual)
 
 
 if __name__ == "__main__":
