@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,9 @@ class InputError(ValueError):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, type=Path)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--input", type=Path)
+    source.add_argument("--from-env", action="store_true")
     parser.add_argument("--github-output", type=Path)
     return parser.parse_args()
 
@@ -47,6 +50,27 @@ def load_input(path: Path) -> dict[str, Any]:
     if missing:
         raise InputError("missing classifier field(s): " + ", ".join(missing))
     return payload
+
+
+def env_enabled(name: str) -> bool:
+    return os.environ.get(name, "") == "true"
+
+
+def load_environment() -> dict[str, Any]:
+    coverage_enabled = env_enabled("MACOS_COVERAGE_ENABLED")
+    coverage_required_value = os.environ.get("MACOS_COVERAGE_REQUIRED", "")
+    return {
+        "adapter": os.environ.get("MACOS_TEST_ADAPTER", ""),
+        "integrationEnabled": env_enabled("MACOS_INTEGRATION_ENABLED"),
+        "integrationRequired": env_enabled("MACOS_INTEGRATION_REQUIRED"),
+        "coverageEnabled": coverage_enabled,
+        "coverageRequired": (
+            coverage_required_value == "true"
+            or (coverage_enabled and coverage_required_value != "false")
+        ),
+        "e2eEnabled": env_enabled("MACOS_E2E_ENABLED"),
+        "e2eRequired": env_enabled("MACOS_E2E_REQUIRED"),
+    }
 
 
 def bool_field(payload: dict[str, Any], field: str) -> bool:
@@ -119,25 +143,29 @@ def write_github_output(path: Path, result: dict[str, Any]) -> None:
             handle.write(f"{key}={'true' if value else 'false'}\n")
 
 
+def invalid_result(message: str) -> dict[str, Any]:
+    return {
+        "adapter": "",
+        "configured": False,
+        "configurationError": True,
+        "errors": [message],
+        "integrationEnabled": False,
+        "integrationRequired": False,
+        "coverageEnabled": False,
+        "coverageRequired": False,
+        "e2eEnabled": False,
+        "e2eRequired": False,
+    }
+
+
 def main() -> int:
     args = parse_args()
     try:
-        payload = load_input(args.input)
+        payload = load_environment() if args.from_env else load_input(args.input)
         exit_code, result = classify(payload)
     except InputError as exc:
         exit_code = EXIT_CONFIGURATION_ERROR
-        result = {
-            "adapter": "",
-            "configured": False,
-            "configurationError": True,
-            "errors": [str(exc)],
-            "integrationEnabled": False,
-            "integrationRequired": False,
-            "coverageEnabled": False,
-            "coverageRequired": False,
-            "e2eEnabled": False,
-            "e2eRequired": False,
-        }
+        result = invalid_result(str(exc))
 
     json.dump(result, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
