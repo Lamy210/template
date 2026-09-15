@@ -52,3 +52,6 @@ jobs:
 
       - name: Coverage tooling tests
         run: python3 -m unittest scripts/test/test-compare-coverage.py -v
+
+      - name: Required gate policy tests
+        run: python3 -m unittest scripts/test/test-evaluate-required-gate.py -v

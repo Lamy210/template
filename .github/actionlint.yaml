@@ -1,0 +1,6 @@
+# actionlint v1.7.12 predates GitHub's July 2026 self-repository `$/` syntax.
+# Keep this path-scoped compatibility ignore until actionlint understands that syntax.
+paths:
+  .github/workflows/tests.yml:
+    ignore:
+      - 'reusable workflow call "\$/\.github/workflows/reusable-swift-tests\.yml" at "uses" is not following the format'
