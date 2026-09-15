@@ -130,6 +130,7 @@ jobs:
     uses: $/.github/workflows/reusable-swift-tests.yml
     permissions:
       contents: read
+      actions: read
     with:
       check_name: Integration
       adapter: ${{ vars.MACOS_TEST_ADAPTER }}
