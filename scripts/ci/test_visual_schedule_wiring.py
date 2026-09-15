@@ -15,7 +15,7 @@ class VisualScheduleWiringTests(unittest.TestCase):
     def test_tests_workflow_has_weekly_schedule(self):
         self.assertRegex(
             self.tests_workflow,
-            re.compile(r"(?m)^  schedule:\n    - cron: ['\"]17 3 \\* \\* 0['\"]$"),
+            re.compile(r"(?m)^  schedule:\n    - cron: ['\"]17 3 \* \* 0['\"]$"),
         )
 
     def test_visual_caller_explicitly_trusts_push_and_schedule(self):
