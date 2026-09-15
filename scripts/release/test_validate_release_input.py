@@ -6,6 +6,8 @@ import io
 import json
 from pathlib import Path
 import plistlib
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -116,6 +118,19 @@ class ReleaseInputValidationTests(unittest.TestCase):
                 release_scripts_root=Path(__file__).resolve().parent,
             )
             return errors, validated
+
+    def test_cli_help_executes_from_repository_root(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        result = subprocess.run(
+            [sys.executable, "scripts/release/validate-release-input.py", "--help"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("Validate release input before privileged signing", result.stdout)
 
     def test_valid_release_input_returns_validator_owned_metadata(self) -> None:
         errors, validated = self.validate_fixture()
