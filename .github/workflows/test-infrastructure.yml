@@ -60,6 +60,9 @@ jobs:
       - name: Required gate policy tests
         run: python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
 
+      - name: Test subsystem classifier tests
+        run: python3 -m unittest scripts/test/test-classify-test-policy.py -v
+
       - name: macOS E2E tooling tests
         run: python3 -m unittest scripts/test/test-macos-e2e.py -v
 
