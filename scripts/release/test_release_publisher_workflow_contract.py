@@ -110,14 +110,17 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
     def test_exports_exact_validated_artifact_identity(self) -> None:
         block = job_block(self.workflow_text(), "validate")
         self.assertIn("id: validated_upload", block)
+        self.assertIn("id: validated_digest", block)
         self.assertIn(
             "validated_artifact_id: ${{ steps.validated_upload.outputs.artifact-id }}",
             block,
         )
         self.assertIn(
-            "validated_artifact_digest: ${{ steps.validated_upload.outputs.artifact-digest }}",
+            "validated_artifact_digest: ${{ steps.validated_digest.outputs.digest }}",
             block,
         )
+        self.assertIn("RAW_ARTIFACT_DIGEST: ${{ steps.validated_upload.outputs.artifact-digest }}", block)
+        self.assertIn("sha256:${RAW_ARTIFACT_DIGEST}", block)
 
         privileged = job_block(self.workflow_text(), "sign-and-publish")
         self.assertIn(
