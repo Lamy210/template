@@ -58,9 +58,16 @@ class ReleaseBuildWorkflowContractTests(unittest.TestCase):
     def test_build_writes_and_uploads_provenance_with_archive(self) -> None:
         text = self.workflow_text()
         self.assertIn("scripts/release/write-build-provenance.py", text)
-        self.assertIn("release-input/unsigned-macos-app.tar.gz", text)
-        self.assertIn("release-input/build-provenance.json", text)
+        self.assertIn("artifact-payload/release-input/unsigned-macos-app.tar.gz", text)
+        self.assertIn("artifact-payload/release-input/build-provenance.json", text)
         self.assertRegex(
+            text,
+            re.compile(
+                r"path: artifact-payload/\n",
+                re.MULTILINE,
+            ),
+        )
+        self.assertNotRegex(
             text,
             re.compile(
                 r"path: \|\n"
