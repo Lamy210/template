@@ -97,18 +97,15 @@ max_runs="${max_runs_number}"
 [[ -n "${trusted_events}" ]] || die "${EXIT_USAGE}" '--trusted-events must not be empty'
 
 IFS=',' read -r -a trusted_event_list <<<"${trusted_events}"
-validated_events=()
+seen_events=","
 for trusted_event in "${trusted_event_list[@]}"; do
   case "${trusted_event}" in
     push | schedule) ;;
     *) die "${EXIT_USAGE}" "untrusted workflow event in --trusted-events: ${trusted_event}" ;;
   esac
-  for existing_event in "${validated_events[@]}"; do
-    [[ "${existing_event}" != "${trusted_event}" ]] || die "${EXIT_USAGE}" "duplicate trusted workflow event: ${trusted_event}"
-  done
-  validated_events+=("${trusted_event}")
+  [[ "${seen_events}" != *",${trusted_event},"* ]] || die "${EXIT_USAGE}" "duplicate trusted workflow event: ${trusted_event}"
+  seen_events+="${trusted_event},"
 done
-trusted_event_list=("${validated_events[@]}")
 
 [[ -n "${GH_TOKEN:-}" ]] || die "${EXIT_USAGE}" 'GH_TOKEN is required'
 
