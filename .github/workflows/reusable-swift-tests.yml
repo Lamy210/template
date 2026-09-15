@@ -9,7 +9,7 @@ on:
         default: Unit
         type: string
       adapter:
-        description: Test adapter: xcode or swiftpm.
+        description: "Test adapter: xcode or swiftpm."
         required: true
         type: string
       working_directory:
