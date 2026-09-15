@@ -80,7 +80,7 @@ jobs:
     name: Unit runner
     needs: classify
     if: ${{ needs.classify.outputs.configured == 'true' }}
-    uses: ./.github/workflows/reusable-swift-tests.yml
+    uses: $/.github/workflows/reusable-swift-tests.yml
     permissions:
       contents: read
       actions: read
@@ -127,7 +127,7 @@ jobs:
     name: Integration runner
     needs: classify
     if: ${{ needs.classify.outputs.integration_enabled == 'true' }}
-    uses: ./.github/workflows/reusable-swift-tests.yml
+    uses: $/.github/workflows/reusable-swift-tests.yml
     permissions:
       contents: read
     with:
