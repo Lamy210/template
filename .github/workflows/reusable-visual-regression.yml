@@ -36,6 +36,11 @@ on:
         required: false
         default: false
         type: boolean
+      required:
+        description: Whether a failed visual comparison must fail the reusable workflow.
+        required: false
+        default: true
+        type: boolean
     outputs:
       baseline_available:
         description: Whether a trusted rolling baseline was resolved.
@@ -43,6 +48,9 @@ on:
       baseline_run_id:
         description: Trusted baseline source run ID, empty during bootstrap.
         value: ${{ jobs.visual.outputs.baseline_run_id }}
+      result:
+        description: Raw Visual subsystem result before required/optional policy is applied.
+        value: ${{ jobs.visual.outputs.result }}
 
 permissions:
   contents: read
@@ -53,9 +61,11 @@ jobs:
     name: Visual comparison
     runs-on: macos-26
     timeout-minutes: 30
+    continue-on-error: ${{ !inputs.required }}
     outputs:
       baseline_available: ${{ steps.baseline.outputs.available }}
       baseline_run_id: ${{ steps.baseline.outputs.run_id }}
+      result: ${{ steps.finalize.outputs.result }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       MANIFEST_PATH: ${{ inputs.manifest_path }}
@@ -67,17 +77,20 @@ jobs:
       BOOTSTRAP_ROLLING: ${{ inputs.bootstrap_rolling }}
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Download current visual capture
+        id: download
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ inputs.current_artifact_name }}
           path: artifacts/visual
 
       - name: Validate visual manifest
+        id: manifest
         run: >-
           swift run --package-path Tools/VisualDiff visual-diff validate-manifest
           --manifest "${MANIFEST_PATH}"
@@ -134,6 +147,7 @@ jobs:
           echo "run_id=${baseline_run_id}" >>"${GITHUB_OUTPUT}"
 
       - name: Compare visual captures
+        id: compare
         shell: bash
         env:
           BASELINE_AVAILABLE: ${{ steps.baseline.outputs.available }}
@@ -172,6 +186,7 @@ jobs:
           exit "${compare_status}"
 
       - name: Upload visual comparison report
+        id: report_upload
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -181,3 +196,35 @@ jobs:
             ${{ runner.temp }}/visual-baseline/resolver-metadata.json
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Finalize reusable Visual result
+        id: finalize
+        if: ${{ always() }}
+        shell: bash
+        env:
+          REQUIRED: ${{ inputs.required }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+          REPORT_UPLOAD_OUTCOME: ${{ steps.report_upload.outcome }}
+        run: |
+          set -euo pipefail
+          result="success"
+          for outcome in \
+            "${CHECKOUT_OUTCOME}" \
+            "${DOWNLOAD_OUTCOME}" \
+            "${MANIFEST_OUTCOME}" \
+            "${BASELINE_OUTCOME}" \
+            "${COMPARE_OUTCOME}" \
+            "${REPORT_UPLOAD_OUTCOME}"; do
+            if [[ "${outcome}" != "success" ]]; then
+              result="failure"
+            fi
+          done
+
+          echo "result=${result}" >>"${GITHUB_OUTPUT}"
+          if [[ "${result}" == "failure" && "${REQUIRED}" != "true" ]]; then
+            echo "::warning::Visual regression failed but is optional."
+          fi
