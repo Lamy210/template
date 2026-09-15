@@ -15,7 +15,8 @@ Usage: resolve-trusted-main-artifact.sh \
   --artifact exact-name \
   --output directory \
   [--branch branch-name] \
-  [--max-runs 1..100]
+  [--max-runs 1..100] \
+  [--trusted-events push[,schedule]]
 EOF
 }
 
@@ -32,6 +33,7 @@ artifact_name=""
 output_dir=""
 branch="main"
 max_runs="100"
+trusted_events="push"
 
 while (($# > 0)); do
   case "$1" in
@@ -65,6 +67,11 @@ while (($# > 0)); do
       max_runs="$2"
       shift 2
       ;;
+    --trusted-events)
+      (($# >= 2)) || die "${EXIT_USAGE}" 'missing value for --trusted-events'
+      trusted_events="$2"
+      shift 2
+      ;;
     -h | --help)
       usage
       exit 0
@@ -87,6 +94,22 @@ done
 max_runs_number=$((10#${max_runs}))
 ((max_runs_number >= 1 && max_runs_number <= 100)) || die "${EXIT_USAGE}" '--max-runs must be from 1 to 100'
 max_runs="${max_runs_number}"
+[[ -n "${trusted_events}" ]] || die "${EXIT_USAGE}" '--trusted-events must not be empty'
+
+IFS=',' read -r -a trusted_event_list <<<"${trusted_events}"
+validated_events=()
+for trusted_event in "${trusted_event_list[@]}"; do
+  case "${trusted_event}" in
+    push | schedule) ;;
+    *) die "${EXIT_USAGE}" "untrusted workflow event in --trusted-events: ${trusted_event}" ;;
+  esac
+  for existing_event in "${validated_events[@]}"; do
+    [[ "${existing_event}" != "${trusted_event}" ]] || die "${EXIT_USAGE}" "duplicate trusted workflow event: ${trusted_event}"
+  done
+  validated_events+=("${trusted_event}")
+done
+trusted_event_list=("${validated_events[@]}")
+
 [[ -n "${GH_TOKEN:-}" ]] || die "${EXIT_USAGE}" 'GH_TOKEN is required'
 
 command -v gh >/dev/null 2>&1 || die "${EXIT_USAGE}" 'gh is required'
@@ -124,16 +147,18 @@ print(urllib.parse.quote(sys.argv[1], safe=""))
 PY
 )"
 
-runs_json="${work_root}/runs.json"
-runs_endpoint="repos/${repository}/actions/workflows/${workflow}/runs?branch=${encoded_branch}&event=push&status=success&per_page=${max_runs}"
-api_to_file "${runs_endpoint}" "${runs_json}" || die "${EXIT_INFRA}" 'failed to query workflow runs'
+raw_candidates_file="${work_root}/candidates-unsorted.tsv"
+: >"${raw_candidates_file}"
+for trusted_event in "${trusted_event_list[@]}"; do
+  runs_json="${work_root}/runs-${trusted_event}.json"
+  runs_endpoint="repos/${repository}/actions/workflows/${workflow}/runs?branch=${encoded_branch}&event=${trusted_event}&status=success&per_page=${max_runs}"
+  api_to_file "${runs_endpoint}" "${runs_json}" || die "${EXIT_INFRA}" "failed to query ${trusted_event} workflow runs"
 
-candidates_file="${work_root}/candidates.tsv"
-if python3 - "${runs_json}" "${repository}" "${branch}" >"${candidates_file}" <<'PY'
+  if python3 - "${runs_json}" "${repository}" "${branch}" "${trusted_event}" >>"${raw_candidates_file}" <<'PY'
 import json
 import sys
 
-path, expected_repo, expected_branch = sys.argv[1:4]
+path, expected_repo, expected_branch, expected_event = sys.argv[1:5]
 try:
     with open(path, encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -154,7 +179,7 @@ for run in runs:
         continue
     if run.get("head_branch") != expected_branch:
         continue
-    if run.get("event") != "push":
+    if run.get("event") != expected_event:
         continue
     if run.get("conclusion") != "success":
         continue
@@ -165,21 +190,44 @@ for run in runs:
     if not isinstance(run_id, int) or not isinstance(attempt, int) or not isinstance(head_sha, str) or not head_sha:
         continue
 
-    print(f"{run_id}\t{attempt}\t{head_sha}")
+    print(f"{run_id}\t{attempt}\t{head_sha}\t{expected_event}")
 PY
-then
-  :
-else
-  die "${EXIT_INFRA}" 'workflow-runs response was malformed'
-fi
+  then
+    :
+  else
+    die "${EXIT_INFRA}" "${trusted_event} workflow-runs response was malformed"
+  fi
+done
+
+candidates_file="${work_root}/candidates.tsv"
+python3 - "${raw_candidates_file}" "${candidates_file}" <<'PY'
+import sys
+
+source, destination = sys.argv[1:3]
+rows = []
+with open(source, encoding="utf-8") as handle:
+    for line in handle:
+        line = line.rstrip("\n")
+        if not line:
+            continue
+        fields = line.split("\t")
+        if len(fields) != 4:
+            raise SystemExit("malformed trusted workflow candidate")
+        rows.append((int(fields[0]), line))
+rows.sort(key=lambda item: item[0], reverse=True)
+with open(destination, "w", encoding="utf-8") as handle:
+    for _run_id, line in rows:
+        handle.write(line + "\n")
+PY
 
 selected_run_id=""
 selected_run_attempt=""
 selected_source_sha=""
+selected_event=""
 selected_artifact_id=""
 selected_artifact_digest=""
 
-while IFS=$'\t' read -r run_id run_attempt source_sha; do
+while IFS=$'\t' read -r run_id run_attempt source_sha run_event; do
   [[ -n "${run_id}" ]] || continue
 
   artifacts_json="${work_root}/artifacts-${run_id}.json"
@@ -245,6 +293,7 @@ PY
   selected_run_id="${run_id}"
   selected_run_attempt="${run_attempt}"
   selected_source_sha="${source_sha}"
+  selected_event="${run_event}"
   break
 done <"${candidates_file}"
 
@@ -378,6 +427,7 @@ python3 - \
   "${selected_run_id}" \
   "${selected_run_attempt}" \
   "${selected_source_sha}" \
+  "${selected_event}" \
   "${selected_artifact_id}" \
   "${artifact_name}" \
   "${selected_artifact_digest}" <<'PY'
@@ -393,6 +443,7 @@ import sys
     run_id,
     run_attempt,
     source_sha,
+    event,
     artifact_id,
     artifact_name,
     artifact_digest,
@@ -406,6 +457,7 @@ payload = {
     "runId": int(run_id),
     "runAttempt": int(run_attempt),
     "sourceSHA": source_sha,
+    "event": event,
     "artifactId": int(artifact_id),
     "artifactName": artifact_name,
     "artifactDigest": artifact_digest,
