@@ -5,6 +5,8 @@ on:
     paths:
       - "scripts/visual/build-baseline-bundle.py"
       - "scripts/visual/test-build-baseline-bundle.py"
+      - "scripts/visual/validate-baseline-provenance.py"
+      - "scripts/visual/test-validate-baseline-provenance.py"
       - ".github/workflows/visual-bundle-tests.yml"
   push:
     branches:
@@ -12,6 +14,8 @@ on:
     paths:
       - "scripts/visual/build-baseline-bundle.py"
       - "scripts/visual/test-build-baseline-bundle.py"
+      - "scripts/visual/validate-baseline-provenance.py"
+      - "scripts/visual/test-validate-baseline-provenance.py"
       - ".github/workflows/visual-bundle-tests.yml"
   workflow_dispatch:
 
@@ -30,3 +34,6 @@ jobs:
 
       - name: Baseline bundle tests
         run: python3 scripts/visual/test-build-baseline-bundle.py -v
+
+      - name: Baseline provenance tests
+        run: python3 scripts/visual/test-validate-baseline-provenance.py -v
