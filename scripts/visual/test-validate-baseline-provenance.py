@@ -33,6 +33,7 @@ class BaselineProvenanceTests(unittest.TestCase):
             "runId": 12345,
             "runAttempt": 2,
             "sourceSHA": SOURCE_SHA,
+            "event": "push",
             "artifactId": 777,
             "artifactName": "visual-baseline",
             "artifactDigest": DIGEST,
@@ -58,20 +59,41 @@ class BaselineProvenanceTests(unittest.TestCase):
         self.resolver.write_text(json.dumps(self.resolver_payload), encoding="utf-8")
         self.bundle.write_text(json.dumps(self.bundle_payload), encoding="utf-8")
 
-    def validate(self):
+    def validate(self, expected_events=None):
         module = load_validator()
-        return module.validate_provenance(
-            resolver_metadata_path=self.resolver,
-            bundle_manifest_path=self.bundle,
-            expected_repository="Lamy210/template",
-            expected_workflow="tests.yml",
-            expected_artifact="visual-baseline",
-        )
+        kwargs = {
+            "resolver_metadata_path": self.resolver,
+            "bundle_manifest_path": self.bundle,
+            "expected_repository": "Lamy210/template",
+            "expected_workflow": "tests.yml",
+            "expected_artifact": "visual-baseline",
+        }
+        if expected_events is not None:
+            kwargs["expected_events"] = expected_events
+        return module.validate_provenance(**kwargs)
 
     def test_accepts_exact_resolver_bundle_identity(self):
         result = self.validate()
         self.assertEqual(result["runId"], 12345)
         self.assertEqual(result["sourceSHA"], SOURCE_SHA)
+
+    def test_accepts_explicitly_trusted_schedule_event(self):
+        self.resolver_payload["event"] = "schedule"
+        self.write_payloads()
+        result = self.validate(expected_events=("push", "schedule"))
+        self.assertEqual(result["event"], "schedule")
+
+    def test_rejects_resolver_event_outside_expected_policy(self):
+        self.resolver_payload["event"] = "pull_request"
+        self.write_payloads()
+        with self.assertRaisesRegex(ValueError, "event"):
+            self.validate(expected_events=("push", "schedule"))
+
+    def test_rejects_missing_resolver_event_when_policy_is_explicit(self):
+        self.resolver_payload.pop("event")
+        self.write_payloads()
+        with self.assertRaisesRegex(ValueError, "event"):
+            self.validate(expected_events=("push", "schedule"))
 
     def test_rejects_bundle_source_run_mismatch(self):
         self.bundle_payload["sourceRunID"] = "99999"

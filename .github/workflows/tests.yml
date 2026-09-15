@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "17 3 * * 0"
   workflow_dispatch:
 
 permissions:
@@ -199,6 +201,7 @@ jobs:
       current_artifact_name: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
       current_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       trusted_workflow: tests.yml
+      trusted_events: push,schedule
       baseline_artifact_name: ${{ vars.MACOS_VISUAL_BASELINE_ARTIFACT || 'visual-baseline' }}
       bootstrap_rolling: ${{ needs.classify.outputs.visual_bootstrap == 'true' }}
 
@@ -398,7 +401,7 @@ jobs:
       - classify
       - visual-run
       - required-gate
-    if: ${{ always() && needs.classify.outputs.visual_enabled == 'true' && needs.visual-run.result == 'success' && needs.required-gate.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ always() && needs.classify.outputs.visual_enabled == 'true' && needs.visual-run.result == 'success' && needs.required-gate.result == 'success' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -21,6 +21,11 @@ on:
         required: false
         default: tests.yml
         type: string
+      trusted_events:
+        description: Comma-separated trusted workflow events eligible to provide rolling baselines.
+        required: false
+        default: push
+        type: string
       baseline_artifact_name:
         description: Exact trusted rolling baseline artifact name.
         required: false
@@ -57,6 +62,7 @@ jobs:
       CURRENT_ARTIFACT_NAME: ${{ inputs.current_artifact_name }}
       CURRENT_SHA: ${{ inputs.current_sha }}
       TRUSTED_WORKFLOW: ${{ inputs.trusted_workflow }}
+      TRUSTED_EVENTS: ${{ inputs.trusted_events }}
       BASELINE_ARTIFACT_NAME: ${{ inputs.baseline_artifact_name }}
       BOOTSTRAP_ROLLING: ${{ inputs.bootstrap_rolling }}
     steps:
@@ -91,6 +97,7 @@ jobs:
           bash scripts/ci/resolve-trusted-main-artifact.sh \
             --repository "${GITHUB_REPOSITORY}" \
             --workflow "${TRUSTED_WORKFLOW}" \
+            --trusted-events "${TRUSTED_EVENTS}" \
             --artifact "${BASELINE_ARTIFACT_NAME}" \
             --output "${baseline_root}" \
             >"${baseline_run_file}"
@@ -120,7 +127,8 @@ jobs:
             --bundle-manifest "${baseline_root}/bundle-manifest.json" \
             --expected-repository "${GITHUB_REPOSITORY}" \
             --expected-workflow "${TRUSTED_WORKFLOW}" \
-            --expected-artifact "${BASELINE_ARTIFACT_NAME}"
+            --expected-artifact "${BASELINE_ARTIFACT_NAME}" \
+            --expected-events "${TRUSTED_EVENTS}"
 
           echo "available=true" >>"${GITHUB_OUTPUT}"
           echo "run_id=${baseline_run_id}" >>"${GITHUB_OUTPUT}"
