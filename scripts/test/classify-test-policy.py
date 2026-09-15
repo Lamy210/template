@@ -20,6 +20,9 @@ EXPECTED_KEYS = {
     "coverageRequired",
     "e2eEnabled",
     "e2eRequired",
+    "visualEnabled",
+    "visualRequired",
+    "visualBootstrap",
 }
 
 
@@ -59,6 +62,8 @@ def env_enabled(name: str) -> bool:
 def load_environment() -> dict[str, Any]:
     coverage_enabled = env_enabled("MACOS_COVERAGE_ENABLED")
     coverage_required_value = os.environ.get("MACOS_COVERAGE_REQUIRED", "")
+    visual_enabled = env_enabled("MACOS_VISUAL_ENABLED")
+    visual_required_value = os.environ.get("MACOS_VISUAL_REQUIRED", "")
     return {
         "adapter": os.environ.get("MACOS_TEST_ADAPTER", ""),
         "integrationEnabled": env_enabled("MACOS_INTEGRATION_ENABLED"),
@@ -70,6 +75,12 @@ def load_environment() -> dict[str, Any]:
         ),
         "e2eEnabled": env_enabled("MACOS_E2E_ENABLED"),
         "e2eRequired": env_enabled("MACOS_E2E_REQUIRED"),
+        "visualEnabled": visual_enabled,
+        "visualRequired": (
+            visual_required_value == "true"
+            or (visual_enabled and visual_required_value != "false")
+        ),
+        "visualBootstrap": env_enabled("MACOS_VISUAL_BOOTSTRAP"),
     }
 
 
@@ -91,6 +102,9 @@ def classify(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     coverage_required = bool_field(payload, "coverageRequired")
     e2e_requested = bool_field(payload, "e2eEnabled")
     e2e_required = bool_field(payload, "e2eRequired")
+    visual_requested = bool_field(payload, "visualEnabled")
+    visual_required = bool_field(payload, "visualRequired")
+    visual_bootstrap = bool_field(payload, "visualBootstrap")
 
     errors: list[str] = []
     if adapter not in {"", "xcode", "swiftpm"}:
@@ -104,6 +118,10 @@ def classify(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         errors.append("Coverage cannot be required while disabled")
     if e2e_required and not e2e_requested:
         errors.append("E2E cannot be required while disabled")
+    if visual_required and not visual_requested:
+        errors.append("Visual cannot be required while disabled")
+    if visual_bootstrap and not visual_requested:
+        errors.append("Visual bootstrap requires Visual to be enabled")
 
     if integration_requested and not configured:
         errors.append("Integration requires a configured test adapter")
@@ -111,7 +129,12 @@ def classify(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         errors.append("Coverage requires a configured test adapter")
     if e2e_requested and adapter != "xcode":
         errors.append("E2E requires the xcode adapter")
+    if visual_requested and adapter != "xcode":
+        errors.append("Visual requires the xcode adapter")
+    if visual_requested and not e2e_requested:
+        errors.append("Visual requires E2E to be enabled")
 
+    visual_enabled = visual_requested and adapter == "xcode" and e2e_requested
     result = {
         "adapter": adapter,
         "configured": configured,
@@ -123,6 +146,9 @@ def classify(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         "coverageRequired": coverage_required,
         "e2eEnabled": e2e_requested and adapter == "xcode",
         "e2eRequired": e2e_required,
+        "visualEnabled": visual_enabled,
+        "visualRequired": visual_required,
+        "visualBootstrap": visual_bootstrap,
     }
     return (EXIT_CONFIGURATION_ERROR if errors else EXIT_OK), result
 
@@ -137,6 +163,9 @@ def write_github_output(path: Path, result: dict[str, Any]) -> None:
         "coverage_required": result["coverageRequired"],
         "e2e_enabled": result["e2eEnabled"],
         "e2e_required": result["e2eRequired"],
+        "visual_enabled": result["visualEnabled"],
+        "visual_required": result["visualRequired"],
+        "visual_bootstrap": result["visualBootstrap"],
     }
     with path.open("a", encoding="utf-8") as handle:
         for key, value in values.items():
@@ -155,6 +184,9 @@ def invalid_result(message: str) -> dict[str, Any]:
         "coverageRequired": False,
         "e2eEnabled": False,
         "e2eRequired": False,
+        "visualEnabled": False,
+        "visualRequired": False,
+        "visualBootstrap": False,
     }
 
 

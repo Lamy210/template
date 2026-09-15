@@ -18,6 +18,9 @@ class TestPolicyClassifierTests(unittest.TestCase):
             "coverageRequired": False,
             "e2eEnabled": False,
             "e2eRequired": False,
+            "visualEnabled": False,
+            "visualRequired": False,
+            "visualBootstrap": False,
         }
         payload.update(overrides)
 
@@ -39,6 +42,7 @@ class TestPolicyClassifierTests(unittest.TestCase):
         self.assertFalse(output["configured"])
         self.assertFalse(output["configurationError"])
         self.assertFalse(output["e2eEnabled"])
+        self.assertFalse(output["visualEnabled"])
 
     def test_xcode_can_enable_e2e(self):
         completed, output = self.run_classifier(
@@ -48,6 +52,19 @@ class TestPolicyClassifierTests(unittest.TestCase):
         self.assertTrue(output["configured"])
         self.assertTrue(output["e2eEnabled"])
         self.assertTrue(output["e2eRequired"])
+
+    def test_xcode_e2e_can_enable_required_visual_bootstrap(self):
+        completed, output = self.run_classifier(
+            adapter="xcode",
+            e2eEnabled=True,
+            visualEnabled=True,
+            visualRequired=True,
+            visualBootstrap=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(output["visualEnabled"])
+        self.assertTrue(output["visualRequired"])
+        self.assertTrue(output["visualBootstrap"])
 
     def test_swiftpm_cannot_enable_macos_e2e(self):
         completed, output = self.run_classifier(adapter="swiftpm", e2eEnabled=True)
@@ -60,6 +77,21 @@ class TestPolicyClassifierTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2)
         self.assertTrue(output["configurationError"])
         self.assertIn("E2E cannot be required while disabled", output["errors"])
+
+    def test_required_disabled_visual_is_configuration_error(self):
+        completed, output = self.run_classifier(adapter="xcode", visualRequired=True)
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("Visual cannot be required while disabled", output["errors"])
+
+    def test_visual_requires_e2e_capture(self):
+        completed, output = self.run_classifier(adapter="xcode", visualEnabled=True)
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("Visual requires E2E to be enabled", output["errors"])
+
+    def test_visual_bootstrap_requires_visual_enabled(self):
+        completed, output = self.run_classifier(adapter="xcode", visualBootstrap=True)
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("Visual bootstrap requires Visual to be enabled", output["errors"])
 
     def test_required_disabled_integration_is_configuration_error(self):
         completed, output = self.run_classifier(
