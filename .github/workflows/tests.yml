@@ -281,6 +281,7 @@ jobs:
       - name: Build normalized subsystem policy
         shell: bash
         env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
           CONFIGURED: ${{ needs.classify.outputs.configured }}
           CONFIGURATION_ERROR: ${{ needs.classify.outputs.configuration_error }}
           UNIT_RESULT: ${{ needs.unit.result }}
@@ -304,8 +305,12 @@ jobs:
           import sys
 
           output = sys.argv[1]
+          classifier_failed = os.environ["CLASSIFY_RESULT"] != "success"
           configured = os.environ["CONFIGURED"] == "true"
-          configuration_error = os.environ["CONFIGURATION_ERROR"] == "true"
+          configuration_error = (
+              classifier_failed
+              or os.environ["CONFIGURATION_ERROR"] == "true"
+          )
           integration_enabled = os.environ["INTEGRATION_ENABLED"] == "true"
           e2e_enabled = os.environ["E2E_ENABLED"] == "true"
           visual_enabled = os.environ["VISUAL_ENABLED"] == "true"

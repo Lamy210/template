@@ -64,7 +64,9 @@ jobs:
         run: python3 -m unittest scripts/test/test-compare-coverage.py -v
 
       - name: Required gate policy tests
-        run: python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
+        run: |
+          python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
+          python3 scripts/test/test-required-gate-workflow.py -v
 
       - name: Test subsystem classifier tests
         run: python3 -m unittest scripts/test/test-classify-test-policy.py -v
