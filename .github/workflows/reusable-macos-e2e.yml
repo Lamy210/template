@@ -22,14 +22,6 @@ on:
         required: false
         default: ""
         type: string
-      destination:
-        required: false
-        default: platform=macOS,arch=arm64
-        type: string
-      developer_dir:
-        required: false
-        default: /Applications/Xcode_26.6.app/Contents/Developer
-        type: string
       profile_id:
         required: false
         default: macos-26-arm64-xcode-26.6
@@ -44,14 +36,15 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     env:
-      DEVELOPER_DIR: ${{ inputs.developer_dir }}
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       WORKING_DIRECTORY: ${{ inputs.working_directory }}
       PROJECT_PATH: ${{ inputs.project_path }}
       WORKSPACE_PATH: ${{ inputs.workspace_path }}
       SCHEME: ${{ inputs.scheme }}
       TEST_PLAN: ${{ inputs.test_plan }}
-      TEST_DESTINATION: ${{ inputs.destination }}
+      TEST_DESTINATION: platform=macOS,arch=arm64
       VISUAL_PROFILE_ID: ${{ inputs.profile_id }}
+      CURRENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
       TZ: UTC
@@ -62,14 +55,10 @@ jobs:
           persist-credentials: false
 
       - name: Run deterministic E2E
-        env:
-          CURRENT_SHA: ${{ github.sha }}
         run: bash scripts/test/run-macos-e2e.sh
 
       - name: Collect visual profile metadata
         if: ${{ always() }}
-        env:
-          CURRENT_SHA: ${{ github.sha }}
         run: bash scripts/visual/collect-e2e-profile.sh
 
       - name: Export xcresult attachments
