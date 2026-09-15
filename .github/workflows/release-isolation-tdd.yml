@@ -55,6 +55,11 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Create namespaced release artifact fixture
         shell: bash
         run: |
@@ -86,3 +91,31 @@ jobs:
           test -f downloaded/release-input/unsigned-macos-app.tar.gz
           test -f downloaded/release-input/build-provenance.json
           test "$(find downloaded -type f | wc -l | tr -d ' ')" = 2
+
+      - name: Verify raw Artifact API digest and strict ZIP contract
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          [[ "${ARTIFACT_ID}" =~ ^[0-9]+$ ]]
+          [[ "${ARTIFACT_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" >artifact-api.zip
+          actual_digest="$(python3 - <<'PY'
+          import hashlib
+
+          digest = hashlib.sha256()
+          with open("artifact-api.zip", "rb") as handle:
+              for block in iter(lambda: handle.read(1024 * 1024), b""):
+                  digest.update(block)
+          print("sha256:" + digest.hexdigest())
+          PY
+          )"
+          test "${actual_digest}" = "${ARTIFACT_DIGEST}"
+          python3 scripts/release/validate-actions-artifact.py \
+            --archive artifact-api.zip \
+            --output api-extracted
+          test -f api-extracted/release-input/unsigned-macos-app.tar.gz
+          test -f api-extracted/release-input/build-provenance.json
