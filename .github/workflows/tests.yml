@@ -25,56 +25,28 @@ jobs:
       integration_required: ${{ steps.policy.outputs.integration_required }}
       coverage_enabled: ${{ steps.policy.outputs.coverage_enabled }}
       coverage_required: ${{ steps.policy.outputs.coverage_required }}
+      e2e_enabled: ${{ steps.policy.outputs.e2e_enabled }}
+      e2e_required: ${{ steps.policy.outputs.e2e_required }}
     env:
       MACOS_TEST_ADAPTER: ${{ vars.MACOS_TEST_ADAPTER }}
       MACOS_INTEGRATION_ENABLED: ${{ vars.MACOS_INTEGRATION_ENABLED }}
       MACOS_INTEGRATION_REQUIRED: ${{ vars.MACOS_INTEGRATION_REQUIRED }}
       MACOS_COVERAGE_ENABLED: ${{ vars.MACOS_COVERAGE_ENABLED }}
       MACOS_COVERAGE_REQUIRED: ${{ vars.MACOS_COVERAGE_REQUIRED }}
+      MACOS_E2E_ENABLED: ${{ vars.MACOS_E2E_ENABLED }}
+      MACOS_E2E_REQUIRED: ${{ vars.MACOS_E2E_REQUIRED }}
     steps:
+      - name: Checkout policy classifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Classify configured test subsystems
         id: policy
-        shell: bash
-        run: |
-          set -euo pipefail
-          adapter="${MACOS_TEST_ADAPTER}"
-          configured=false
-          configuration_error=false
-
-          case "${adapter}" in
-            "") ;;
-            xcode | swiftpm) configured=true ;;
-            *) configuration_error=true ;;
-          esac
-
-          integration_enabled=false
-          if [[ "${configured}" == "true" && "${MACOS_INTEGRATION_ENABLED}" == "true" ]]; then
-            integration_enabled=true
-          fi
-
-          coverage_enabled=false
-          if [[ "${configured}" == "true" && "${MACOS_COVERAGE_ENABLED}" == "true" ]]; then
-            coverage_enabled=true
-          fi
-
-          integration_required=false
-          if [[ "${integration_enabled}" == "true" && "${MACOS_INTEGRATION_REQUIRED}" == "true" ]]; then
-            integration_required=true
-          fi
-
-          coverage_required=false
-          if [[ "${coverage_enabled}" == "true" && "${MACOS_COVERAGE_REQUIRED}" != "false" ]]; then
-            coverage_required=true
-          fi
-
-          {
-            echo "configured=${configured}"
-            echo "configuration_error=${configuration_error}"
-            echo "integration_enabled=${integration_enabled}"
-            echo "integration_required=${integration_required}"
-            echo "coverage_enabled=${coverage_enabled}"
-            echo "coverage_required=${coverage_required}"
-          } >>"${GITHUB_OUTPUT}"
+        run: >-
+          python3 scripts/test/classify-test-policy.py
+          --from-env
+          --github-output "$GITHUB_OUTPUT"
 
   unit-run:
     name: Unit runner
@@ -167,14 +139,44 @@ jobs:
             exit 1
           }
 
+  e2e-run:
+    name: E2E runner
+    needs: classify
+    if: ${{ needs.classify.outputs.e2e_enabled == 'true' }}
+    uses: $/.github/workflows/reusable-macos-e2e.yml
+    permissions:
+      contents: read
+    with:
+      working_directory: ${{ vars.MACOS_TEST_WORKING_DIRECTORY || '.' }}
+      project_path: ${{ vars.MACOS_TEST_PROJECT_PATH || '' }}
+      workspace_path: ${{ vars.MACOS_TEST_WORKSPACE_PATH || '' }}
+      scheme: ${{ vars.MACOS_E2E_SCHEME || vars.MACOS_TEST_SCHEME || '' }}
+      test_plan: ${{ vars.MACOS_E2E_TEST_PLAN || '' }}
+      profile_id: ${{ vars.VISUAL_PROFILE_ID || 'macos-26-arm64-xcode-26.6' }}
+
   e2e:
     name: E2E
-    needs: classify
+    needs:
+      - classify
+      - e2e-run
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Report current Task 7 state
-        run: echo "E2E is disabled until the dedicated deterministic E2E workflow is wired."
+      - name: Publish E2E result
+        shell: bash
+        env:
+          ENABLED: ${{ needs.classify.outputs.e2e_enabled }}
+          RESULT: ${{ needs.e2e-run.result }}
+        run: |
+          set -euo pipefail
+          if [[ "${ENABLED}" != "true" ]]; then
+            echo "E2E: DISABLED / NOT APPLICABLE"
+            exit 0
+          fi
+          [[ "${RESULT}" == "success" ]] || {
+            echo "E2E runner result: ${RESULT}" >&2
+            exit 1
+          }
 
   visual:
     name: Visual
@@ -182,8 +184,8 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Report current Task 7 state
-        run: echo "Visual regression is disabled until the dedicated capture workflow is wired."
+      - name: Report current visual state
+        run: echo "Visual regression remains disabled until comparison workflow wiring lands."
 
   coverage:
     name: Coverage
@@ -237,6 +239,9 @@ jobs:
           INTEGRATION_ENABLED: ${{ needs.classify.outputs.integration_enabled }}
           INTEGRATION_REQUIRED: ${{ needs.classify.outputs.integration_required }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
+          E2E_ENABLED: ${{ needs.classify.outputs.e2e_enabled }}
+          E2E_REQUIRED: ${{ needs.classify.outputs.e2e_required }}
+          E2E_RESULT: ${{ needs.e2e.result }}
           COVERAGE_ENABLED: ${{ needs.classify.outputs.coverage_enabled }}
           COVERAGE_REQUIRED: ${{ needs.classify.outputs.coverage_required }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
@@ -251,6 +256,7 @@ jobs:
           configured = os.environ["CONFIGURED"] == "true"
           configuration_error = os.environ["CONFIGURATION_ERROR"] == "true"
           integration_enabled = os.environ["INTEGRATION_ENABLED"] == "true"
+          e2e_enabled = os.environ["E2E_ENABLED"] == "true"
           coverage_enabled = os.environ["COVERAGE_ENABLED"] == "true"
 
           if configuration_error:
@@ -273,6 +279,15 @@ jobs:
               if integration_enabled
               else {"status": "disabled", "required": False, "classification": "not-applicable"}
           )
+          e2e = (
+              {
+                  "status": os.environ["E2E_RESULT"],
+                  "required": os.environ["E2E_REQUIRED"] == "true",
+                  "classification": "applicable",
+              }
+              if e2e_enabled
+              else {"status": "disabled", "required": False, "classification": "not-applicable"}
+          )
           coverage = (
               {
                   "status": os.environ["COVERAGE_RESULT"],
@@ -288,7 +303,7 @@ jobs:
               "subsystems": {
                   "Unit": unit,
                   "Integration": integration,
-                  "E2E": {"status": "disabled", "required": False, "classification": "not-applicable"},
+                  "E2E": e2e,
                   "Visual": {"status": "disabled", "required": False, "classification": "not-applicable"},
                   "Coverage": coverage,
               },
