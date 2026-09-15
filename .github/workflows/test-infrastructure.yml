@@ -7,6 +7,7 @@ on:
       - "Tests/VisualRegression/**"
       - "Tests/VisualBaselines/**"
       - "scripts/ci/**"
+      - "scripts/test/**"
       - ".github/workflows/test-infrastructure.yml"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - "Tests/VisualRegression/**"
       - "Tests/VisualBaselines/**"
       - "scripts/ci/**"
+      - "scripts/test/**"
       - ".github/workflows/test-infrastructure.yml"
   workflow_dispatch:
 
@@ -47,3 +49,6 @@ jobs:
         run: |
           bash scripts/ci/test-resolve-trusted-main-artifact.sh
           bash scripts/ci/test-resolve-trusted-main-artifact-options.sh
+
+      - name: Coverage tooling tests
+        run: python3 -m unittest scripts/test/test-compare-coverage.py -v
