@@ -36,10 +36,10 @@ jobs:
         shell: bash
         env:
           APP_PATH: build/MyApp.app
-          OUTPUT_ARCHIVE: release-input/unsigned-macos-app.tar.gz
+          OUTPUT_ARCHIVE: artifact-payload/release-input/unsigned-macos-app.tar.gz
         run: |
           set -euo pipefail
-          mkdir -p release-input
+          mkdir -p artifact-payload/release-input
           bash scripts/release/package-app-artifact.sh
 
       - name: Write build provenance
@@ -54,17 +54,15 @@ jobs:
             --run-attempt "${GITHUB_RUN_ATTEMPT}" \
             --source-sha "${GITHUB_SHA}" \
             --tag "${GITHUB_REF_NAME}" \
-            --archive-path release-input/unsigned-macos-app.tar.gz \
+            --archive-path artifact-payload/release-input/unsigned-macos-app.tar.gz \
             --app-basename MyApp.app \
             --bundle-id com.example.MyApp \
-            --output release-input/build-provenance.json
+            --output artifact-payload/release-input/build-provenance.json
 
       - name: Upload exact release build input
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unsigned-macos-release-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            release-input/unsigned-macos-app.tar.gz
-            release-input/build-provenance.json
+          path: artifact-payload/
           if-no-files-found: error
           retention-days: 1
