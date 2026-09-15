@@ -361,6 +361,7 @@ jobs:
         if: ${{ always() }}
         shell: bash
         env:
+          CHECK_NAME: ${{ inputs.check_name }}
           ENABLE_COVERAGE: ${{ inputs.enable_coverage }}
           TEST_REQUIRED: ${{ inputs.required }}
           COVERAGE_REQUIRED: ${{ inputs.coverage_required }}
@@ -405,7 +406,7 @@ jobs:
           echo "coverage_result=${coverage_result}" >>"${GITHUB_OUTPUT}"
 
           if [[ "${test_result}" == "failure" && "${TEST_REQUIRED}" != "true" ]]; then
-            echo "::warning::${{ inputs.check_name }} failed but is optional."
+            echo "::warning::${CHECK_NAME} failed but is optional."
           fi
           if [[ "${ENABLE_COVERAGE}" == "true" && "${coverage_result}" == "failure" && "${COVERAGE_REQUIRED}" != "true" ]]; then
             echo "::warning::Coverage failed but is optional."
