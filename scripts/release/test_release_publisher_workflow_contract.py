@@ -129,9 +129,13 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
             privileged,
         )
 
-    def test_concurrency_is_per_source_run_and_never_cancels_in_progress_release(self) -> None:
+    def test_concurrency_serializes_attempts_for_one_source_run(self) -> None:
         text = self.workflow_text()
         self.assertIn(
+            "group: release-publisher-${{ github.event.workflow_run.id }}",
+            text,
+        )
+        self.assertNotIn(
             "group: release-publisher-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}",
             text,
         )
