@@ -127,7 +127,8 @@ jobs:
             --bundle-manifest "${baseline_root}/bundle-manifest.json" \
             --expected-repository "${GITHUB_REPOSITORY}" \
             --expected-workflow "${TRUSTED_WORKFLOW}" \
-            --expected-artifact "${BASELINE_ARTIFACT_NAME}"
+            --expected-artifact "${BASELINE_ARTIFACT_NAME}" \
+            --expected-events "${TRUSTED_EVENTS}"
 
           echo "available=true" >>"${GITHUB_OUTPUT}"
           echo "run_id=${baseline_run_id}" >>"${GITHUB_OUTPUT}"
