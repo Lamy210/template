@@ -51,16 +51,21 @@ class OptionalSubsystemWorkflowTests(unittest.TestCase):
         self.assertIn("coverage_required:", self.swift)
         self.assertIn("value: ${{ jobs.tests.outputs.test_result }}", self.swift)
         self.assertIn("value: ${{ jobs.tests.outputs.coverage_result }}", self.swift)
+        self.assertIn("continue-on-error: ${{ !inputs.required }}", self.swift)
+        self.assertIn("continue-on-error: ${{ !inputs.coverage_required }}", self.swift)
+        self.assertIn("steps.coverage.outcome", self.swift)
 
     def test_e2e_reusable_exposes_raw_result_and_requiredness(self) -> None:
         self.assertIn("required:\n", self.e2e)
         self.assertIn("result:\n", self.e2e)
         self.assertIn("value: ${{ jobs.e2e.outputs.result }}", self.e2e)
+        self.assertIn("continue-on-error: ${{ !inputs.required }}", self.e2e)
 
     def test_visual_reusable_exposes_raw_result_and_requiredness(self) -> None:
         self.assertIn("required:\n", self.visual)
         self.assertIn("result:\n", self.visual)
         self.assertIn("value: ${{ jobs.visual.outputs.result }}", self.visual)
+        self.assertIn("continue-on-error: ${{ !inputs.required }}", self.visual)
 
     def test_callers_forward_required_policy_to_reusable_workflows(self) -> None:
         self.assertIn("required: true", self.tests)
