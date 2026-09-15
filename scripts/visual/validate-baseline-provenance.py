@@ -12,6 +12,7 @@ from typing import Any
 
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
 GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
+ALLOWED_TRUSTED_EVENTS = {"push", "schedule"}
 
 
 def _load_object(path: Path, label: str) -> dict[str, Any]:
@@ -36,6 +37,23 @@ def _non_empty_string(value: Any, label: str) -> str:
     return value
 
 
+def _validate_expected_events(expected_events: tuple[str, ...]) -> tuple[str, ...]:
+    if not expected_events:
+        raise ValueError("expected trusted events must not be empty")
+    if len(set(expected_events)) != len(expected_events):
+        raise ValueError("expected trusted events must not contain duplicates")
+    for event in expected_events:
+        if event not in ALLOWED_TRUSTED_EVENTS:
+            raise ValueError(f"unsupported expected trusted event: {event}")
+    return expected_events
+
+
+def _parse_expected_events(value: str) -> tuple[str, ...]:
+    if not value:
+        raise ValueError("expected trusted events must not be empty")
+    return _validate_expected_events(tuple(value.split(",")))
+
+
 def validate_provenance(
     *,
     resolver_metadata_path: Path,
@@ -43,7 +61,9 @@ def validate_provenance(
     expected_repository: str,
     expected_workflow: str,
     expected_artifact: str,
+    expected_events: tuple[str, ...] = ("push",),
 ) -> dict[str, Any]:
+    expected_events = _validate_expected_events(expected_events)
     resolver = _load_object(resolver_metadata_path, "resolver metadata")
     bundle = _load_object(bundle_manifest_path, "bundle manifest")
 
@@ -56,6 +76,7 @@ def validate_provenance(
     workflow = _non_empty_string(resolver.get("workflow"), "resolver workflow")
     artifact = _non_empty_string(resolver.get("artifactName"), "resolver artifact name")
     branch = _non_empty_string(resolver.get("branch"), "resolver branch")
+    event = _non_empty_string(resolver.get("event"), "resolver event")
     run_id = _positive_int(resolver.get("runId"), "resolver run id")
     run_attempt = _positive_int(resolver.get("runAttempt"), "resolver run attempt")
     source_sha = _non_empty_string(resolver.get("sourceSHA"), "resolver source SHA")
@@ -71,6 +92,8 @@ def validate_provenance(
         raise ValueError("resolver artifact does not match expected artifact")
     if branch != "main":
         raise ValueError("resolver branch must be main")
+    if event not in expected_events:
+        raise ValueError("resolver event is outside the expected trusted event policy")
     if not GIT_SHA_RE.fullmatch(source_sha):
         raise ValueError("resolver source SHA is malformed")
     if not SHA256_RE.fullmatch(artifact_digest):
@@ -99,6 +122,7 @@ def validate_provenance(
         "repository": repository,
         "workflow": workflow,
         "artifactName": artifact,
+        "event": event,
         "runId": run_id,
         "runAttempt": run_attempt,
         "sourceSHA": source_sha,
@@ -113,18 +137,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-repository", required=True)
     parser.add_argument("--expected-workflow", required=True)
     parser.add_argument("--expected-artifact", required=True)
+    parser.add_argument("--expected-events", default="push")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     try:
+        expected_events = _parse_expected_events(args.expected_events)
         result = validate_provenance(
             resolver_metadata_path=args.resolver_metadata,
             bundle_manifest_path=args.bundle_manifest,
             expected_repository=args.expected_repository,
             expected_workflow=args.expected_workflow,
             expected_artifact=args.expected_artifact,
+            expected_events=expected_events,
         )
     except ValueError as exc:
         print(f"validate-baseline-provenance: {exc}", file=sys.stderr)
