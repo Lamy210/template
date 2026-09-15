@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -45,12 +46,8 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
     return payload
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return "sha256:" + digest.hexdigest()
+def _sha256_bytes(data: bytes) -> str:
+    return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
 def _canonical_fingerprint(controlled: dict[str, Any]) -> str:
@@ -60,7 +57,7 @@ def _canonical_fingerprint(controlled: dict[str, Any]) -> str:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+    return _sha256_bytes(encoded)
 
 
 def _validate_controlled_profile(controlled: Any) -> dict[str, Any]:
@@ -103,22 +100,32 @@ def _validate_case_id(case_id: Any) -> str:
     return case_id
 
 
-def _resolve_capture(repo_root: Path, relative: Any) -> Path:
+def _reject_symlink_components(repo_root: Path, relative_path: Path) -> None:
+    current = repo_root
+    for part in relative_path.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"rolling visual capture path contains symlink: {relative_path}")
+
+
+def _read_capture(repo_root: Path, relative: Any) -> bytes:
     if not isinstance(relative, str) or not relative:
         raise ValueError("rolling visual current path must be non-empty")
     relative_path = Path(relative)
     if relative_path.is_absolute() or ".." in relative_path.parts:
         raise ValueError("rolling visual current path escapes capture root")
 
-    allowed_root = (repo_root / "artifacts/visual/current").resolve()
-    candidate = (repo_root / relative_path).resolve()
+    expected_prefix = Path("artifacts/visual/current")
     try:
-        candidate.relative_to(allowed_root)
+        relative_path.relative_to(expected_prefix)
     except ValueError as exc:
         raise ValueError("rolling visual current path must stay under capture root") from exc
-    if candidate.is_symlink() or not candidate.is_file():
+
+    _reject_symlink_components(repo_root, relative_path)
+    candidate = repo_root / relative_path
+    if not candidate.is_file():
         raise ValueError(f"rolling visual capture is not a regular file: {relative}")
-    return candidate
+    return candidate.read_bytes()
 
 
 def _validate_manifest(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
@@ -167,6 +174,48 @@ def _validate_provenance(
         raise ValueError("source SHA must be 40 lowercase hexadecimal characters")
 
 
+def _write_bundle(
+    *,
+    staging_root: Path,
+    profile_payload: dict[str, Any],
+    rolling: list[tuple[str, bytes, str]],
+    repository: str,
+    workflow: str,
+    run_id: str,
+    run_attempt: int,
+    source_sha: str,
+    profile_fingerprint: str,
+    previous_baseline_reference: str | None,
+) -> None:
+    images_root = staging_root / "images"
+    images_root.mkdir(parents=True)
+    (staging_root / "profile.json").write_text(
+        json.dumps(profile_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    for case_id, image_data, _digest in rolling:
+        (images_root / f"{case_id}.png").write_bytes(image_data)
+
+    bundle = {
+        "schemaVersion": 1,
+        "sourceRepository": repository,
+        "workflow": workflow,
+        "sourceRunID": run_id,
+        "runAttempt": run_attempt,
+        "sourceSHA": source_sha,
+        "profileFingerprint": profile_fingerprint,
+        "previousBaselineReference": previous_baseline_reference,
+        "cases": [
+            {"id": case_id, "digest": digest}
+            for case_id, _image_data, digest in rolling
+        ],
+    }
+    (staging_root / "bundle-manifest.json").write_text(
+        json.dumps(bundle, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def build_bundle(
     *,
     repo_root: Path,
@@ -196,42 +245,39 @@ def build_bundle(
         profile_payload, expected_profile=profile_label, source_sha=source_sha
     )
 
-    rolling: list[tuple[str, Path, str]] = []
+    rolling: list[tuple[str, bytes, str]] = []
     for test_case in cases:
         if test_case["baseline"] != "rolling-main":
             continue
         case_id = test_case["id"]
-        capture = _resolve_capture(repo_root, test_case.get("current"))
-        rolling.append((case_id, capture, _sha256_file(capture)))
+        image_data = _read_capture(repo_root, test_case.get("current"))
+        rolling.append((case_id, image_data, _sha256_bytes(image_data)))
     rolling.sort(key=lambda item: item[0])
 
     if previous_baseline_reference == "":
         raise ValueError("previous baseline reference must be non-empty when provided")
 
-    images_root = output_root / "images"
-    images_root.mkdir(parents=True)
-    shutil.copyfile(current_profile_path, output_root / "profile.json")
-    for case_id, source, _digest in rolling:
-        shutil.copyfile(source, images_root / f"{case_id}.png")
-
-    bundle = {
-        "schemaVersion": 1,
-        "sourceRepository": repository,
-        "workflow": workflow,
-        "sourceRunID": run_id,
-        "runAttempt": run_attempt,
-        "sourceSHA": source_sha,
-        "profileFingerprint": profile_fingerprint,
-        "previousBaselineReference": previous_baseline_reference,
-        "cases": [
-            {"id": case_id, "digest": digest}
-            for case_id, _source, digest in rolling
-        ],
-    }
-    (output_root / "bundle-manifest.json").write_text(
-        json.dumps(bundle, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    output_root.parent.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(
+        tempfile.mkdtemp(prefix=".visual-baseline.", dir=output_root.parent)
     )
+    try:
+        _write_bundle(
+            staging_root=staging_root,
+            profile_payload=profile_payload,
+            rolling=rolling,
+            repository=repository,
+            workflow=workflow,
+            run_id=run_id,
+            run_attempt=run_attempt,
+            source_sha=source_sha,
+            profile_fingerprint=profile_fingerprint,
+            previous_baseline_reference=previous_baseline_reference,
+        )
+        staging_root.replace(output_root)
+    except Exception:
+        shutil.rmtree(staging_root, ignore_errors=True)
+        raise
 
 
 def parse_args() -> argparse.Namespace:
