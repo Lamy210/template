@@ -14,7 +14,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: release-publisher-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  group: release-publisher-${{ github.event.workflow_run.id }}
   cancel-in-progress: false
 
 jobs:
