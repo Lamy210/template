@@ -45,3 +45,44 @@ jobs:
       - name: Release source binding
         shell: bash
         run: bash scripts/release/test-verify-release-source.sh
+
+  artifact-layout:
+    name: Release artifact layout contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Create namespaced release artifact fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact-payload/release-input
+          printf 'archive-fixture\n' >artifact-payload/release-input/unsigned-macos-app.tar.gz
+          printf '{"schemaVersion":1}\n' >artifact-payload/release-input/build-provenance.json
+
+      - name: Upload namespaced release artifact fixture
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-layout-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifact-payload/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download namespaced release artifact fixture
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.upload.outputs.artifact-id }}
+          path: downloaded
+          merge-multiple: true
+
+      - name: Require resolver-compatible artifact namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f downloaded/release-input/unsigned-macos-app.tar.gz
+          test -f downloaded/release-input/build-provenance.json
+          test "$(find downloaded -type f | wc -l | tr -d ' ')" = 2
