@@ -57,6 +57,9 @@ jobs:
           bash scripts/ci/test-resolve-trusted-main-artifact-options.sh
           python3 scripts/ci/test_resolve_trusted_main_artifact_events.py -v
 
+      - name: Visual schedule wiring tests
+        run: python3 scripts/ci/test_visual_schedule_wiring.py -v
+
       - name: Coverage tooling tests
         run: python3 -m unittest scripts/test/test-compare-coverage.py -v
 
