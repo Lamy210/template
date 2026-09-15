@@ -8,6 +8,8 @@ on:
       - "Tests/VisualBaselines/**"
       - "scripts/ci/**"
       - "scripts/test/**"
+      - "scripts/visual/**"
+      - ".github/workflows/reusable-macos-e2e.yml"
       - ".github/workflows/test-infrastructure.yml"
   push:
     branches:
@@ -18,6 +20,8 @@ on:
       - "Tests/VisualBaselines/**"
       - "scripts/ci/**"
       - "scripts/test/**"
+      - "scripts/visual/**"
+      - ".github/workflows/reusable-macos-e2e.yml"
       - ".github/workflows/test-infrastructure.yml"
   workflow_dispatch:
 
@@ -55,3 +59,9 @@ jobs:
 
       - name: Required gate policy tests
         run: python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
+
+      - name: macOS E2E tooling tests
+        run: python3 -m unittest scripts/test/test-macos-e2e.py -v
+
+      - name: Visual profile metadata tests
+        run: bash scripts/visual/test-collect-metadata.sh
