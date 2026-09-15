@@ -121,6 +121,9 @@ class BaselineBundleBuilderTests(unittest.TestCase):
         self.assertEqual(manifest["cases"][0]["digest"], expected)
         self.assertEqual((self.output / "images/rolling-case.png").read_bytes(), b"rolling-image")
         self.assertFalse((self.output / "images/git-case.png").exists())
+        self.assertEqual(
+            json.loads((self.output / "profile.json").read_text()), profile_payload()
+        )
 
     def test_records_provenance(self):
         self.build()
@@ -134,20 +137,58 @@ class BaselineBundleBuilderTests(unittest.TestCase):
 
     def test_rejects_existing_output(self):
         self.output.mkdir(parents=True)
-        module = load_builder()
         with self.assertRaisesRegex(ValueError, "output"):
+            self.build()
+
+    def test_rejects_tampered_profile_fingerprint(self):
+        payload = profile_payload()
+        payload["profileFingerprint"] = "sha256:" + "0" * 64
+        self.profile.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "fingerprint"):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_rejects_profile_label_mismatch(self):
+        payload = profile_payload()
+        payload["profile"] = "different-profile"
+        self.profile.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "profile label"):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_rejects_current_sha_mismatch(self):
+        payload = profile_payload()
+        payload["currentSHA"] = "b" * 40
+        self.profile.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "currentSHA"):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_rejects_capture_outside_visual_root(self):
+        manifest = json.loads(self.manifest.read_text())
+        manifest["cases"][1]["current"] = "outside.png"
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        (self.repo / "outside.png").write_bytes(b"outside")
+        with self.assertRaisesRegex(ValueError, "capture root"):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_rejects_invalid_provenance_before_writing_output(self):
+        module = load_builder()
+        with self.assertRaisesRegex(ValueError, "repository"):
             module.build_bundle(
                 repo_root=self.repo,
                 manifest_path=self.manifest,
                 current_profile_path=self.profile,
                 output_root=self.output,
-                repository="Lamy210/template",
+                repository="invalid",
                 workflow="tests.yml",
                 run_id="12345",
                 run_attempt=2,
                 source_sha=SOURCE_SHA,
                 previous_baseline_reference=None,
             )
+        self.assertFalse(self.output.exists())
 
 
 if __name__ == "__main__":
