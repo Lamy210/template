@@ -1,0 +1,32 @@
+name: Visual Bundle Tests
+
+on:
+  pull_request:
+    paths:
+      - "scripts/visual/build-baseline-bundle.py"
+      - "scripts/visual/test-build-baseline-bundle.py"
+      - ".github/workflows/visual-bundle-tests.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/visual/build-baseline-bundle.py"
+      - "scripts/visual/test-build-baseline-bundle.py"
+      - ".github/workflows/visual-bundle-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle-contract:
+    name: Bundle contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Baseline bundle tests
+        run: python3 scripts/visual/test-build-baseline-bundle.py -v
