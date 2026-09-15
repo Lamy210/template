@@ -29,23 +29,75 @@ comparator_schema_version=""
 
 while (($#)); do
   case "$1" in
-    --output) output="${2:-}"; shift 2 ;;
-    --profile-id) profile_id="${2:-}"; shift 2 ;;
-    --current-sha) current_sha="${2:-}"; shift 2 ;;
-    --runner-family) runner_family="${2:-}"; shift 2 ;;
-    --architecture) architecture="${2:-}"; shift 2 ;;
-    --xcode-policy) xcode_policy="${2:-}"; shift 2 ;;
-    --locale) locale="${2:-}"; shift 2 ;;
-    --language) language="${2:-}"; shift 2 ;;
-    --timezone) timezone="${2:-}"; shift 2 ;;
-    --appearance) appearance="${2:-}"; shift 2 ;;
-    --display-scale) display_scale="${2:-}"; shift 2 ;;
-    --capture-geometry) capture_geometry="${2:-}"; shift 2 ;;
-    --fixture-version) fixture_version="${2:-}"; shift 2 ;;
-    --capture-contract-version) capture_contract_version="${2:-}"; shift 2 ;;
-    --comparator-schema-version) comparator_schema_version="${2:-}"; shift 2 ;;
-    -h | --help) usage; exit 0 ;;
-    *) echo "error: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    --output)
+      output="${2:-}"
+      shift 2
+      ;;
+    --profile-id)
+      profile_id="${2:-}"
+      shift 2
+      ;;
+    --current-sha)
+      current_sha="${2:-}"
+      shift 2
+      ;;
+    --runner-family)
+      runner_family="${2:-}"
+      shift 2
+      ;;
+    --architecture)
+      architecture="${2:-}"
+      shift 2
+      ;;
+    --xcode-policy)
+      xcode_policy="${2:-}"
+      shift 2
+      ;;
+    --locale)
+      locale="${2:-}"
+      shift 2
+      ;;
+    --language)
+      language="${2:-}"
+      shift 2
+      ;;
+    --timezone)
+      timezone="${2:-}"
+      shift 2
+      ;;
+    --appearance)
+      appearance="${2:-}"
+      shift 2
+      ;;
+    --display-scale)
+      display_scale="${2:-}"
+      shift 2
+      ;;
+    --capture-geometry)
+      capture_geometry="${2:-}"
+      shift 2
+      ;;
+    --fixture-version)
+      fixture_version="${2:-}"
+      shift 2
+      ;;
+    --capture-contract-version)
+      capture_contract_version="${2:-}"
+      shift 2
+      ;;
+    --comparator-schema-version)
+      comparator_schema_version="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
   esac
 done
 
