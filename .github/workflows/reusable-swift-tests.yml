@@ -257,6 +257,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          CURRENT_COVERAGE_SUMMARY: ${{ steps.coverage.outputs.summary }}
         run: |
           set -euo pipefail
           baseline_root="${RUNNER_TEMP}/coverage-baseline"
@@ -290,7 +291,7 @@ jobs:
           set +e
           python3 scripts/test/compare-coverage.py \
             --baseline "${baselines[0]}" \
-            --current "${{ steps.coverage.outputs.summary }}" \
+            --current "${CURRENT_COVERAGE_SUMMARY}" \
             --max-regression "${COVERAGE_MAX_REGRESSION}" \
             >"${comparison}"
           compare_status=$?
