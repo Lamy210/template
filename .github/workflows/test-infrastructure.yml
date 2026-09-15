@@ -1,0 +1,49 @@
+name: Test Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - "Tools/VisualDiff/**"
+      - "Tests/VisualRegression/**"
+      - "Tests/VisualBaselines/**"
+      - "scripts/ci/**"
+      - ".github/workflows/test-infrastructure.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Tools/VisualDiff/**"
+      - "Tests/VisualRegression/**"
+      - "Tests/VisualBaselines/**"
+      - "scripts/ci/**"
+      - ".github/workflows/test-infrastructure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generic-tooling:
+    name: Generic tooling
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: VisualDiff tests
+        run: swift test --package-path Tools/VisualDiff
+
+      - name: Visual manifest smoke test
+        run: >-
+          swift run --package-path Tools/VisualDiff visual-diff validate-manifest
+          --manifest Tests/VisualRegression/visual-regression.example.json
+          --repo-root "$GITHUB_WORKSPACE"
+
+      - name: Trusted artifact resolver tests
+        run: |
+          bash scripts/ci/test-resolve-trusted-main-artifact.sh
+          bash scripts/ci/test-resolve-trusted-main-artifact-options.sh
