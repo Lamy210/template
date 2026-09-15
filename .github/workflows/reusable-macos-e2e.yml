@@ -65,3 +65,9 @@ jobs:
         env:
           CURRENT_SHA: ${{ github.sha }}
         run: bash scripts/test/run-macos-e2e.sh
+
+      - name: Collect visual profile metadata
+        if: ${{ always() }}
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+        run: bash scripts/visual/collect-e2e-profile.sh
