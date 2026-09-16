@@ -87,6 +87,33 @@ fi
             self.assertTrue((repo / "artifacts/visual/current").is_dir())
             self.assertTrue((runner_temp / "e2e.xcresult").is_dir())
 
+    def test_runner_validate_only_does_not_execute_xcodebuild(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            bindir = root / "bin"
+            repo = root / "repo"
+            runner_temp = root / "runner"
+            project = repo / "App.xcodeproj"
+            bindir.mkdir()
+            project.mkdir(parents=True)
+            runner_temp.mkdir()
+            log = root / "xcodebuild.log"
+            self.install_xcodebuild_stub(bindir)
+            env = self.base_environment(root, bindir, log)
+
+            completed = subprocess.run(
+                ["bash", str(RUNNER), "--validate-only"],
+                text=True,
+                capture_output=True,
+                check=False,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertFalse(log.exists())
+            self.assertFalse((repo / "artifacts/visual").exists())
+            self.assertFalse((runner_temp / "e2e.xcresult").exists())
+
     def test_runner_rejects_project_and_workspace_together(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
