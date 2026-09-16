@@ -15,6 +15,7 @@ set -euo pipefail
 scenario="${GH_STUB_SCENARIO:?GH_STUB_SCENARIO is required}"
 args="$*"
 sha="0123456789abcdef0123456789abcdef01234567"
+repository_id=1367784801
 
 emit_zip() {
   python3 - "${scenario}" <<'PY'
@@ -46,6 +47,11 @@ emit_digest() {
   emit_zip | python3 -c 'import hashlib,sys; print("sha256:" + hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
 }
 
+if [[ "${args}" == "repos/Lamy210/template" ]]; then
+  printf '{"id":%s,"full_name":"Lamy210/template"}' "${repository_id}"
+  exit 0
+fi
+
 if [[ "${args}" == *"/actions/workflows/release-build.yml"* ]]; then
   if [[ "${scenario}" == "malformed-workflow" ]]; then
     printf '{not-json'
@@ -62,6 +68,8 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
   event='push'
   conclusion='success'
   repo='Lamy210/template'
+  head_repository_id="${repository_id}"
+  run_repository_id="${repository_id}"
   case "${scenario}" in
     wrong-workflow) workflow_id=9999 ;;
     wrong-path) path='.github/workflows/other.yml' ;;
@@ -69,9 +77,12 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
     wrong-event) event='workflow_dispatch' ;;
     failed-run) conclusion='failure' ;;
     wrong-repo) repo='attacker/template' ;;
+    wrong-head-repo-id) head_repository_id=9999 ;;
+    wrong-run-repo-id) run_repository_id=9999 ;;
   esac
-  printf '{"id":9001,"run_attempt":%s,"event":"%s","conclusion":"%s","head_sha":"%s","workflow_id":%s,"path":"%s","head_repository":{"full_name":"%s"},"repository":{"full_name":"Lamy210/template"}}' \
-    "${attempt}" "${event}" "${conclusion}" "${sha}" "${workflow_id}" "${path}" "${repo}"
+  printf '{"id":9001,"run_attempt":%s,"event":"%s","conclusion":"%s","head_sha":"%s","workflow_id":%s,"path":"%s","head_repository":{"id":%s,"full_name":"%s"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
+    "${attempt}" "${event}" "${conclusion}" "${sha}" "${workflow_id}" "${path}" \
+    "${head_repository_id}" "${repo}" "${run_repository_id}"
   exit 0
 fi
 
@@ -170,6 +181,8 @@ assert_status wrong-attempt 4
 assert_status wrong-event 4
 assert_status failed-run 4
 assert_status wrong-repo 4
+assert_status wrong-head-repo-id 4
+assert_status wrong-run-repo-id 4
 assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
