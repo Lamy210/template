@@ -8,6 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 REUSABLE_RELEASE = REPO_ROOT / ".github/workflows/reusable-macos-release.yml"
 PUBLISHER_EXAMPLE = REPO_ROOT / "examples/app-release-publisher.yml"
 RELEASE_DOC = REPO_ROOT / "docs/RELEASE.md"
+SETUP_DOC = REPO_ROOT / "docs/SETUP.md"
 
 
 class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
@@ -141,6 +142,13 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("reject update", text)
         self.assertIn("reject deletion", text)
         self.assertIn("Do not enable", text)
+
+    def test_setup_requires_release_environment_default_branch_restriction(self) -> None:
+        text = SETUP_DOC.read_text(encoding="utf-8")
+        self.assertIn("Selected branches and tags", text)
+        self.assertIn("default branch", text)
+        self.assertIn("Do not leave the `release` Environment unrestricted", text)
+        self.assertNotIn("Where supported and useful, configure environment protection", text)
 
     def test_pre_split_ancestor_fails_safely_without_privileged_fallback(self) -> None:
         text = RELEASE_DOC.read_text(encoding="utf-8")
