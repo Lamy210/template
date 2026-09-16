@@ -58,6 +58,24 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("name: ${{ inputs.validated_artifact_name }}", text)
         self.assertIn("VALIDATED_ARTIFACT_DIGEST: ${{ inputs.validated_artifact_digest }}", text)
 
+    def test_validated_artifact_identity_uses_trusted_verifier_before_download(self) -> None:
+        text = self.release_text()
+        self.assertIn("scripts/release/verify-validated-artifact.py", text)
+        verifier = text.index("scripts/release/verify-validated-artifact.py")
+        download = text.index("actions/download-artifact")
+        self.assertLess(verifier, download)
+        for token in (
+            "VALIDATED_ARTIFACT_ID: ${{ inputs.validated_artifact_id }}",
+            "VALIDATED_ARTIFACT_NAME: ${{ inputs.validated_artifact_name }}",
+            "VALIDATED_ARTIFACT_DIGEST: ${{ inputs.validated_artifact_digest }}",
+            "SOURCE_RUN_ID: ${{ inputs.source_run_id }}",
+            "SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}",
+            "PUBLISHER_RUN_ID: ${{ github.run_id }}",
+            "PUBLISHER_RUN_ATTEMPT: ${{ github.run_attempt }}",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, text)
+
     def test_validated_metadata_and_archive_are_reverified_before_certificate_import(self) -> None:
         text = self.release_text()
         verifier = text.index("scripts/release/verify-validated-release-metadata.py")
