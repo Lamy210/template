@@ -21,6 +21,11 @@ class OptionalSubsystemWorkflowTests(unittest.TestCase):
         cls.e2e = (WORKFLOWS / "reusable-macos-e2e.yml").read_text(encoding="utf-8")
         cls.visual = (WORKFLOWS / "reusable-visual-regression.yml").read_text(encoding="utf-8")
 
+    def assert_job_does_not_soften_infrastructure(
+        self, workflow: str, expression: str
+    ) -> None:
+        self.assertNotIn(f"\n    continue-on-error: {expression}\n", workflow)
+
     def test_required_gate_already_treats_optional_failure_as_warning(self) -> None:
         payload = """{
           "schemaVersion": 1,
@@ -44,28 +49,65 @@ class OptionalSubsystemWorkflowTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         self.assertIn("optional subsystem failed", completed.stdout)
 
-    def test_swift_reusable_exposes_raw_test_and_coverage_results(self) -> None:
+    def test_swift_reusable_softens_only_test_and_coverage_regressions(self) -> None:
         self.assertIn("test_result:", self.swift)
         self.assertIn("coverage_result:", self.swift)
         self.assertIn("required:", self.swift)
         self.assertIn("coverage_required:", self.swift)
         self.assertIn("value: ${{ jobs.tests.outputs.test_result }}", self.swift)
         self.assertIn("value: ${{ jobs.tests.outputs.coverage_result }}", self.swift)
-        self.assertIn("continue-on-error: ${{ !inputs.required }}", self.swift)
-        self.assertIn("continue-on-error: ${{ !inputs.coverage_required }}", self.swift)
+        self.assert_job_does_not_soften_infrastructure(
+            self.swift, "${{ !inputs.required }}"
+        )
+        self.assertIn(
+            "id: swiftpm\n        if: ${{ inputs.adapter == 'swiftpm' }}\n        continue-on-error: ${{ !inputs.required }}",
+            self.swift,
+        )
+        self.assertIn(
+            "id: xcode\n        if: ${{ inputs.adapter == 'xcode' }}\n        continue-on-error: ${{ !inputs.required }}",
+            self.swift,
+        )
+        self.assertEqual(
+            self.swift.count("continue-on-error: ${{ !inputs.coverage_required }}"),
+            1,
+        )
+        self.assertIn(
+            "id: coverage_compare\n        if:",
+            self.swift,
+        )
         self.assertIn("steps.coverage.outcome", self.swift)
 
-    def test_e2e_reusable_exposes_raw_result_and_requiredness(self) -> None:
+    def test_e2e_reusable_hard_fails_configuration_and_softens_test_failure(self) -> None:
         self.assertIn("required:\n", self.e2e)
         self.assertIn("result:\n", self.e2e)
         self.assertIn("value: ${{ jobs.e2e.outputs.result }}", self.e2e)
-        self.assertIn("continue-on-error: ${{ !inputs.required }}", self.e2e)
+        self.assert_job_does_not_soften_infrastructure(
+            self.e2e, "${{ !inputs.required }}"
+        )
+        self.assertIn(
+            "id: validate\n        run: bash scripts/test/run-macos-e2e.sh --validate-only",
+            self.e2e,
+        )
+        self.assertIn(
+            "id: e2e_run\n        continue-on-error: ${{ !inputs.required }}",
+            self.e2e,
+        )
 
-    def test_visual_reusable_exposes_raw_result_and_requiredness(self) -> None:
+    def test_visual_reusable_hard_fails_trust_boundary_and_softens_diff(self) -> None:
         self.assertIn("required:\n", self.visual)
         self.assertIn("result:\n", self.visual)
         self.assertIn("value: ${{ jobs.visual.outputs.result }}", self.visual)
-        self.assertIn("continue-on-error: ${{ !inputs.required }}", self.visual)
+        self.assert_job_does_not_soften_infrastructure(
+            self.visual, "${{ !inputs.required }}"
+        )
+        self.assertEqual(
+            self.visual.count("continue-on-error: ${{ !inputs.required }}"),
+            1,
+        )
+        self.assertIn(
+            "id: compare\n        continue-on-error: ${{ !inputs.required }}",
+            self.visual,
+        )
 
     def test_callers_forward_required_policy_to_reusable_workflows(self) -> None:
         self.assertIn("required: true", self.tests)
