@@ -47,7 +47,7 @@ emit_digest() {
   emit_zip | python3 -c 'import hashlib,sys; print("sha256:" + hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
 }
 
-if [[ "${args}" == "repos/Lamy210/template" ]]; then
+if [[ "${args}" == "api repos/Lamy210/template" ]]; then
   printf '{"id":%s,"full_name":"Lamy210/template"}' "${repository_id}"
   exit 0
 fi
