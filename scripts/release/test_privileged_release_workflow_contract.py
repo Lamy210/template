@@ -124,6 +124,12 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("reject deletion", text)
         self.assertIn("Do not enable", text)
 
+    def test_pre_split_ancestor_fails_safely_without_privileged_fallback(self) -> None:
+        text = RELEASE_DOC.read_text(encoding="utf-8")
+        self.assertIn("predates `.github/workflows/release-build.yml`", text)
+        self.assertIn("safe failure", text)
+        self.assertIn("Do not add a fallback", text)
+
 
 if __name__ == "__main__":
     unittest.main()
