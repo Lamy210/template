@@ -204,8 +204,100 @@ fi
 
 IFS=$'\t' read -r workflow_id source_sha <"${identity_file}"
 
+artifact_pages_dir="${work_root}/artifact-pages"
+mkdir -p "${artifact_pages_dir}"
+first_artifact_page="${artifact_pages_dir}/page-1.json"
+api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100&page=1" "${first_artifact_page}" || die "${EXIT_INFRA}" 'failed to query triggering run artifacts'
+
+page_count_file="${work_root}/artifact-page-count.txt"
+if python3 - "${first_artifact_page}" >"${page_count_file}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        payload = json.load(handle)
+except (OSError, json.JSONDecodeError) as error:
+    print(f"malformed artifacts response: {error}", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(payload, dict):
+    print("artifacts response must be an object", file=sys.stderr)
+    raise SystemExit(1)
+total_count = payload.get("total_count")
+artifacts = payload.get("artifacts")
+if type(total_count) is not int or total_count < 0:
+    print("artifacts response total_count must be a non-negative integer", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(artifacts, list):
+    print("artifacts response artifacts must be a list", file=sys.stderr)
+    raise SystemExit(1)
+print(max(1, (total_count + 99) // 100))
+PY
+then
+  :
+else
+  die "${EXIT_INFRA}" 'artifacts response was malformed'
+fi
+
+read -r artifact_page_count <"${page_count_file}"
+for ((page = 2; page <= artifact_page_count; page++)); do
+  page_path="${artifact_pages_dir}/page-${page}.json"
+  api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100&page=${page}" "${page_path}" || die "${EXIT_INFRA}" 'failed to query triggering run artifact page'
+done
+
 artifacts_json="${work_root}/artifacts.json"
-api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100" "${artifacts_json}" || die "${EXIT_INFRA}" 'failed to query triggering run artifacts'
+if python3 - "${artifact_pages_dir}" "${artifact_page_count}" "${artifacts_json}" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+pages_dir = Path(sys.argv[1])
+page_count = int(sys.argv[2])
+output_path = Path(sys.argv[3])
+expected_total_count = None
+combined = []
+
+for page in range(1, page_count + 1):
+    page_path = pages_dir / f"page-{page}.json"
+    try:
+        with page_path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"malformed artifacts page {page}: {error}", file=sys.stderr)
+        raise SystemExit(1)
+    if not isinstance(payload, dict):
+        print(f"artifacts page {page} must be an object", file=sys.stderr)
+        raise SystemExit(1)
+    total_count = payload.get("total_count")
+    artifacts = payload.get("artifacts")
+    if type(total_count) is not int or total_count < 0:
+        print(f"artifacts page {page} total_count must be a non-negative integer", file=sys.stderr)
+        raise SystemExit(1)
+    if not isinstance(artifacts, list):
+        print(f"artifacts page {page} artifacts must be a list", file=sys.stderr)
+        raise SystemExit(1)
+    if expected_total_count is None:
+        expected_total_count = total_count
+    elif total_count != expected_total_count:
+        print("artifact total_count changed while paginating", file=sys.stderr)
+        raise SystemExit(1)
+    combined.extend(artifacts)
+
+with output_path.open("w", encoding="utf-8") as handle:
+    json.dump(
+        {"total_count": expected_total_count, "artifacts": combined},
+        handle,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    handle.write("\n")
+PY
+then
+  :
+else
+  die "${EXIT_INFRA}" 'artifact pages were malformed or inconsistent'
+fi
+
 artifact_file="${work_root}/artifact.tsv"
 if python3 - "${artifacts_json}" "${artifact_name}" "${run_id}" "${source_sha}" >"${artifact_file}" <<'PY'
 import json
