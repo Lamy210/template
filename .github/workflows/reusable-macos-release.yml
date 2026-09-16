@@ -103,60 +103,17 @@ jobs:
           PUBLISHER_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          import re
-          import subprocess
-
-          artifact_id = os.environ["VALIDATED_ARTIFACT_ID"]
-          artifact_name = os.environ["VALIDATED_ARTIFACT_NAME"]
-          artifact_digest = os.environ["VALIDATED_ARTIFACT_DIGEST"]
-          publisher_run_id = os.environ["PUBLISHER_RUN_ID"]
-          publisher_run_attempt = os.environ["PUBLISHER_RUN_ATTEMPT"]
-          source_run_id = os.environ["SOURCE_RUN_ID"]
-          source_run_attempt = os.environ["SOURCE_RUN_ATTEMPT"]
-
-          if not artifact_id.isdigit() or int(artifact_id) <= 0:
-              raise SystemExit("validated artifact ID must be a positive integer")
-          if re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_digest) is None:
-              raise SystemExit("validated artifact digest must use sha256:<64 lowercase hex>")
-          for label, value in (
-              ("publisher run ID", publisher_run_id),
-              ("publisher run attempt", publisher_run_attempt),
-              ("source run ID", source_run_id),
-              ("source run attempt", source_run_attempt),
-          ):
-              if not value.isdigit() or int(value) <= 0:
-                  raise SystemExit(f"{label} must be a positive integer")
-
-          expected_name = (
-              f"validated-release-input-{publisher_run_id}-{publisher_run_attempt}-"
-              f"{source_run_id}-{source_run_attempt}"
-          )
-          if artifact_name != expected_name:
-              raise SystemExit(
-                  f"validated artifact name mismatch: expected {expected_name}, got {artifact_name}"
-              )
-
-          repository = os.environ["GITHUB_REPOSITORY"]
-          raw = subprocess.check_output(
-              ["gh", "api", f"/repos/{repository}/actions/artifacts/{artifact_id}"],
-              text=True,
-          )
-          metadata = json.loads(raw)
-          if metadata.get("id") != int(artifact_id):
-              raise SystemExit("validated artifact API identity mismatch")
-          if metadata.get("name") != expected_name:
-              raise SystemExit("validated artifact API name mismatch")
-          if metadata.get("expired") is not False:
-              raise SystemExit("validated artifact is expired or has invalid expiration state")
-          if metadata.get("digest") != artifact_digest:
-              raise SystemExit("validated artifact API digest mismatch")
-          workflow_run = metadata.get("workflow_run")
-          if not isinstance(workflow_run, dict) or workflow_run.get("id") != int(publisher_run_id):
-              raise SystemExit("validated artifact does not belong to the current publisher run")
-          PY
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VALIDATED_ARTIFACT_ID}" \
+            >validated-artifact-metadata.json
+          python3 scripts/release/verify-validated-artifact.py \
+            --metadata validated-artifact-metadata.json \
+            --artifact-id "${VALIDATED_ARTIFACT_ID}" \
+            --artifact-name "${VALIDATED_ARTIFACT_NAME}" \
+            --artifact-digest "${VALIDATED_ARTIFACT_DIGEST}" \
+            --publisher-run-id "${PUBLISHER_RUN_ID}" \
+            --publisher-run-attempt "${PUBLISHER_RUN_ATTEMPT}" \
+            --source-run-id "${SOURCE_RUN_ID}" \
+            --source-run-attempt "${SOURCE_RUN_ATTEMPT}"
 
       - name: Download exact validated release input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
