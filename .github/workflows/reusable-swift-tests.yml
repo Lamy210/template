@@ -63,7 +63,7 @@ on:
         default: false
         type: boolean
       coverage_required:
-        description: Whether a failed coverage export/comparison must fail the reusable workflow.
+        description: Whether a coverage regression must fail the reusable workflow.
         required: false
         default: true
         type: boolean
@@ -99,7 +99,6 @@ jobs:
     name: ${{ inputs.check_name }}
     runs-on: macos-26
     timeout-minutes: 30
-    continue-on-error: ${{ !inputs.required }}
     outputs:
       test_result: ${{ steps.finalize.outputs.test_result }}
       coverage_result: ${{ steps.finalize.outputs.coverage_result }}
@@ -190,6 +189,7 @@ jobs:
       - name: Run SwiftPM tests
         id: swiftpm
         if: ${{ inputs.adapter == 'swiftpm' }}
+        continue-on-error: ${{ !inputs.required }}
         shell: bash
         run: |
           set -euo pipefail
@@ -205,6 +205,7 @@ jobs:
       - name: Run Xcode tests
         id: xcode
         if: ${{ inputs.adapter == 'xcode' }}
+        continue-on-error: ${{ !inputs.required }}
         shell: bash
         run: |
           set -euo pipefail
@@ -230,7 +231,6 @@ jobs:
       - name: Export normalized coverage
         if: ${{ inputs.enable_coverage && ((inputs.adapter == 'swiftpm' && steps.swiftpm.outcome == 'success') || (inputs.adapter == 'xcode' && steps.xcode.outcome == 'success')) }}
         id: coverage
-        continue-on-error: ${{ !inputs.coverage_required }}
         shell: bash
         run: |
           set -euo pipefail
@@ -281,11 +281,11 @@ jobs:
       - name: Resolve and compare trusted coverage baseline
         id: coverage_compare
         if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' && steps.coverage.outcome == 'success' }}
-        continue-on-error: ${{ !inputs.coverage_required }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           CURRENT_COVERAGE_SUMMARY: ${{ steps.coverage.outputs.summary }}
+          COVERAGE_REQUIRED: ${{ inputs.coverage_required }}
         run: |
           set -euo pipefail
           baseline_root="${RUNNER_TEMP}/coverage-baseline"
@@ -302,6 +302,7 @@ jobs:
             if [[ "${BOOTSTRAP_COVERAGE}" == "true" ]]; then
               echo "### Coverage baseline" >>"${GITHUB_STEP_SUMMARY}"
               echo "BOOTSTRAP: no trusted main coverage baseline exists yet." >>"${GITHUB_STEP_SUMMARY}"
+              echo "result=success" >>"${GITHUB_OUTPUT}"
               exit 0
             fi
             echo "Trusted main coverage baseline is missing and bootstrap is disabled." >&2
@@ -312,7 +313,7 @@ jobs:
           mapfile -t baselines < <(find "${baseline_root}" -type f -name coverage-summary.json -print)
           if ((${#baselines[@]} != 1)); then
             echo "Expected exactly one coverage-summary.json in trusted baseline artifact." >&2
-            exit 1
+            exit 2
           fi
 
           comparison="${RUNNER_TEMP}/coverage-comparison.json"
@@ -332,12 +333,26 @@ jobs:
             cat "${comparison}"
             echo '```'
           } >>"${GITHUB_STEP_SUMMARY}"
-          exit "${compare_status}"
+
+          case "${compare_status}" in
+            0)
+              echo "result=success" >>"${GITHUB_OUTPUT}"
+              ;;
+            1)
+              echo "result=failure" >>"${GITHUB_OUTPUT}"
+              if [[ "${COVERAGE_REQUIRED}" == "true" ]]; then
+                exit 1
+              fi
+              ;;
+            *)
+              echo "result=failure" >>"${GITHUB_OUTPUT}"
+              exit "${compare_status}"
+              ;;
+          esac
 
       - name: Upload PR coverage diagnostics
         id: coverage_diagnostics
         if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' && always() }}
-        continue-on-error: ${{ !inputs.coverage_required }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-current-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
@@ -348,7 +363,6 @@ jobs:
       - name: Publish trusted main coverage baseline
         id: coverage_publish
         if: ${{ inputs.enable_coverage && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.coverage.outcome == 'success' }}
-        continue-on-error: ${{ !inputs.coverage_required }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.coverage_artifact_name }}
@@ -373,6 +387,7 @@ jobs:
           XCODE_OUTCOME: ${{ steps.xcode.outcome }}
           COVERAGE_OUTCOME: ${{ steps.coverage.outcome }}
           COVERAGE_COMPARE_OUTCOME: ${{ steps.coverage_compare.outcome }}
+          COVERAGE_COMPARE_RESULT: ${{ steps.coverage_compare.outputs.result }}
           COVERAGE_DIAGNOSTICS_OUTCOME: ${{ steps.coverage_diagnostics.outcome }}
           COVERAGE_PUBLISH_OUTCOME: ${{ steps.coverage_publish.outcome }}
         run: |
@@ -395,6 +410,8 @@ jobs:
               coverage_result="failure"
             elif [[ "${EVENT_NAME}" == "pull_request" && "${COVERAGE_COMPARE_OUTCOME}" != "success" ]]; then
               coverage_result="failure"
+            elif [[ "${EVENT_NAME}" == "pull_request" && "${COVERAGE_COMPARE_RESULT}" != "success" ]]; then
+              coverage_result="failure"
             elif [[ "${EVENT_NAME}" == "pull_request" && "${COVERAGE_DIAGNOSTICS_OUTCOME}" != "success" ]]; then
               coverage_result="failure"
             elif [[ "${EVENT_NAME}" == "push" && "${GIT_REF}" == "refs/heads/main" && "${COVERAGE_PUBLISH_OUTCOME}" != "success" ]]; then
@@ -406,8 +423,8 @@ jobs:
           echo "coverage_result=${coverage_result}" >>"${GITHUB_OUTPUT}"
 
           if [[ "${test_result}" == "failure" && "${TEST_REQUIRED}" != "true" ]]; then
-            echo "::warning::${CHECK_NAME} failed but is optional."
+            echo "::warning::${CHECK_NAME} test execution failed but is optional."
           fi
           if [[ "${ENABLE_COVERAGE}" == "true" && "${coverage_result}" == "failure" && "${COVERAGE_REQUIRED}" != "true" ]]; then
-            echo "::warning::Coverage failed but is optional."
+            echo "::warning::Coverage regression detected but is optional."
           fi
