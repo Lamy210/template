@@ -108,31 +108,43 @@ api_to_file() {
   return 1
 }
 
+repository_json="${work_root}/repository.json"
 workflow_json="${work_root}/workflow.json"
 run_json="${work_root}/run.json"
+api_to_file "repos/${repository}" "${repository_json}" || die "${EXIT_INFRA}" 'failed to query canonical repository identity'
 api_to_file "repos/${repository}/actions/workflows/${workflow_file}" "${workflow_json}" || die "${EXIT_INFRA}" 'failed to query canonical build workflow'
 api_to_file "repos/${repository}/actions/runs/${run_id}" "${run_json}" || die "${EXIT_INFRA}" 'failed to query triggering workflow run'
 
 identity_file="${work_root}/identity.tsv"
-if python3 - "${workflow_json}" "${run_json}" "${repository}" "${workflow_path}" "${run_id}" "${run_attempt}" >"${identity_file}" <<'PY'
+if python3 - "${repository_json}" "${workflow_json}" "${run_json}" "${repository}" "${workflow_path}" "${run_id}" "${run_attempt}" >"${identity_file}" <<'PY'
 import json
 import re
 import sys
 
-workflow_path, run_path, expected_repo, expected_workflow_path, run_id_text, run_attempt_text = sys.argv[1:]
+repository_path, workflow_path, run_path, expected_repo, expected_workflow_path, run_id_text, run_attempt_text = sys.argv[1:]
 expected_run_id = int(run_id_text)
 expected_attempt = int(run_attempt_text)
 
 try:
+    with open(repository_path, encoding="utf-8") as handle:
+        canonical_repository = json.load(handle)
     with open(workflow_path, encoding="utf-8") as handle:
         workflow = json.load(handle)
     with open(run_path, encoding="utf-8") as handle:
         run = json.load(handle)
-    if not isinstance(workflow, dict) or not isinstance(run, dict):
-        raise TypeError("workflow and run responses must be objects")
+    if not isinstance(canonical_repository, dict) or not isinstance(workflow, dict) or not isinstance(run, dict):
+        raise TypeError("repository, workflow, and run responses must be objects")
 except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
-    print(f"malformed workflow/run response: {error}", file=sys.stderr)
+    print(f"malformed repository/workflow/run response: {error}", file=sys.stderr)
     raise SystemExit(1)
+
+expected_repository_id = canonical_repository.get("id")
+if not isinstance(expected_repository_id, int) or expected_repository_id <= 0:
+    print("canonical repository id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if canonical_repository.get("full_name") != expected_repo:
+    print("canonical repository full name does not match expected repository", file=sys.stderr)
+    raise SystemExit(2)
 
 workflow_id = workflow.get("id")
 if not isinstance(workflow_id, int) or workflow_id <= 0:
@@ -151,17 +163,20 @@ checks = [
     (run.get("path") == expected_workflow_path, "triggering run workflow path mismatch"),
 ]
 head_repository = run.get("head_repository")
-repository = run.get("repository")
+run_repository = run.get("repository")
 checks.extend(
     [
         (
             isinstance(head_repository, dict)
+            and head_repository.get("id") == expected_repository_id
             and head_repository.get("full_name") == expected_repo,
-            "triggering run head repository mismatch",
+            "triggering run head repository identity mismatch",
         ),
         (
-            isinstance(repository, dict) and repository.get("full_name") == expected_repo,
-            "triggering run repository mismatch",
+            isinstance(run_repository, dict)
+            and run_repository.get("id") == expected_repository_id
+            and run_repository.get("full_name") == expected_repo,
+            "triggering run repository identity mismatch",
         ),
     ]
 )
@@ -184,7 +199,7 @@ else
   if ((identity_status == 2)); then
     die "${EXIT_REJECTED}" 'triggering workflow run failed trust validation'
   fi
-  die "${EXIT_INFRA}" 'workflow/run response was malformed'
+  die "${EXIT_INFRA}" 'repository/workflow/run response was malformed'
 fi
 
 IFS=$'\t' read -r workflow_id source_sha <"${identity_file}"
