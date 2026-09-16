@@ -20,6 +20,9 @@ class OptionalSubsystemWorkflowTests(unittest.TestCase):
         cls.swift = (WORKFLOWS / "reusable-swift-tests.yml").read_text(encoding="utf-8")
         cls.e2e = (WORKFLOWS / "reusable-macos-e2e.yml").read_text(encoding="utf-8")
         cls.visual = (WORKFLOWS / "reusable-visual-regression.yml").read_text(encoding="utf-8")
+        cls.runtime = (WORKFLOWS / "optional-subsystem-runtime-tests.yml").read_text(
+            encoding="utf-8"
+        )
 
     def assert_job_does_not_soften_infrastructure(
         self, workflow: str, expression: str
@@ -67,14 +70,11 @@ class OptionalSubsystemWorkflowTests(unittest.TestCase):
             "id: xcode\n        if: ${{ inputs.adapter == 'xcode' }}\n        continue-on-error: ${{ !inputs.required }}",
             self.swift,
         )
-        self.assertEqual(
-            self.swift.count("continue-on-error: ${{ !inputs.coverage_required }}"),
-            1,
+        self.assertNotIn(
+            "continue-on-error: ${{ !inputs.coverage_required }}", self.swift
         )
-        self.assertIn(
-            "id: coverage_compare\n        if:",
-            self.swift,
-        )
+        self.assertIn("COVERAGE_REQUIRED: ${{ inputs.coverage_required }}", self.swift)
+        self.assertIn("steps.coverage_compare.outputs.result", self.swift)
         self.assertIn("steps.coverage.outcome", self.swift)
 
     def test_e2e_reusable_hard_fails_configuration_and_softens_test_failure(self) -> None:
@@ -93,21 +93,23 @@ class OptionalSubsystemWorkflowTests(unittest.TestCase):
             self.e2e,
         )
 
-    def test_visual_reusable_hard_fails_trust_boundary_and_softens_diff(self) -> None:
+    def test_visual_reusable_softens_only_a_real_visual_diff(self) -> None:
         self.assertIn("required:\n", self.visual)
         self.assertIn("result:\n", self.visual)
         self.assertIn("value: ${{ jobs.visual.outputs.result }}", self.visual)
         self.assert_job_does_not_soften_infrastructure(
             self.visual, "${{ !inputs.required }}"
         )
-        self.assertEqual(
-            self.visual.count("continue-on-error: ${{ !inputs.required }}"),
-            1,
-        )
+        self.assertNotIn("continue-on-error: ${{ !inputs.required }}", self.visual)
+        self.assertIn("COMPARE_REQUIRED: ${{ inputs.required }}", self.visual)
+        self.assertIn("steps.compare.outputs.result", self.visual)
+
+    def test_runtime_probe_uses_a_real_failing_test_not_invalid_configuration(self) -> None:
+        self.assertNotIn("__missing_optional_subsystem_contract__", self.runtime)
         self.assertIn(
-            "id: compare\n        continue-on-error: ${{ !inputs.required }}",
-            self.visual,
+            "working_directory: scripts/test/fixtures/optional-failure", self.runtime
         )
+        self.assertNotIn("Optional coverage failure probe", self.runtime)
 
     def test_callers_forward_required_policy_to_reusable_workflows(self) -> None:
         self.assertIn("required: true", self.tests)
