@@ -21,12 +21,19 @@ PUBLISHER_RUN_ID = 99887766
 PUBLISHER_RUN_ATTEMPT = 4
 
 
-def create_app_archive(path: Path, *, bundle_id: str = "com.example.MyApp", version: str = "1.2.3") -> str:
+def create_app_archive(
+    path: Path,
+    *,
+    bundle_id: str = "com.example.MyApp",
+    version: str = "1.2.3",
+    plist_executable: str = "MyApp",
+    symlink_executable: bool = False,
+) -> str:
     plist = plistlib.dumps(
         {
             "CFBundleIdentifier": bundle_id,
             "CFBundleShortVersionString": version,
-            "CFBundleExecutable": "MyApp",
+            "CFBundleExecutable": plist_executable,
         },
         fmt=plistlib.FMT_XML,
         sort_keys=True,
@@ -48,10 +55,22 @@ def create_app_archive(path: Path, *, bundle_id: str = "com.example.MyApp", vers
         archive.addfile(info, io.BytesIO(plist))
 
         executable = b"#!/usr/bin/env bash\nexit 0\n"
-        binary = tarfile.TarInfo("MyApp.app/Contents/MacOS/MyApp")
-        binary.size = len(executable)
-        binary.mode = 0o755
-        archive.addfile(binary, io.BytesIO(executable))
+        if symlink_executable:
+            real_binary = tarfile.TarInfo("MyApp.app/Contents/MacOS/RealMyApp")
+            real_binary.size = len(executable)
+            real_binary.mode = 0o755
+            archive.addfile(real_binary, io.BytesIO(executable))
+
+            binary = tarfile.TarInfo("MyApp.app/Contents/MacOS/MyApp")
+            binary.type = tarfile.SYMTYPE
+            binary.linkname = "RealMyApp"
+            binary.mode = 0o777
+            archive.addfile(binary)
+        else:
+            binary = tarfile.TarInfo("MyApp.app/Contents/MacOS/MyApp")
+            binary.size = len(executable)
+            binary.mode = 0o755
+            archive.addfile(binary, io.BytesIO(executable))
 
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     return f"sha256:{digest}"
@@ -86,6 +105,8 @@ class ReleaseInputValidationTests(unittest.TestCase):
         metadata_mutator=None,
         bundle_id: str = "com.example.MyApp",
         app_version: str = "1.2.3",
+        plist_executable: str = "MyApp",
+        symlink_executable: bool = False,
         resolved_tag_sha: str = SHA,
         source_is_ancestor: bool = True,
         publisher_run_id: int = PUBLISHER_RUN_ID,
@@ -94,7 +115,13 @@ class ReleaseInputValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             archive = root / "unsigned-macos-app.tar.gz"
-            archive_digest = create_app_archive(archive, bundle_id=bundle_id, version=app_version)
+            archive_digest = create_app_archive(
+                archive,
+                bundle_id=bundle_id,
+                version=app_version,
+                plist_executable=plist_executable,
+                symlink_executable=symlink_executable,
+            )
             provenance_document = provenance(archive_digest)
             metadata = source_metadata()
             if provenance_mutator is not None:
@@ -174,6 +201,19 @@ class ReleaseInputValidationTests(unittest.TestCase):
     def test_rejects_application_version_mismatch(self) -> None:
         errors, _ = self.validate_fixture(app_version="9.9.9")
         self.assertTrue(any("bundle version" in error for error in errors))
+
+    def test_rejects_unsafe_cf_bundle_executable(self) -> None:
+        errors, _ = self.validate_fixture(plist_executable="../MyApp")
+        self.assertTrue(any("CFBundleExecutable" in error for error in errors))
+
+    def test_rejects_symlinked_cf_bundle_executable(self) -> None:
+        errors, _ = self.validate_fixture(symlink_executable=True)
+        self.assertTrue(
+            any(
+                "bundle executable contract failed" in error and "symbolic link" in error
+                for error in errors
+            )
+        )
 
     def test_rejects_source_metadata_artifact_name_mismatch(self) -> None:
         errors, _ = self.validate_fixture(
