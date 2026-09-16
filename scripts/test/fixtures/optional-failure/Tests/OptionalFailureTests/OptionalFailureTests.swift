@@ -1,5 +1,5 @@
-import XCTest
 @testable import OptionalFailureFixture
+import XCTest
 
 final class OptionalFailureTests: XCTestCase {
     func testIntentionalOptionalFailure() {
