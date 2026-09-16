@@ -88,27 +88,35 @@ fi
 
 if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
   digest="$(emit_digest)"
+  if [[ "${scenario}" == "paginated" ]]; then
+    if [[ "${args}" == *"page=2"* ]]; then
+      printf '{"total_count":101,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+    else
+      printf '{"total_count":101,"artifacts":[{"id":6999,"name":"decoy","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+    fi
+    exit 0
+  fi
   case "${scenario}" in
     expired)
-      printf '{"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":true,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":true,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
       ;;
     duplicate)
-      printf '{"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}},{"id":7002,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}" "${digest}" "${sha}"
+      printf '{"total_count":2,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}},{"id":7002,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}" "${digest}" "${sha}"
       ;;
     wrong-artifact)
-      printf '{"artifacts":[{"id":7001,"name":"other","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"other","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
       ;;
     missing-digest)
-      printf '{"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${sha}"
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${sha}"
       ;;
     digest-mismatch)
-      printf '{"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"sha256:%064d","workflow_run":{"id":9001,"head_sha":"%s"}}]}' 0 "${sha}"
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"sha256:%064d","workflow_run":{"id":9001,"head_sha":"%s"}}]}' 0 "${sha}"
       ;;
     artifact-wrong-run)
-      printf '{"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9999,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9999,"head_sha":"%s"}}]}' "${digest}" "${sha}"
       ;;
     *)
-      printf '{"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
       ;;
   esac
   exit 0
@@ -174,6 +182,11 @@ assert metadata["artifactId"] == 7001
 assert metadata["artifactName"] == "unsigned-macos-release-9001-2"
 assert re.fullmatch(r"sha256:[0-9a-f]{64}", metadata["artifactDigest"])
 PY
+
+paginated_output="${TEMP_ROOT}/paginated"
+run_resolver paginated "${paginated_output}"
+[[ -f "${paginated_output}/release-input/unsigned-macos-app.tar.gz" ]]
+[[ -f "${paginated_output}/source-artifact-metadata.json" ]]
 
 assert_status wrong-workflow 4
 assert_status wrong-path 4
