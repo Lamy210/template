@@ -325,6 +325,22 @@ For all trust failures, fail closed. Do not bypass provenance, archive, Gatekeep
 
 If Apple notarization fails, retain the submission identifier and inspect Apple's notarization log before retrying.
 
+## Production enablement gate: immutable release tags
+
+Do not enable the two-stage publisher as a production release path until the effective GitHub Ruleset for `refs/tags/v*` has been verified in the target repository.
+
+The effective release-tag policy must:
+
+- allow initial creation of a new stable `vX.Y.Z` tag;
+- reject update of an existing matching tag;
+- reject deletion of an existing matching tag.
+
+Verify the effective policy, not only a checked-in Ruleset JSON file. Use a disposable repository or disposable release tag to prove that initial creation succeeds while update and deletion are rejected.
+
+Repeated runtime tag-to-SHA binding remains mandatory defense in depth, but it is not a substitute for immutable tag governance because GitHub ref lookup and release publication are not one atomic transaction.
+
+If this Ruleset has not been verified, keep the privileged publisher disabled and do not treat the two-stage release path as production-ready.
+
 ## Migration checklist
 
 For an adopter moving from the old monolithic example:
@@ -336,9 +352,10 @@ For an adopter moving from the old monolithic example:
 5. keep the tag-build workflow secret-free/read-only;
 6. ensure the publisher validation job has only `actions: read` + `contents: read`;
 7. verify only the privileged reusable macOS release job declares `environment: release`;
-8. run release-isolation tests before creating a real release tag;
-9. use a disposable repository for destructive tag/ruleset tests;
-10. remove/ignore any copied legacy monolithic release workflow.
+8. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
+9. run release-isolation tests before creating a real release tag;
+10. use a disposable repository for destructive tag/ruleset tests;
+11. remove/ignore any copied legacy monolithic release workflow.
 
 ## Rollback
 
