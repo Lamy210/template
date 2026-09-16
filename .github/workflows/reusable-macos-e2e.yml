@@ -44,7 +44,6 @@ jobs:
     name: Standard macOS E2E
     runs-on: macos-26
     timeout-minutes: 45
-    continue-on-error: ${{ !inputs.required }}
     outputs:
       result: ${{ steps.finalize.outputs.result }}
     env:
@@ -67,8 +66,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate E2E configuration
+        id: validate
+        run: bash scripts/test/run-macos-e2e.sh --validate-only
+
       - name: Run deterministic E2E
         id: e2e_run
+        continue-on-error: ${{ !inputs.required }}
         run: bash scripts/test/run-macos-e2e.sh
 
       - name: Collect visual profile metadata
@@ -83,7 +87,7 @@ jobs:
 
       - name: Upload visual capture bundle
         id: visual_upload
-        if: ${{ always() }}
+        if: ${{ always() && steps.e2e_run.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
@@ -110,6 +114,7 @@ jobs:
         env:
           REQUIRED: ${{ inputs.required }}
           CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
           E2E_OUTCOME: ${{ steps.e2e_run.outcome }}
           PROFILE_OUTCOME: ${{ steps.profile.outcome }}
           ATTACHMENTS_OUTCOME: ${{ steps.attachments.outcome }}
@@ -118,19 +123,24 @@ jobs:
         run: |
           set -euo pipefail
           result="success"
+
           for outcome in \
             "${CHECKOUT_OUTCOME}" \
+            "${VALIDATE_OUTCOME}" \
             "${E2E_OUTCOME}" \
             "${PROFILE_OUTCOME}" \
             "${ATTACHMENTS_OUTCOME}" \
-            "${VISUAL_UPLOAD_OUTCOME}" \
             "${DIAGNOSTICS_UPLOAD_OUTCOME}"; do
             if [[ "${outcome}" != "success" ]]; then
               result="failure"
             fi
           done
 
+          if [[ "${E2E_OUTCOME}" == "success" && "${VISUAL_UPLOAD_OUTCOME}" != "success" ]]; then
+            result="failure"
+          fi
+
           echo "result=${result}" >>"${GITHUB_OUTPUT}"
           if [[ "${result}" == "failure" && "${REQUIRED}" != "true" ]]; then
-            echo "::warning::E2E failed but is optional."
+            echo "::warning::E2E test execution failed but is optional."
           fi
