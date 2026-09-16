@@ -1,0 +1,413 @@
+name: Reusable Swift Tests
+
+on:
+  workflow_call:
+    inputs:
+      check_name:
+        description: Human-readable internal check name.
+        required: false
+        default: Unit
+        type: string
+      adapter:
+        description: "Test adapter: xcode or swiftpm."
+        required: true
+        type: string
+      working_directory:
+        description: Safe repository-relative package/project root.
+        required: false
+        default: .
+        type: string
+      project_path:
+        description: Xcode project path relative to working_directory.
+        required: false
+        default: ""
+        type: string
+      workspace_path:
+        description: Xcode workspace path relative to working_directory.
+        required: false
+        default: ""
+        type: string
+      scheme:
+        description: Xcode scheme name.
+        required: false
+        default: ""
+        type: string
+      test_plan:
+        description: Optional Xcode test plan.
+        required: false
+        default: ""
+        type: string
+      test_filter:
+        description: Optional SwiftPM test filter.
+        required: false
+        default: ""
+        type: string
+      destination:
+        description: xcodebuild destination.
+        required: false
+        default: platform=macOS,arch=arm64
+        type: string
+      developer_dir:
+        description: Canonical Xcode developer directory.
+        required: false
+        default: /Applications/Xcode_26.6.app/Contents/Developer
+        type: string
+      required:
+        description: Whether a failed test execution must fail the reusable workflow.
+        required: false
+        default: true
+        type: boolean
+      enable_coverage:
+        description: Generate and compare normalized coverage.
+        required: false
+        default: false
+        type: boolean
+      coverage_required:
+        description: Whether a failed coverage export/comparison must fail the reusable workflow.
+        required: false
+        default: true
+        type: boolean
+      coverage_max_regression:
+        description: Maximum permitted line-coverage regression ratio.
+        required: false
+        default: "0.001"
+        type: string
+      bootstrap_coverage:
+        description: Permit explicit first-baseline bootstrap when no trusted baseline exists.
+        required: false
+        default: false
+        type: boolean
+      coverage_artifact_name:
+        description: Exact trusted-main coverage baseline artifact name.
+        required: false
+        default: coverage-baseline
+        type: string
+    outputs:
+      test_result:
+        description: Raw test subsystem result before required/optional policy is applied.
+        value: ${{ jobs.tests.outputs.test_result }}
+      coverage_result:
+        description: Raw coverage subsystem result before required/optional policy is applied.
+        value: ${{ jobs.tests.outputs.coverage_result }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  tests:
+    name: ${{ inputs.check_name }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    continue-on-error: ${{ !inputs.required }}
+    outputs:
+      test_result: ${{ steps.finalize.outputs.test_result }}
+      coverage_result: ${{ steps.finalize.outputs.coverage_result }}
+    env:
+      DEVELOPER_DIR: ${{ inputs.developer_dir }}
+      TEST_ADAPTER: ${{ inputs.adapter }}
+      WORKING_DIRECTORY: ${{ inputs.working_directory }}
+      PROJECT_PATH: ${{ inputs.project_path }}
+      WORKSPACE_PATH: ${{ inputs.workspace_path }}
+      SCHEME: ${{ inputs.scheme }}
+      TEST_PLAN: ${{ inputs.test_plan }}
+      TEST_FILTER: ${{ inputs.test_filter }}
+      TEST_DESTINATION: ${{ inputs.destination }}
+      COVERAGE_MAX_REGRESSION: ${{ inputs.coverage_max_regression }}
+      COVERAGE_ARTIFACT_NAME: ${{ inputs.coverage_artifact_name }}
+      BOOTSTRAP_COVERAGE: ${{ inputs.bootstrap_coverage }}
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate test configuration
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          safe_relative_path() {
+            local value="$1"
+            [[ -n "${value}" && "${value}" != /* && "${value}" != *".."* ]]
+          }
+
+          safe_relative_path "${WORKING_DIRECTORY}" || {
+            echo "working_directory must be a safe repository-relative path." >&2
+            exit 2
+          }
+          [[ -d "${GITHUB_WORKSPACE}/${WORKING_DIRECTORY}" ]] || {
+            echo "working_directory does not exist: ${WORKING_DIRECTORY}" >&2
+            exit 2
+          }
+
+          case "${TEST_ADAPTER}" in
+            swiftpm)
+              [[ -f "${GITHUB_WORKSPACE}/${WORKING_DIRECTORY}/Package.swift" ]] || {
+                echo "SwiftPM adapter requires Package.swift in working_directory." >&2
+                exit 2
+              }
+              ;;
+            xcode)
+              if [[ -n "${PROJECT_PATH}" && -n "${WORKSPACE_PATH}" ]] || \
+                [[ -z "${PROJECT_PATH}" && -z "${WORKSPACE_PATH}" ]]; then
+                echo "Xcode adapter requires exactly one of project_path or workspace_path." >&2
+                exit 2
+              fi
+              [[ -n "${SCHEME}" ]] || {
+                echo "Xcode adapter requires scheme." >&2
+                exit 2
+              }
+              if [[ -n "${PROJECT_PATH}" ]]; then
+                safe_relative_path "${PROJECT_PATH}" || {
+                  echo "project_path must be repository-relative." >&2
+                  exit 2
+                }
+                [[ -d "${GITHUB_WORKSPACE}/${WORKING_DIRECTORY}/${PROJECT_PATH}" ]] || {
+                  echo "Xcode project does not exist: ${PROJECT_PATH}" >&2
+                  exit 2
+                }
+              else
+                safe_relative_path "${WORKSPACE_PATH}" || {
+                  echo "workspace_path must be repository-relative." >&2
+                  exit 2
+                }
+                [[ -d "${GITHUB_WORKSPACE}/${WORKING_DIRECTORY}/${WORKSPACE_PATH}" ]] || {
+                  echo "Xcode workspace does not exist: ${WORKSPACE_PATH}" >&2
+                  exit 2
+                }
+              fi
+              ;;
+            *)
+              echo "adapter must be xcode or swiftpm." >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Run SwiftPM tests
+        id: swiftpm
+        if: ${{ inputs.adapter == 'swiftpm' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(swift test --package-path "${WORKING_DIRECTORY}")
+          if [[ "${{ inputs.enable_coverage }}" == "true" ]]; then
+            args+=(--enable-code-coverage)
+          fi
+          if [[ -n "${TEST_FILTER}" ]]; then
+            args+=(--filter "${TEST_FILTER}")
+          fi
+          "${args[@]}"
+
+      - name: Run Xcode tests
+        id: xcode
+        if: ${{ inputs.adapter == 'xcode' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result_bundle="${RUNNER_TEMP}/tests.xcresult"
+          rm -rf "${result_bundle}"
+
+          args=(xcodebuild test)
+          if [[ -n "${PROJECT_PATH}" ]]; then
+            args+=(-project "${WORKING_DIRECTORY}/${PROJECT_PATH}")
+          else
+            args+=(-workspace "${WORKING_DIRECTORY}/${WORKSPACE_PATH}")
+          fi
+          args+=(-scheme "${SCHEME}" -destination "${TEST_DESTINATION}")
+          if [[ -n "${TEST_PLAN}" ]]; then
+            args+=(-testPlan "${TEST_PLAN}")
+          fi
+          if [[ "${{ inputs.enable_coverage }}" == "true" ]]; then
+            args+=(-enableCodeCoverage YES)
+          fi
+          args+=(-resultBundlePath "${result_bundle}")
+          "${args[@]}"
+
+      - name: Export normalized coverage
+        if: ${{ inputs.enable_coverage && ((inputs.adapter == 'swiftpm' && steps.swiftpm.outcome == 'success') || (inputs.adapter == 'xcode' && steps.xcode.outcome == 'success')) }}
+        id: coverage
+        continue-on-error: ${{ !inputs.coverage_required }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          coverage_root="${RUNNER_TEMP}/coverage-current"
+          mkdir -p "${coverage_root}"
+          profile="${coverage_root}/coverage-profile.json"
+          summary="${coverage_root}/coverage-summary.json"
+
+          if [[ "${TEST_ADAPTER}" == "swiftpm" ]]; then
+            coverage_input="$(swift test --package-path "${WORKING_DIRECTORY}" --show-codecov-path | tail -n 1)"
+            toolchain="$(swift --version)"
+          else
+            coverage_input="${RUNNER_TEMP}/tests.xcresult"
+            toolchain="$(xcodebuild -version)"
+          fi
+
+          python3 - "${profile}" "${toolchain}" <<'PY'
+          import json
+          import os
+          import sys
+
+          output, toolchain = sys.argv[1:]
+          profile = {
+              "schemaVersion": 1,
+              "adapter": os.environ["TEST_ADAPTER"],
+              "workingDirectory": os.environ["WORKING_DIRECTORY"],
+              "projectPath": os.environ["PROJECT_PATH"],
+              "workspacePath": os.environ["WORKSPACE_PATH"],
+              "scheme": os.environ["SCHEME"],
+              "testPlan": os.environ["TEST_PLAN"],
+              "testFilter": os.environ["TEST_FILTER"],
+              "destination": os.environ["TEST_DESTINATION"],
+              "toolchain": toolchain,
+          }
+          with open(output, "w", encoding="utf-8") as handle:
+              json.dump(profile, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          PY
+
+          bash scripts/test/export-coverage.sh \
+            --adapter "${TEST_ADAPTER}" \
+            --input "${coverage_input}" \
+            --output "${summary}" \
+            --profile "${profile}"
+
+          echo "summary=${summary}" >>"${GITHUB_OUTPUT}"
+
+      - name: Resolve and compare trusted coverage baseline
+        id: coverage_compare
+        if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' && steps.coverage.outcome == 'success' }}
+        continue-on-error: ${{ !inputs.coverage_required }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_COVERAGE_SUMMARY: ${{ steps.coverage.outputs.summary }}
+        run: |
+          set -euo pipefail
+          baseline_root="${RUNNER_TEMP}/coverage-baseline"
+          set +e
+          bash scripts/ci/resolve-trusted-main-artifact.sh \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow tests.yml \
+            --artifact "${COVERAGE_ARTIFACT_NAME}" \
+            --output "${baseline_root}"
+          resolver_status=$?
+          set -e
+
+          if ((resolver_status == 4)); then
+            if [[ "${BOOTSTRAP_COVERAGE}" == "true" ]]; then
+              echo "### Coverage baseline" >>"${GITHUB_STEP_SUMMARY}"
+              echo "BOOTSTRAP: no trusted main coverage baseline exists yet." >>"${GITHUB_STEP_SUMMARY}"
+              exit 0
+            fi
+            echo "Trusted main coverage baseline is missing and bootstrap is disabled." >&2
+            exit 1
+          fi
+          ((resolver_status == 0)) || exit "${resolver_status}"
+
+          mapfile -t baselines < <(find "${baseline_root}" -type f -name coverage-summary.json -print)
+          if ((${#baselines[@]} != 1)); then
+            echo "Expected exactly one coverage-summary.json in trusted baseline artifact." >&2
+            exit 1
+          fi
+
+          comparison="${RUNNER_TEMP}/coverage-comparison.json"
+          set +e
+          python3 scripts/test/compare-coverage.py \
+            --baseline "${baselines[0]}" \
+            --current "${CURRENT_COVERAGE_SUMMARY}" \
+            --max-regression "${COVERAGE_MAX_REGRESSION}" \
+            >"${comparison}"
+          compare_status=$?
+          set -e
+
+          cat "${comparison}"
+          {
+            echo "### Coverage ratchet"
+            echo '```json'
+            cat "${comparison}"
+            echo '```'
+          } >>"${GITHUB_STEP_SUMMARY}"
+          exit "${compare_status}"
+
+      - name: Upload PR coverage diagnostics
+        id: coverage_diagnostics
+        if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' && always() }}
+        continue-on-error: ${{ !inputs.coverage_required }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-current-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coverage-current
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish trusted main coverage baseline
+        id: coverage_publish
+        if: ${{ inputs.enable_coverage && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.coverage.outcome == 'success' }}
+        continue-on-error: ${{ !inputs.coverage_required }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.coverage_artifact_name }}
+          path: ${{ steps.coverage.outputs.summary }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Finalize reusable test results
+        id: finalize
+        if: ${{ always() }}
+        shell: bash
+        env:
+          CHECK_NAME: ${{ inputs.check_name }}
+          ENABLE_COVERAGE: ${{ inputs.enable_coverage }}
+          TEST_REQUIRED: ${{ inputs.required }}
+          COVERAGE_REQUIRED: ${{ inputs.coverage_required }}
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          SWIFTPM_OUTCOME: ${{ steps.swiftpm.outcome }}
+          XCODE_OUTCOME: ${{ steps.xcode.outcome }}
+          COVERAGE_OUTCOME: ${{ steps.coverage.outcome }}
+          COVERAGE_COMPARE_OUTCOME: ${{ steps.coverage_compare.outcome }}
+          COVERAGE_DIAGNOSTICS_OUTCOME: ${{ steps.coverage_diagnostics.outcome }}
+          COVERAGE_PUBLISH_OUTCOME: ${{ steps.coverage_publish.outcome }}
+        run: |
+          set -euo pipefail
+
+          test_result="success"
+          if [[ "${CHECKOUT_OUTCOME}" != "success" || "${VALIDATE_OUTCOME}" != "success" ]]; then
+            test_result="failure"
+          elif [[ "${TEST_ADAPTER}" == "swiftpm" && "${SWIFTPM_OUTCOME}" != "success" ]]; then
+            test_result="failure"
+          elif [[ "${TEST_ADAPTER}" == "xcode" && "${XCODE_OUTCOME}" != "success" ]]; then
+            test_result="failure"
+          elif [[ "${TEST_ADAPTER}" != "swiftpm" && "${TEST_ADAPTER}" != "xcode" ]]; then
+            test_result="failure"
+          fi
+
+          coverage_result="success"
+          if [[ "${ENABLE_COVERAGE}" == "true" ]]; then
+            if [[ "${test_result}" != "success" || "${COVERAGE_OUTCOME}" != "success" ]]; then
+              coverage_result="failure"
+            elif [[ "${EVENT_NAME}" == "pull_request" && "${COVERAGE_COMPARE_OUTCOME}" != "success" ]]; then
+              coverage_result="failure"
+            elif [[ "${EVENT_NAME}" == "pull_request" && "${COVERAGE_DIAGNOSTICS_OUTCOME}" != "success" ]]; then
+              coverage_result="failure"
+            elif [[ "${EVENT_NAME}" == "push" && "${GIT_REF}" == "refs/heads/main" && "${COVERAGE_PUBLISH_OUTCOME}" != "success" ]]; then
+              coverage_result="failure"
+            fi
+          fi
+
+          echo "test_result=${test_result}" >>"${GITHUB_OUTPUT}"
+          echo "coverage_result=${coverage_result}" >>"${GITHUB_OUTPUT}"
+
+          if [[ "${test_result}" == "failure" && "${TEST_REQUIRED}" != "true" ]]; then
+            echo "::warning::${CHECK_NAME} failed but is optional."
+          fi
+          if [[ "${ENABLE_COVERAGE}" == "true" && "${coverage_result}" == "failure" && "${COVERAGE_REQUIRED}" != "true" ]]; then
+            echo "::warning::Coverage failed but is optional."
+          fi
