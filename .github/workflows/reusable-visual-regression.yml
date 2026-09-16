@@ -61,7 +61,6 @@ jobs:
     name: Visual comparison
     runs-on: macos-26
     timeout-minutes: 30
-    continue-on-error: ${{ !inputs.required }}
     outputs:
       baseline_available: ${{ steps.baseline.outputs.available }}
       baseline_run_id: ${{ steps.baseline.outputs.run_id }}
@@ -152,6 +151,7 @@ jobs:
         env:
           BASELINE_AVAILABLE: ${{ steps.baseline.outputs.available }}
           BASELINE_RUN_ID: ${{ steps.baseline.outputs.run_id }}
+          COMPARE_REQUIRED: ${{ inputs.required }}
         run: |
           set -euo pipefail
           rolling_root=""
@@ -183,7 +183,22 @@ jobs:
             cat "${compare_log}"
             echo '```'
           } >>"${GITHUB_STEP_SUMMARY}"
-          exit "${compare_status}"
+
+          case "${compare_status}" in
+            0)
+              echo "result=success" >>"${GITHUB_OUTPUT}"
+              ;;
+            1)
+              echo "result=failure" >>"${GITHUB_OUTPUT}"
+              if [[ "${COMPARE_REQUIRED}" == "true" ]]; then
+                exit 1
+              fi
+              ;;
+            *)
+              echo "result=failure" >>"${GITHUB_OUTPUT}"
+              exit "${compare_status}"
+              ;;
+          esac
 
       - name: Upload visual comparison report
         id: report_upload
@@ -208,6 +223,7 @@ jobs:
           MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
           COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+          COMPARE_RESULT: ${{ steps.compare.outputs.result }}
           REPORT_UPLOAD_OUTCOME: ${{ steps.report_upload.outcome }}
         run: |
           set -euo pipefail
@@ -223,6 +239,9 @@ jobs:
               result="failure"
             fi
           done
+          if [[ "${COMPARE_RESULT}" != "success" ]]; then
+            result="failure"
+          fi
 
           echo "result=${result}" >>"${GITHUB_OUTPUT}"
           if [[ "${result}" == "failure" && "${REQUIRED}" != "true" ]]; then
