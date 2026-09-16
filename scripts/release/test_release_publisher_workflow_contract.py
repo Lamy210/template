@@ -132,6 +132,56 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
             privileged,
         )
 
+    def test_privileged_release_policy_comes_from_trusted_publisher(self) -> None:
+        block = job_block(self.workflow_text(), "sign-and-publish")
+        self.assertTrue(block, "sign-and-publish job is required")
+        for policy in (
+            "app_name: MyApp",
+            "app_path: MyApp.app",
+            "bundle_id: com.example.MyApp",
+            "dmg_name: MyApp-${{ needs.validate.outputs.source_version }}.dmg",
+            'signing_identity: "Developer ID Application: Example Developer (TEAMID)"',
+            'entitlements_path: ""',
+            "publish_github_release: true",
+        ):
+            with self.subTest(policy=policy):
+                self.assertIn(policy, block)
+
+        for forbidden in (
+            "needs.validate.outputs.app_name",
+            "needs.validate.outputs.app_path",
+            "needs.validate.outputs.bundle_id",
+            "needs.validate.outputs.signing_identity",
+            "needs.validate.outputs.entitlements_path",
+            "needs.validate.outputs.publish_github_release",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, block)
+
+    def test_homebrew_write_policy_comes_from_trusted_publisher(self) -> None:
+        block = job_block(self.workflow_text(), "homebrew")
+        self.assertTrue(block, "homebrew job is required")
+        for policy in (
+            "tap_repository: Lamy210/homebrew-tap",
+            "tap_default_branch: main",
+            "cask_token: my-app",
+            "app_name: MyApp",
+            "bundle_id: com.example.MyApp",
+            "homepage: https://github.com/example/MyApp",
+            "dmg_basename_template: MyApp-v#{version}.dmg",
+        ):
+            with self.subTest(policy=policy):
+                self.assertIn(policy, block)
+
+        for forbidden in (
+            "needs.validate.outputs.tap_repository",
+            "needs.validate.outputs.tap_default_branch",
+            "needs.validate.outputs.cask_token",
+            "needs.validate.outputs.homepage",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, block)
+
     def test_concurrency_serializes_attempts_for_one_source_run(self) -> None:
         text = self.workflow_text()
         self.assertIn(
