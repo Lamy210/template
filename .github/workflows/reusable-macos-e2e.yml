@@ -1,0 +1,136 @@
+name: Reusable macOS E2E
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        required: false
+        default: .
+        type: string
+      project_path:
+        required: false
+        default: ""
+        type: string
+      workspace_path:
+        required: false
+        default: ""
+        type: string
+      scheme:
+        required: true
+        type: string
+      test_plan:
+        required: false
+        default: ""
+        type: string
+      profile_id:
+        required: false
+        default: macos-26-arm64-xcode-26.6
+        type: string
+      required:
+        description: Whether a failed E2E execution must fail the reusable workflow.
+        required: false
+        default: true
+        type: boolean
+    outputs:
+      result:
+        description: Raw E2E subsystem result before required/optional policy is applied.
+        value: ${{ jobs.e2e.outputs.result }}
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Standard macOS E2E
+    runs-on: macos-26
+    timeout-minutes: 45
+    continue-on-error: ${{ !inputs.required }}
+    outputs:
+      result: ${{ steps.finalize.outputs.result }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      WORKING_DIRECTORY: ${{ inputs.working_directory }}
+      PROJECT_PATH: ${{ inputs.project_path }}
+      WORKSPACE_PATH: ${{ inputs.workspace_path }}
+      SCHEME: ${{ inputs.scheme }}
+      TEST_PLAN: ${{ inputs.test_plan }}
+      TEST_DESTINATION: platform=macOS,arch=arm64
+      VISUAL_PROFILE_ID: ${{ inputs.profile_id }}
+      CURRENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      TZ: UTC
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run deterministic E2E
+        id: e2e_run
+        run: bash scripts/test/run-macos-e2e.sh
+
+      - name: Collect visual profile metadata
+        id: profile
+        if: ${{ always() }}
+        run: bash scripts/visual/collect-e2e-profile.sh
+
+      - name: Export xcresult attachments
+        id: attachments
+        if: ${{ always() }}
+        run: bash scripts/test/export-e2e-diagnostics.sh
+
+      - name: Upload visual capture bundle
+        id: visual_upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/visual
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload E2E diagnostics
+        id: diagnostics_upload
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-e2e-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/e2e.xcresult
+            ${{ runner.temp }}/e2e-attachments
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Finalize reusable E2E result
+        id: finalize
+        if: ${{ always() }}
+        shell: bash
+        env:
+          REQUIRED: ${{ inputs.required }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          E2E_OUTCOME: ${{ steps.e2e_run.outcome }}
+          PROFILE_OUTCOME: ${{ steps.profile.outcome }}
+          ATTACHMENTS_OUTCOME: ${{ steps.attachments.outcome }}
+          VISUAL_UPLOAD_OUTCOME: ${{ steps.visual_upload.outcome }}
+          DIAGNOSTICS_UPLOAD_OUTCOME: ${{ steps.diagnostics_upload.outcome }}
+        run: |
+          set -euo pipefail
+          result="success"
+          for outcome in \
+            "${CHECKOUT_OUTCOME}" \
+            "${E2E_OUTCOME}" \
+            "${PROFILE_OUTCOME}" \
+            "${ATTACHMENTS_OUTCOME}" \
+            "${VISUAL_UPLOAD_OUTCOME}" \
+            "${DIAGNOSTICS_UPLOAD_OUTCOME}"; do
+            if [[ "${outcome}" != "success" ]]; then
+              result="failure"
+            fi
+          done
+
+          echo "result=${result}" >>"${GITHUB_OUTPUT}"
+          if [[ "${result}" == "failure" && "${REQUIRED}" != "true" ]]; then
+            echo "::warning::E2E failed but is optional."
+          fi
