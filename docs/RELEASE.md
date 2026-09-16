@@ -96,6 +96,14 @@ examples/app-release-publisher.yml
 
 The publisher file must be present on the default branch before relying on the two-stage release path.
 
+### Historical ancestors before the split
+
+A tag whose source commit predates `.github/workflows/release-build.yml` cannot produce a Release Build run for this two-stage pipeline. That is an intentional safe failure: no publisher validation run is created, and no privileged signing or publication path is entered.
+
+Do not add a fallback that invokes an older tag-selected privileged workflow, reconstructs release input with historical privileged code, or restores the retired monolithic path merely to make pre-migration commits releasable.
+
+The oldest commit eligible for automatic release should be an ancestor after the split Release Build workflow exists and after the two-stage release contract is available. If older source code must be shipped, migrate or rebuild it through reviewed current control code instead of weakening the trust boundary.
+
 ## End-to-end flow
 
 ```text
