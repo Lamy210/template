@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "17 3 * * 0"
   workflow_dispatch:
 
 permissions:
@@ -25,56 +27,34 @@ jobs:
       integration_required: ${{ steps.policy.outputs.integration_required }}
       coverage_enabled: ${{ steps.policy.outputs.coverage_enabled }}
       coverage_required: ${{ steps.policy.outputs.coverage_required }}
+      e2e_enabled: ${{ steps.policy.outputs.e2e_enabled }}
+      e2e_required: ${{ steps.policy.outputs.e2e_required }}
+      visual_enabled: ${{ steps.policy.outputs.visual_enabled }}
+      visual_required: ${{ steps.policy.outputs.visual_required }}
+      visual_bootstrap: ${{ steps.policy.outputs.visual_bootstrap }}
     env:
       MACOS_TEST_ADAPTER: ${{ vars.MACOS_TEST_ADAPTER }}
       MACOS_INTEGRATION_ENABLED: ${{ vars.MACOS_INTEGRATION_ENABLED }}
       MACOS_INTEGRATION_REQUIRED: ${{ vars.MACOS_INTEGRATION_REQUIRED }}
       MACOS_COVERAGE_ENABLED: ${{ vars.MACOS_COVERAGE_ENABLED }}
       MACOS_COVERAGE_REQUIRED: ${{ vars.MACOS_COVERAGE_REQUIRED }}
+      MACOS_E2E_ENABLED: ${{ vars.MACOS_E2E_ENABLED }}
+      MACOS_E2E_REQUIRED: ${{ vars.MACOS_E2E_REQUIRED }}
+      MACOS_VISUAL_ENABLED: ${{ vars.MACOS_VISUAL_ENABLED }}
+      MACOS_VISUAL_REQUIRED: ${{ vars.MACOS_VISUAL_REQUIRED }}
+      MACOS_VISUAL_BOOTSTRAP: ${{ vars.MACOS_VISUAL_BOOTSTRAP }}
     steps:
+      - name: Checkout policy classifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Classify configured test subsystems
         id: policy
-        shell: bash
-        run: |
-          set -euo pipefail
-          adapter="${MACOS_TEST_ADAPTER}"
-          configured=false
-          configuration_error=false
-
-          case "${adapter}" in
-            "") ;;
-            xcode | swiftpm) configured=true ;;
-            *) configuration_error=true ;;
-          esac
-
-          integration_enabled=false
-          if [[ "${configured}" == "true" && "${MACOS_INTEGRATION_ENABLED}" == "true" ]]; then
-            integration_enabled=true
-          fi
-
-          coverage_enabled=false
-          if [[ "${configured}" == "true" && "${MACOS_COVERAGE_ENABLED}" == "true" ]]; then
-            coverage_enabled=true
-          fi
-
-          integration_required=false
-          if [[ "${integration_enabled}" == "true" && "${MACOS_INTEGRATION_REQUIRED}" == "true" ]]; then
-            integration_required=true
-          fi
-
-          coverage_required=false
-          if [[ "${coverage_enabled}" == "true" && "${MACOS_COVERAGE_REQUIRED}" != "false" ]]; then
-            coverage_required=true
-          fi
-
-          {
-            echo "configured=${configured}"
-            echo "configuration_error=${configuration_error}"
-            echo "integration_enabled=${integration_enabled}"
-            echo "integration_required=${integration_required}"
-            echo "coverage_enabled=${coverage_enabled}"
-            echo "coverage_required=${coverage_required}"
-          } >>"${GITHUB_OUTPUT}"
+        run: >-
+          python3 scripts/test/classify-test-policy.py
+          --from-env
+          --github-output "$GITHUB_OUTPUT"
 
   unit-run:
     name: Unit runner
@@ -94,7 +74,9 @@ jobs:
       test_plan: ${{ vars.MACOS_UNIT_TEST_PLAN || vars.MACOS_TEST_PLAN || '' }}
       test_filter: ${{ vars.MACOS_UNIT_TEST_FILTER || '' }}
       destination: ${{ vars.MACOS_TEST_DESTINATION || 'platform=macOS,arch=arm64' }}
+      required: true
       enable_coverage: ${{ needs.classify.outputs.coverage_enabled == 'true' }}
+      coverage_required: ${{ needs.classify.outputs.coverage_required == 'true' }}
       coverage_max_regression: ${{ vars.MACOS_COVERAGE_MAX_REGRESSION || '0.001' }}
       bootstrap_coverage: ${{ vars.MACOS_COVERAGE_BOOTSTRAP == 'true' }}
       coverage_artifact_name: ${{ vars.MACOS_COVERAGE_ARTIFACT_NAME || 'coverage-baseline' }}
@@ -106,20 +88,30 @@ jobs:
       - unit-run
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
     steps:
       - name: Publish Unit result
+        id: publish
         shell: bash
         env:
           CONFIGURED: ${{ needs.classify.outputs.configured }}
-          RESULT: ${{ needs.unit-run.result }}
+          RAW_RESULT: ${{ needs.unit-run.outputs.test_result }}
         run: |
           set -euo pipefail
           if [[ "${CONFIGURED}" != "true" ]]; then
+            echo "result=disabled" >>"${GITHUB_OUTPUT}"
             echo "Unit: DISABLED / NOT CONFIGURED"
             exit 0
           fi
-          [[ "${RESULT}" == "success" ]] || {
-            echo "Unit runner result: ${RESULT}" >&2
+
+          case "${RAW_RESULT}" in
+            success | failure) result="${RAW_RESULT}" ;;
+            *) result="failure" ;;
+          esac
+          echo "result=${result}" >>"${GITHUB_OUTPUT}"
+          [[ "${result}" == "success" ]] || {
+            echo "Unit raw result: ${RAW_RESULT:-missing}" >&2
             exit 1
           }
 
@@ -141,7 +133,9 @@ jobs:
       test_plan: ${{ vars.MACOS_INTEGRATION_TEST_PLAN || '' }}
       test_filter: ${{ vars.MACOS_INTEGRATION_TEST_FILTER || '' }}
       destination: ${{ vars.MACOS_TEST_DESTINATION || 'platform=macOS,arch=arm64' }}
+      required: ${{ needs.classify.outputs.integration_required == 'true' }}
       enable_coverage: false
+      coverage_required: false
 
   integration:
     name: Integration
@@ -150,40 +144,154 @@ jobs:
       - integration-run
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
     steps:
       - name: Publish Integration result
+        id: publish
         shell: bash
         env:
           ENABLED: ${{ needs.classify.outputs.integration_enabled }}
-          RESULT: ${{ needs.integration-run.result }}
+          REQUIRED: ${{ needs.classify.outputs.integration_required }}
+          RAW_RESULT: ${{ needs.integration-run.outputs.test_result }}
         run: |
           set -euo pipefail
           if [[ "${ENABLED}" != "true" ]]; then
+            echo "result=disabled" >>"${GITHUB_OUTPUT}"
             echo "Integration: DISABLED / NOT APPLICABLE"
             exit 0
           fi
-          [[ "${RESULT}" == "success" ]] || {
-            echo "Integration runner result: ${RESULT}" >&2
-            exit 1
-          }
+
+          case "${RAW_RESULT}" in
+            success | failure) result="${RAW_RESULT}" ;;
+            *) result="failure" ;;
+          esac
+          echo "result=${result}" >>"${GITHUB_OUTPUT}"
+          if [[ "${result}" == "failure" ]]; then
+            if [[ "${REQUIRED}" == "true" ]]; then
+              echo "Integration raw result: ${RAW_RESULT:-missing}" >&2
+              exit 1
+            fi
+            echo "::warning::Integration failed but is optional."
+          fi
+
+  e2e-run:
+    name: E2E runner
+    needs: classify
+    if: ${{ needs.classify.outputs.e2e_enabled == 'true' }}
+    uses: $/.github/workflows/reusable-macos-e2e.yml
+    permissions:
+      contents: read
+    with:
+      working_directory: ${{ vars.MACOS_TEST_WORKING_DIRECTORY || '.' }}
+      project_path: ${{ vars.MACOS_TEST_PROJECT_PATH || '' }}
+      workspace_path: ${{ vars.MACOS_TEST_WORKSPACE_PATH || '' }}
+      scheme: ${{ vars.MACOS_E2E_SCHEME || vars.MACOS_TEST_SCHEME || '' }}
+      test_plan: ${{ vars.MACOS_E2E_TEST_PLAN || '' }}
+      profile_id: ${{ vars.VISUAL_PROFILE_ID || 'macos-26-arm64-xcode-26.6' }}
+      required: ${{ needs.classify.outputs.e2e_required == 'true' }}
 
   e2e:
     name: E2E
-    needs: classify
+    needs:
+      - classify
+      - e2e-run
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
     steps:
-      - name: Report current Task 7 state
-        run: echo "E2E is disabled until the dedicated deterministic E2E workflow is wired."
+      - name: Publish E2E result
+        id: publish
+        shell: bash
+        env:
+          ENABLED: ${{ needs.classify.outputs.e2e_enabled }}
+          REQUIRED: ${{ needs.classify.outputs.e2e_required }}
+          RAW_RESULT: ${{ needs.e2e-run.outputs.result }}
+        run: |
+          set -euo pipefail
+          if [[ "${ENABLED}" != "true" ]]; then
+            echo "result=disabled" >>"${GITHUB_OUTPUT}"
+            echo "E2E: DISABLED / NOT APPLICABLE"
+            exit 0
+          fi
+
+          case "${RAW_RESULT}" in
+            success | failure) result="${RAW_RESULT}" ;;
+            *) result="failure" ;;
+          esac
+          echo "result=${result}" >>"${GITHUB_OUTPUT}"
+          if [[ "${result}" == "failure" ]]; then
+            if [[ "${REQUIRED}" == "true" ]]; then
+              echo "E2E raw result: ${RAW_RESULT:-missing}" >&2
+              exit 1
+            fi
+            echo "::warning::E2E failed but is optional."
+          fi
+
+  visual-run:
+    name: Visual runner
+    needs:
+      - classify
+      - e2e-run
+    if: ${{ always() && needs.classify.outputs.visual_enabled == 'true' && needs.e2e-run.result == 'success' && needs.e2e-run.outputs.result == 'success' }}
+    uses: $/.github/workflows/reusable-visual-regression.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      manifest_path: ${{ vars.MACOS_VISUAL_MANIFEST_PATH || 'Tests/VisualRegression/visual-regression.json' }}
+      current_artifact_name: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
+      current_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      trusted_workflow: tests.yml
+      trusted_events: push,schedule
+      baseline_artifact_name: ${{ vars.MACOS_VISUAL_BASELINE_ARTIFACT || 'visual-baseline' }}
+      bootstrap_rolling: ${{ needs.classify.outputs.visual_bootstrap == 'true' }}
+      required: ${{ needs.classify.outputs.visual_required == 'true' }}
 
   visual:
     name: Visual
-    needs: classify
+    needs:
+      - classify
+      - e2e-run
+      - visual-run
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
     steps:
-      - name: Report current Task 7 state
-        run: echo "Visual regression is disabled until the dedicated capture workflow is wired."
+      - name: Publish Visual result
+        id: publish
+        shell: bash
+        env:
+          ENABLED: ${{ needs.classify.outputs.visual_enabled }}
+          REQUIRED: ${{ needs.classify.outputs.visual_required }}
+          E2E_RESULT: ${{ needs.e2e-run.outputs.result }}
+          RAW_RESULT: ${{ needs.visual-run.outputs.result }}
+        run: |
+          set -euo pipefail
+          if [[ "${ENABLED}" != "true" ]]; then
+            echo "result=disabled" >>"${GITHUB_OUTPUT}"
+            echo "Visual: DISABLED / NOT APPLICABLE"
+            exit 0
+          fi
+
+          if [[ "${E2E_RESULT}" != "success" ]]; then
+            result="failure"
+          else
+            case "${RAW_RESULT}" in
+              success | failure) result="${RAW_RESULT}" ;;
+              *) result="failure" ;;
+            esac
+          fi
+          echo "result=${result}" >>"${GITHUB_OUTPUT}"
+          if [[ "${result}" == "failure" ]]; then
+            if [[ "${REQUIRED}" == "true" ]]; then
+              echo "Visual raw result: ${RAW_RESULT:-missing}; E2E raw result: ${E2E_RESULT:-missing}" >&2
+              exit 1
+            fi
+            echo "::warning::Visual failed but is optional."
+          fi
 
   coverage:
     name: Coverage
@@ -192,22 +300,36 @@ jobs:
       - unit-run
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
     steps:
       - name: Publish Coverage result
+        id: publish
         shell: bash
         env:
           ENABLED: ${{ needs.classify.outputs.coverage_enabled }}
-          UNIT_RESULT: ${{ needs.unit-run.result }}
+          REQUIRED: ${{ needs.classify.outputs.coverage_required }}
+          RAW_RESULT: ${{ needs.unit-run.outputs.coverage_result }}
         run: |
           set -euo pipefail
           if [[ "${ENABLED}" != "true" ]]; then
+            echo "result=disabled" >>"${GITHUB_OUTPUT}"
             echo "Coverage: DISABLED / NOT APPLICABLE"
             exit 0
           fi
-          [[ "${UNIT_RESULT}" == "success" ]] || {
-            echo "Coverage execution result follows Unit runner: ${UNIT_RESULT}" >&2
-            exit 1
-          }
+
+          case "${RAW_RESULT}" in
+            success | failure) result="${RAW_RESULT}" ;;
+            *) result="failure" ;;
+          esac
+          echo "result=${result}" >>"${GITHUB_OUTPUT}"
+          if [[ "${result}" == "failure" ]]; then
+            if [[ "${REQUIRED}" == "true" ]]; then
+              echo "Coverage raw result: ${RAW_RESULT:-missing}" >&2
+              exit 1
+            fi
+            echo "::warning::Coverage failed but is optional."
+          fi
 
   required-gate:
     name: Tests / Required Gate
@@ -231,15 +353,22 @@ jobs:
       - name: Build normalized subsystem policy
         shell: bash
         env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
           CONFIGURED: ${{ needs.classify.outputs.configured }}
           CONFIGURATION_ERROR: ${{ needs.classify.outputs.configuration_error }}
-          UNIT_RESULT: ${{ needs.unit.result }}
+          UNIT_RESULT: ${{ needs.unit.outputs.result }}
           INTEGRATION_ENABLED: ${{ needs.classify.outputs.integration_enabled }}
           INTEGRATION_REQUIRED: ${{ needs.classify.outputs.integration_required }}
-          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.outputs.result }}
+          E2E_ENABLED: ${{ needs.classify.outputs.e2e_enabled }}
+          E2E_REQUIRED: ${{ needs.classify.outputs.e2e_required }}
+          E2E_RESULT: ${{ needs.e2e.outputs.result }}
+          VISUAL_ENABLED: ${{ needs.classify.outputs.visual_enabled }}
+          VISUAL_REQUIRED: ${{ needs.classify.outputs.visual_required }}
+          VISUAL_RESULT: ${{ needs.visual.outputs.result }}
           COVERAGE_ENABLED: ${{ needs.classify.outputs.coverage_enabled }}
           COVERAGE_REQUIRED: ${{ needs.classify.outputs.coverage_required }}
-          COVERAGE_RESULT: ${{ needs.coverage.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.outputs.result }}
         run: |
           set -euo pipefail
           python3 - "${RUNNER_TEMP}/required-gate-input.json" <<'PY'
@@ -248,9 +377,15 @@ jobs:
           import sys
 
           output = sys.argv[1]
+          classifier_failed = os.environ["CLASSIFY_RESULT"] != "success"
           configured = os.environ["CONFIGURED"] == "true"
-          configuration_error = os.environ["CONFIGURATION_ERROR"] == "true"
+          configuration_error = (
+              classifier_failed
+              or os.environ["CONFIGURATION_ERROR"] == "true"
+          )
           integration_enabled = os.environ["INTEGRATION_ENABLED"] == "true"
+          e2e_enabled = os.environ["E2E_ENABLED"] == "true"
+          visual_enabled = os.environ["VISUAL_ENABLED"] == "true"
           coverage_enabled = os.environ["COVERAGE_ENABLED"] == "true"
 
           if configuration_error:
@@ -273,6 +408,24 @@ jobs:
               if integration_enabled
               else {"status": "disabled", "required": False, "classification": "not-applicable"}
           )
+          e2e = (
+              {
+                  "status": os.environ["E2E_RESULT"],
+                  "required": os.environ["E2E_REQUIRED"] == "true",
+                  "classification": "applicable",
+              }
+              if e2e_enabled
+              else {"status": "disabled", "required": False, "classification": "not-applicable"}
+          )
+          visual = (
+              {
+                  "status": os.environ["VISUAL_RESULT"],
+                  "required": os.environ["VISUAL_REQUIRED"] == "true",
+                  "classification": "applicable",
+              }
+              if visual_enabled
+              else {"status": "disabled", "required": False, "classification": "not-applicable"}
+          )
           coverage = (
               {
                   "status": os.environ["COVERAGE_RESULT"],
@@ -288,8 +441,8 @@ jobs:
               "subsystems": {
                   "Unit": unit,
                   "Integration": integration,
-                  "E2E": {"status": "disabled", "required": False, "classification": "not-applicable"},
-                  "Visual": {"status": "disabled", "required": False, "classification": "not-applicable"},
+                  "E2E": e2e,
+                  "Visual": visual,
                   "Coverage": coverage,
               },
           }
@@ -318,3 +471,61 @@ jobs:
             echo '```'
           } >>"${GITHUB_STEP_SUMMARY}"
           exit "${status}"
+
+  publish-visual-baseline:
+    name: Publish visual baseline
+    needs:
+      - classify
+      - visual-run
+      - required-gate
+    if: ${{ always() && needs.classify.outputs.visual_enabled == 'true' && needs.visual-run.result == 'success' && needs.visual-run.outputs.result == 'success' && needs.required-gate.result == 'success' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CURRENT_SHA: ${{ github.sha }}
+      MANIFEST_PATH: ${{ vars.MACOS_VISUAL_MANIFEST_PATH || 'Tests/VisualRegression/visual-regression.json' }}
+      CURRENT_ARTIFACT_NAME: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
+      BASELINE_ARTIFACT_NAME: ${{ vars.MACOS_VISUAL_BASELINE_ARTIFACT || 'visual-baseline' }}
+      PREVIOUS_BASELINE_RUN_ID: ${{ needs.visual-run.outputs.baseline_run_id }}
+    steps:
+      - name: Checkout baseline builder
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download verified current visual capture
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.CURRENT_ARTIFACT_NAME }}
+          path: artifacts/visual
+
+      - name: Build rolling visual baseline bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            python3 scripts/visual/build-baseline-bundle.py
+            --repo-root "${GITHUB_WORKSPACE}"
+            --manifest "${MANIFEST_PATH}"
+            --current-profile "artifacts/visual/profile.json"
+            --output "${RUNNER_TEMP}/visual-baseline"
+            --repository "${GITHUB_REPOSITORY}"
+            --workflow "tests.yml"
+            --run-id "${GITHUB_RUN_ID}"
+            --run-attempt "${GITHUB_RUN_ATTEMPT}"
+            --source-sha "${CURRENT_SHA}"
+          )
+          if [[ -n "${PREVIOUS_BASELINE_RUN_ID}" ]]; then
+            args+=(--previous-baseline-reference "run:${PREVIOUS_BASELINE_RUN_ID}")
+          fi
+          "${args[@]}"
+
+      - name: Publish trusted rolling baseline
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.BASELINE_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/visual-baseline
+          if-no-files-found: error
+          retention-days: 90

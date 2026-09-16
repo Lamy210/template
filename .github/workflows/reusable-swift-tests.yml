@@ -52,10 +52,20 @@ on:
         required: false
         default: /Applications/Xcode_26.6.app/Contents/Developer
         type: string
+      required:
+        description: Whether a failed test execution must fail the reusable workflow.
+        required: false
+        default: true
+        type: boolean
       enable_coverage:
         description: Generate and compare normalized coverage.
         required: false
         default: false
+        type: boolean
+      coverage_required:
+        description: Whether a failed coverage export/comparison must fail the reusable workflow.
+        required: false
+        default: true
         type: boolean
       coverage_max_regression:
         description: Maximum permitted line-coverage regression ratio.
@@ -72,6 +82,13 @@ on:
         required: false
         default: coverage-baseline
         type: string
+    outputs:
+      test_result:
+        description: Raw test subsystem result before required/optional policy is applied.
+        value: ${{ jobs.tests.outputs.test_result }}
+      coverage_result:
+        description: Raw coverage subsystem result before required/optional policy is applied.
+        value: ${{ jobs.tests.outputs.coverage_result }}
 
 permissions:
   contents: read
@@ -82,6 +99,10 @@ jobs:
     name: ${{ inputs.check_name }}
     runs-on: macos-26
     timeout-minutes: 30
+    continue-on-error: ${{ !inputs.required }}
+    outputs:
+      test_result: ${{ steps.finalize.outputs.test_result }}
+      coverage_result: ${{ steps.finalize.outputs.coverage_result }}
     env:
       DEVELOPER_DIR: ${{ inputs.developer_dir }}
       TEST_ADAPTER: ${{ inputs.adapter }}
@@ -98,11 +119,13 @@ jobs:
 
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Validate test configuration
+        id: validate
         shell: bash
         run: |
           set -euo pipefail
@@ -165,6 +188,7 @@ jobs:
           esac
 
       - name: Run SwiftPM tests
+        id: swiftpm
         if: ${{ inputs.adapter == 'swiftpm' }}
         shell: bash
         run: |
@@ -179,6 +203,7 @@ jobs:
           "${args[@]}"
 
       - name: Run Xcode tests
+        id: xcode
         if: ${{ inputs.adapter == 'xcode' }}
         shell: bash
         run: |
@@ -203,8 +228,9 @@ jobs:
           "${args[@]}"
 
       - name: Export normalized coverage
-        if: ${{ inputs.enable_coverage }}
+        if: ${{ inputs.enable_coverage && ((inputs.adapter == 'swiftpm' && steps.swiftpm.outcome == 'success') || (inputs.adapter == 'xcode' && steps.xcode.outcome == 'success')) }}
         id: coverage
+        continue-on-error: ${{ !inputs.coverage_required }}
         shell: bash
         run: |
           set -euo pipefail
@@ -253,7 +279,9 @@ jobs:
           echo "summary=${summary}" >>"${GITHUB_OUTPUT}"
 
       - name: Resolve and compare trusted coverage baseline
-        if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' }}
+        id: coverage_compare
+        if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' && steps.coverage.outcome == 'success' }}
+        continue-on-error: ${{ !inputs.coverage_required }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -307,7 +335,9 @@ jobs:
           exit "${compare_status}"
 
       - name: Upload PR coverage diagnostics
+        id: coverage_diagnostics
         if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' && always() }}
+        continue-on-error: ${{ !inputs.coverage_required }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-current-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
@@ -316,10 +346,68 @@ jobs:
           retention-days: 14
 
       - name: Publish trusted main coverage baseline
-        if: ${{ inputs.enable_coverage && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        id: coverage_publish
+        if: ${{ inputs.enable_coverage && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.coverage.outcome == 'success' }}
+        continue-on-error: ${{ !inputs.coverage_required }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.coverage_artifact_name }}
           path: ${{ steps.coverage.outputs.summary }}
           if-no-files-found: error
           retention-days: 90
+
+      - name: Finalize reusable test results
+        id: finalize
+        if: ${{ always() }}
+        shell: bash
+        env:
+          CHECK_NAME: ${{ inputs.check_name }}
+          ENABLE_COVERAGE: ${{ inputs.enable_coverage }}
+          TEST_REQUIRED: ${{ inputs.required }}
+          COVERAGE_REQUIRED: ${{ inputs.coverage_required }}
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          SWIFTPM_OUTCOME: ${{ steps.swiftpm.outcome }}
+          XCODE_OUTCOME: ${{ steps.xcode.outcome }}
+          COVERAGE_OUTCOME: ${{ steps.coverage.outcome }}
+          COVERAGE_COMPARE_OUTCOME: ${{ steps.coverage_compare.outcome }}
+          COVERAGE_DIAGNOSTICS_OUTCOME: ${{ steps.coverage_diagnostics.outcome }}
+          COVERAGE_PUBLISH_OUTCOME: ${{ steps.coverage_publish.outcome }}
+        run: |
+          set -euo pipefail
+
+          test_result="success"
+          if [[ "${CHECKOUT_OUTCOME}" != "success" || "${VALIDATE_OUTCOME}" != "success" ]]; then
+            test_result="failure"
+          elif [[ "${TEST_ADAPTER}" == "swiftpm" && "${SWIFTPM_OUTCOME}" != "success" ]]; then
+            test_result="failure"
+          elif [[ "${TEST_ADAPTER}" == "xcode" && "${XCODE_OUTCOME}" != "success" ]]; then
+            test_result="failure"
+          elif [[ "${TEST_ADAPTER}" != "swiftpm" && "${TEST_ADAPTER}" != "xcode" ]]; then
+            test_result="failure"
+          fi
+
+          coverage_result="success"
+          if [[ "${ENABLE_COVERAGE}" == "true" ]]; then
+            if [[ "${test_result}" != "success" || "${COVERAGE_OUTCOME}" != "success" ]]; then
+              coverage_result="failure"
+            elif [[ "${EVENT_NAME}" == "pull_request" && "${COVERAGE_COMPARE_OUTCOME}" != "success" ]]; then
+              coverage_result="failure"
+            elif [[ "${EVENT_NAME}" == "pull_request" && "${COVERAGE_DIAGNOSTICS_OUTCOME}" != "success" ]]; then
+              coverage_result="failure"
+            elif [[ "${EVENT_NAME}" == "push" && "${GIT_REF}" == "refs/heads/main" && "${COVERAGE_PUBLISH_OUTCOME}" != "success" ]]; then
+              coverage_result="failure"
+            fi
+          fi
+
+          echo "test_result=${test_result}" >>"${GITHUB_OUTPUT}"
+          echo "coverage_result=${coverage_result}" >>"${GITHUB_OUTPUT}"
+
+          if [[ "${test_result}" == "failure" && "${TEST_REQUIRED}" != "true" ]]; then
+            echo "::warning::${CHECK_NAME} failed but is optional."
+          fi
+          if [[ "${ENABLE_COVERAGE}" == "true" && "${coverage_result}" == "failure" && "${COVERAGE_REQUIRED}" != "true" ]]; then
+            echo "::warning::Coverage failed but is optional."
+          fi

@@ -9,7 +9,9 @@ on:
       - "scripts/ci/**"
       - "scripts/test/**"
       - "scripts/visual/**"
+      - ".github/workflows/reusable-swift-tests.yml"
       - ".github/workflows/reusable-macos-e2e.yml"
+      - ".github/workflows/reusable-visual-regression.yml"
       - ".github/workflows/test-infrastructure.yml"
   push:
     branches:
@@ -21,7 +23,9 @@ on:
       - "scripts/ci/**"
       - "scripts/test/**"
       - "scripts/visual/**"
+      - ".github/workflows/reusable-swift-tests.yml"
       - ".github/workflows/reusable-macos-e2e.yml"
+      - ".github/workflows/reusable-visual-regression.yml"
       - ".github/workflows/test-infrastructure.yml"
   workflow_dispatch:
 
@@ -53,12 +57,24 @@ jobs:
         run: |
           bash scripts/ci/test-resolve-trusted-main-artifact.sh
           bash scripts/ci/test-resolve-trusted-main-artifact-options.sh
+          python3 scripts/ci/test_resolve_trusted_main_artifact_events.py -v
+
+      - name: Visual schedule wiring tests
+        run: python3 scripts/ci/test_visual_schedule_wiring.py -v
 
       - name: Coverage tooling tests
         run: python3 -m unittest scripts/test/test-compare-coverage.py -v
 
       - name: Required gate policy tests
-        run: python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
+        run: |
+          python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
+          python3 scripts/test/test-required-gate-workflow.py -v
+
+      - name: Optional subsystem workflow tests
+        run: python3 scripts/test/test-optional-subsystem-workflow.py -v
+
+      - name: Test subsystem classifier tests
+        run: python3 -m unittest scripts/test/test-classify-test-policy.py -v
 
       - name: macOS E2E tooling tests
         run: python3 -m unittest scripts/test/test-macos-e2e.py -v
