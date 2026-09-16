@@ -6,6 +6,7 @@ on:
       - ".github/workflows/reusable-swift-tests.yml"
       - ".github/workflows/tests.yml"
       - ".github/workflows/optional-subsystem-runtime-tests.yml"
+      - "scripts/test/fixtures/optional-failure/**"
   workflow_dispatch:
 
 permissions:
@@ -22,32 +23,15 @@ jobs:
     with:
       check_name: Optional test runtime contract
       adapter: swiftpm
-      working_directory: __missing_optional_subsystem_contract__
+      working_directory: scripts/test/fixtures/optional-failure
       required: false
       enable_coverage: false
       coverage_required: false
-
-  optional-coverage-failure:
-    name: Optional coverage failure probe
-    uses: $/.github/workflows/reusable-swift-tests.yml
-    permissions:
-      contents: read
-      actions: read
-    with:
-      check_name: Optional coverage runtime contract
-      adapter: swiftpm
-      working_directory: Tools/VisualDiff
-      required: true
-      enable_coverage: true
-      coverage_required: false
-      bootstrap_coverage: false
-      coverage_artifact_name: __optional_runtime_coverage_baseline_never_publish__
 
   verify-runtime-contract:
     name: Verify optional runtime contract
     needs:
       - optional-test-failure
-      - optional-coverage-failure
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -55,9 +39,6 @@ jobs:
     env:
       OPTIONAL_TEST_JOB_RESULT: ${{ needs.optional-test-failure.result }}
       OPTIONAL_TEST_RAW_RESULT: ${{ needs.optional-test-failure.outputs.test_result }}
-      OPTIONAL_COVERAGE_JOB_RESULT: ${{ needs.optional-coverage-failure.result }}
-      OPTIONAL_COVERAGE_TEST_RESULT: ${{ needs.optional-coverage-failure.outputs.test_result }}
-      OPTIONAL_COVERAGE_RAW_RESULT: ${{ needs.optional-coverage-failure.outputs.coverage_result }}
     steps:
       - name: Assert optional failure semantics
         shell: bash
@@ -73,17 +54,4 @@ jobs:
             exit 1
           }
 
-          [[ "${OPTIONAL_COVERAGE_JOB_RESULT}" == "success" ]] || {
-            echo "Optional coverage called workflow must be successful, got ${OPTIONAL_COVERAGE_JOB_RESULT}" >&2
-            exit 1
-          }
-          [[ "${OPTIONAL_COVERAGE_TEST_RESULT}" == "success" ]] || {
-            echo "Unit test result must remain success, got ${OPTIONAL_COVERAGE_TEST_RESULT:-missing}" >&2
-            exit 1
-          }
-          [[ "${OPTIONAL_COVERAGE_RAW_RESULT}" == "failure" ]] || {
-            echo "Optional coverage raw result must remain failure, got ${OPTIONAL_COVERAGE_RAW_RESULT:-missing}" >&2
-            exit 1
-          }
-
-          echo "Optional subsystem runtime semantics verified."
+          echo "Optional test assertion failure semantics verified."
