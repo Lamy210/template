@@ -352,7 +352,7 @@ jobs:
 
       - name: Upload PR coverage diagnostics
         id: coverage_diagnostics
-        if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' && always() }}
+        if: ${{ inputs.enable_coverage && github.event_name == 'pull_request' && always() && steps.coverage.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-current-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
@@ -422,9 +422,13 @@ jobs:
           echo "test_result=${test_result}" >>"${GITHUB_OUTPUT}"
           echo "coverage_result=${coverage_result}" >>"${GITHUB_OUTPUT}"
 
-          if [[ "${test_result}" == "failure" && "${TEST_REQUIRED}" != "true" ]]; then
-            echo "::warning::${CHECK_NAME} test execution failed but is optional."
+          if [[ "${TEST_REQUIRED}" != "true" ]]; then
+            if [[ "${TEST_ADAPTER}" == "swiftpm" && "${SWIFTPM_OUTCOME}" != "success" ]]; then
+              echo "::warning::${CHECK_NAME} test execution failed but is optional."
+            elif [[ "${TEST_ADAPTER}" == "xcode" && "${XCODE_OUTCOME}" != "success" ]]; then
+              echo "::warning::${CHECK_NAME} test execution failed but is optional."
+            fi
           fi
-          if [[ "${ENABLE_COVERAGE}" == "true" && "${coverage_result}" == "failure" && "${COVERAGE_REQUIRED}" != "true" ]]; then
+          if [[ "${ENABLE_COVERAGE}" == "true" && "${COVERAGE_REQUIRED}" != "true" && "${EVENT_NAME}" == "pull_request" && "${COVERAGE_COMPARE_OUTCOME}" == "success" && "${COVERAGE_COMPARE_RESULT}" == "failure" ]]; then
             echo "::warning::Coverage regression detected but is optional."
           fi
