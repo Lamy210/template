@@ -7,6 +7,7 @@ import unittest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REUSABLE_RELEASE = REPO_ROOT / ".github/workflows/reusable-macos-release.yml"
 PUBLISHER_EXAMPLE = REPO_ROOT / "examples/app-release-publisher.yml"
+RELEASE_DOC = REPO_ROOT / "docs/RELEASE.md"
 
 
 class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
@@ -114,6 +115,14 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
     def test_publisher_does_not_inherit_repository_or_organization_secrets(self) -> None:
         text = self.publisher_text()
         self.assertNotIn("secrets: inherit", text)
+
+    def test_rollout_docs_require_immutable_release_tag_ruleset(self) -> None:
+        text = RELEASE_DOC.read_text(encoding="utf-8")
+        self.assertIn("refs/tags/v*", text)
+        self.assertIn("allow initial creation", text)
+        self.assertIn("reject update", text)
+        self.assertIn("reject deletion", text)
+        self.assertIn("Do not enable", text)
 
 
 if __name__ == "__main__":
