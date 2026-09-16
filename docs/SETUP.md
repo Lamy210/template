@@ -63,9 +63,15 @@ Create a GitHub Environment named exactly:
 release
 ```
 
-The reusable macOS release workflow references this name.
+The reusable macOS release workflow references this name. This Environment is part of the privileged release trust boundary, so its deployment-ref restriction is required rather than optional.
 
-Where supported and useful, configure environment protection such as required reviewers and deployment tag restrictions. Keep privileged release secrets in this Environment rather than exposing them to ordinary PR jobs.
+Configure **Deployment branches and tags** using **Selected branches and tags** and allow only the repository's default branch (normally `main`) as a **Branch** rule. Do not add a `v*` tag rule to this Environment: `workflow_run` publishers execute with `GITHUB_REF` set to the default branch, and the called reusable workflow inherits the caller's ref. The release tag is independently validated as release input; it is not the deployment ref that enters this Environment.
+
+Do not leave the `release` Environment unrestricted. A feature branch, pull-request ref, or arbitrary tag must not be able to enter the privileged Environment merely by calling the reusable release workflow.
+
+Where the repository has an independent release reviewer, required-reviewer protection can be added as defense in depth. Do not create a one-person approval deadlock for a solo-maintainer repository. If the account/plan supports disabling administrator bypass for Environment protections and operational recovery does not require it, prefer disabling that bypass.
+
+Keep privileged release secrets in this Environment rather than exposing them to ordinary PR jobs.
 
 ## 6. Release secrets
 
@@ -155,7 +161,8 @@ After creating a project from the template, replace project-specific placeholder
 Before the first production release, run a controlled test release and verify all of the following end to end:
 
 - unsigned application artifact is produced without release secrets
-- release job can access the `release` Environment only on the intended tag path
+- release job can access the `release` Environment only from the intended default-branch publisher path
+- a feature branch or pull-request ref cannot enter the `release` Environment
 - Developer ID certificate imports into the temporary keychain
 - app signature validates
 - DMG builds and validates
