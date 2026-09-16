@@ -244,6 +244,6 @@ jobs:
           fi
 
           echo "result=${result}" >>"${GITHUB_OUTPUT}"
-          if [[ "${result}" == "failure" && "${REQUIRED}" != "true" ]]; then
+          if [[ "${COMPARE_OUTCOME}" == "success" && "${COMPARE_RESULT}" == "failure" && "${REQUIRED}" != "true" ]]; then
             echo "::warning::Visual regression failed but is optional."
           fi
