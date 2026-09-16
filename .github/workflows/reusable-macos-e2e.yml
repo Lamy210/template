@@ -141,6 +141,6 @@ jobs:
           fi
 
           echo "result=${result}" >>"${GITHUB_OUTPUT}"
-          if [[ "${result}" == "failure" && "${REQUIRED}" != "true" ]]; then
+          if [[ "${VALIDATE_OUTCOME}" == "success" && "${E2E_OUTCOME}" == "failure" && "${REQUIRED}" != "true" ]]; then
             echo "::warning::E2E test execution failed but is optional."
           fi
