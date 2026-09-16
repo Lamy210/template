@@ -27,6 +27,7 @@ def create_app_archive(
     bundle_id: str = "com.example.MyApp",
     version: str = "1.2.3",
     plist_executable: str = "MyApp",
+    symlink_plist: bool = False,
     symlink_executable: bool = False,
 ) -> str:
     plist = plistlib.dumps(
@@ -49,10 +50,22 @@ def create_app_archive(
             entry.mode = 0o755
             archive.addfile(entry)
 
-        info = tarfile.TarInfo("MyApp.app/Contents/Info.plist")
-        info.size = len(plist)
-        info.mode = 0o644
-        archive.addfile(info, io.BytesIO(plist))
+        if symlink_plist:
+            real_info = tarfile.TarInfo("MyApp.app/Contents/RealInfo.plist")
+            real_info.size = len(plist)
+            real_info.mode = 0o644
+            archive.addfile(real_info, io.BytesIO(plist))
+
+            info = tarfile.TarInfo("MyApp.app/Contents/Info.plist")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "RealInfo.plist"
+            info.mode = 0o777
+            archive.addfile(info)
+        else:
+            info = tarfile.TarInfo("MyApp.app/Contents/Info.plist")
+            info.size = len(plist)
+            info.mode = 0o644
+            archive.addfile(info, io.BytesIO(plist))
 
         executable = b"#!/usr/bin/env bash\nexit 0\n"
         if symlink_executable:
@@ -106,6 +119,7 @@ class ReleaseInputValidationTests(unittest.TestCase):
         bundle_id: str = "com.example.MyApp",
         app_version: str = "1.2.3",
         plist_executable: str = "MyApp",
+        symlink_plist: bool = False,
         symlink_executable: bool = False,
         resolved_tag_sha: str = SHA,
         source_is_ancestor: bool = True,
@@ -120,6 +134,7 @@ class ReleaseInputValidationTests(unittest.TestCase):
                 bundle_id=bundle_id,
                 version=app_version,
                 plist_executable=plist_executable,
+                symlink_plist=symlink_plist,
                 symlink_executable=symlink_executable,
             )
             provenance_document = provenance(archive_digest)
@@ -201,6 +216,10 @@ class ReleaseInputValidationTests(unittest.TestCase):
     def test_rejects_application_version_mismatch(self) -> None:
         errors, _ = self.validate_fixture(app_version="9.9.9")
         self.assertTrue(any("bundle version" in error for error in errors))
+
+    def test_rejects_symlinked_info_plist(self) -> None:
+        errors, _ = self.validate_fixture(symlink_plist=True)
+        self.assertTrue(any("Info.plist is missing or unsafe" in error for error in errors))
 
     def test_rejects_unsafe_cf_bundle_executable(self) -> None:
         errors, _ = self.validate_fixture(plist_executable="../MyApp")
