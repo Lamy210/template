@@ -6,3 +6,6 @@ paths:
       - 'reusable workflow call "\$/\.github/workflows/reusable-swift-tests\.yml" at "uses" is not following the format'
       - 'reusable workflow call "\$/\.github/workflows/reusable-macos-e2e\.yml" at "uses" is not following the format'
       - 'reusable workflow call "\$/\.github/workflows/reusable-visual-regression\.yml" at "uses" is not following the format'
+  .github/workflows/optional-subsystem-runtime-tests.yml:
+    ignore:
+      - 'reusable workflow call "\$/\.github/workflows/reusable-swift-tests\.yml" at "uses" is not following the format'
