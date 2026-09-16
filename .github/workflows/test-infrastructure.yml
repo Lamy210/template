@@ -9,6 +9,7 @@ on:
       - "scripts/ci/**"
       - "scripts/test/**"
       - "scripts/visual/**"
+      - ".github/workflows/reusable-swift-tests.yml"
       - ".github/workflows/reusable-macos-e2e.yml"
       - ".github/workflows/reusable-visual-regression.yml"
       - ".github/workflows/test-infrastructure.yml"
@@ -22,6 +23,7 @@ on:
       - "scripts/ci/**"
       - "scripts/test/**"
       - "scripts/visual/**"
+      - ".github/workflows/reusable-swift-tests.yml"
       - ".github/workflows/reusable-macos-e2e.yml"
       - ".github/workflows/reusable-visual-regression.yml"
       - ".github/workflows/test-infrastructure.yml"
@@ -64,7 +66,12 @@ jobs:
         run: python3 -m unittest scripts/test/test-compare-coverage.py -v
 
       - name: Required gate policy tests
-        run: python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
+        run: |
+          python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
+          python3 scripts/test/test-required-gate-workflow.py -v
+
+      - name: Optional subsystem workflow tests
+        run: python3 scripts/test/test-optional-subsystem-workflow.py -v
 
       - name: Test subsystem classifier tests
         run: python3 -m unittest scripts/test/test-classify-test-policy.py -v
