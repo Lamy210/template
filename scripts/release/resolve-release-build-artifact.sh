@@ -139,7 +139,7 @@ except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
     raise SystemExit(1)
 
 expected_repository_id = canonical_repository.get("id")
-if not isinstance(expected_repository_id, int) or expected_repository_id <= 0:
+if type(expected_repository_id) is not int or expected_repository_id <= 0:
     print("canonical repository id is missing or invalid", file=sys.stderr)
     raise SystemExit(1)
 if canonical_repository.get("full_name") != expected_repo:
