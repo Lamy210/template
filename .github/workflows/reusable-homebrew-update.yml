@@ -61,6 +61,7 @@ jobs:
           SOURCE_TAG: ${{ inputs.source_tag }}
           CASK_TOKEN: ${{ inputs.cask_token }}
           TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           DMG_NAME: ${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
@@ -74,6 +75,10 @@ jobs:
           fi
           if [[ ! "${TAP_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
             echo "tap_repository must use owner/repo form." >&2
+            exit 1
+          fi
+          if ! git check-ref-format --branch "${TAP_DEFAULT_BRANCH}" >/dev/null 2>&1; then
+            echo "tap_default_branch must be a valid Git branch name." >&2
             exit 1
           fi
           if [[ "${DMG_NAME}" == */* || "${DMG_NAME}" != *.dmg ]]; then
