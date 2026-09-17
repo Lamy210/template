@@ -35,6 +35,8 @@ jobs:
       source_version: ${{ steps.release_outputs.outputs.source_version }}
       source_run_id: ${{ steps.release_outputs.outputs.source_run_id }}
       source_run_attempt: ${{ steps.release_outputs.outputs.source_run_attempt }}
+      source_artifact_id: ${{ steps.release_outputs.outputs.source_artifact_id }}
+      source_artifact_digest: ${{ steps.release_outputs.outputs.source_artifact_digest }}
       archive_sha256: ${{ steps.release_outputs.outputs.archive_sha256 }}
 
     steps:
@@ -142,6 +144,8 @@ jobs:
               "source_version": metadata["version"],
               "source_run_id": metadata["sourceRunId"],
               "source_run_attempt": metadata["sourceRunAttempt"],
+              "source_artifact_id": metadata["sourceArtifactId"],
+              "source_artifact_digest": metadata["sourceArtifactDigest"],
               "archive_sha256": metadata["archiveSha256"],
           }
           for key, value in output_values.items():
@@ -193,6 +197,8 @@ jobs:
       source_version: ${{ needs.validate.outputs.source_version }}
       source_run_id: ${{ needs.validate.outputs.source_run_id }}
       source_run_attempt: ${{ needs.validate.outputs.source_run_attempt }}
+      source_artifact_id: ${{ needs.validate.outputs.source_artifact_id }}
+      source_artifact_digest: ${{ needs.validate.outputs.source_artifact_digest }}
       archive_sha256: ${{ needs.validate.outputs.archive_sha256 }}
       app_name: MyApp
       app_path: MyApp.app
