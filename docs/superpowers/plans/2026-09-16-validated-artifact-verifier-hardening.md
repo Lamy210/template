@@ -1,141 +1,129 @@
-# Validated Artifact Verifier Hardening Implementation Plan
+# Validated Artifact Verifier Hardening Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Make the validator-to-signer artifact trust boundary directly testable and prove that an artifact from a previous publisher attempt is rejected before entering the release Environment.
+**Goal:** Turn the publisher-owned validated artifact check into a directly testable, fail-closed trust-boundary verifier that rejects stale publisher attempts and binds the artifact to the trusted publisher source/repository before privileged release consumption.
 
-**Architecture:** Move the current inline validated-artifact identity checks out of `.github/workflows/reusable-macos-release.yml` into a small trusted Python verifier plus CLI wrapper. The verifier derives the canonical handoff name from publisher/source run identities, validates exact Artifact ID/name/digest/expiration/current publisher run binding, and remains invoked before download/signing. Workflow contract tests require use of the trusted verifier; unit tests exercise previous-attempt rejection explicitly.
+**Architecture:** Keep GitHub API access and artifact download in the privileged reusable workflow, but move metadata validation into a small pure Python module plus CLI. The workflow fetches the exact Artifact API object by ID, the verifier checks canonical artifact naming, current publisher run/attempt, publisher SHA, repository identity, digest, expiration state, and source-run binding, and only then may `actions/download-artifact` consume it. No secrets are introduced into validation and no release policy is read from the validated artifact.
 
-**Tech Stack:** Python 3 standard library, `unittest`, Bash/GitHub Actions YAML.
-
-**Spec:** `docs/superpowers/specs/2026-09-14-privileged-release-isolation-review-addendum.md`
-
-## Global Constraints
-
-- The validator handoff remains unique to publisher run ID **and run attempt**.
-- The privileged job must reject fallback to an artifact from an older publisher attempt.
-- No secrets are introduced into the validation boundary.
-- The reusable release job continues to verify artifact identity before downloading and before certificate import.
-- No `pull_request_target`, bypass actor, or administration-token shortcut is introduced.
+**Tech Stack:** Python 3 standard library, GitHub Actions YAML, existing `Release Isolation TDD` workflow, existing `quality.yml` release-isolation contract.
 
 ---
 
-### Task 1: Add RED acceptance tests for the validated artifact boundary
+### Task 1: Add failing validated-artifact trust-boundary tests
 
 **Files:**
-- Create: `scripts/release/test_validated_artifact.py`
+- Modify: `scripts/release/test_validated_artifact.py`
 - Modify: `scripts/release/test_privileged_release_workflow_contract.py`
-- Modify: `.github/workflows/release-isolation-tdd.yml`
 
-**Interfaces:**
-- Consumes: current reusable release workflow inputs `validated_artifact_id`, `validated_artifact_name`, `validated_artifact_digest`, source run ID/attempt, and publisher run ID/attempt.
-- Produces: tests requiring `scripts/release/verify-validated-artifact.py` and explicit rejection of a previous publisher attempt.
+**Step 1: Write the failing behavior tests**
 
-- [ ] **Step 1: Write a failing behavioral test**
+Cover:
+- exact current publisher attempt is accepted;
+- previous publisher attempt is rejected;
+- wrong Artifact ID is rejected;
+- wrong Artifact digest is rejected;
+- expired Artifact is rejected;
+- Artifact `workflow_run.id` drift is rejected;
+- Artifact `workflow_run.head_sha` drift is rejected;
+- Artifact `workflow_run.repository_id` drift is rejected;
+- Artifact `workflow_run.head_repository_id` drift is rejected;
+- malformed expected IDs/digests/SHAs are rejected;
+- workflow invokes the trusted verifier before `actions/download-artifact` and passes publisher run/attempt/SHA plus canonical repository ID.
 
-Create tests that expect a pure verifier API:
+**Step 2: Verify RED**
 
-```python
-errors = verify_validated_artifact(
-    artifact_metadata=document,
-    artifact_id=7001,
-    artifact_name="validated-release-input-99887766-4-123456789-2",
-    artifact_digest="sha256:" + "a" * 64,
-    publisher_run_id=99887766,
-    publisher_run_attempt=4,
-    source_run_id=123456789,
-    source_run_attempt=2,
-)
-assert errors == []
-```
+Run via the `Release Isolation TDD` workflow. Confirm only the new contract fails because the verifier/API binding is missing.
 
-and mutate the metadata/name to publisher attempt `3`; the verifier must return an error mentioning the canonical artifact name/current publisher attempt.
+**Step 3: Commit RED**
 
-- [ ] **Step 2: Add a workflow contract test**
+Historical REDs:
+- `42fd87a478a4a7297986890e61ea00579e385609` — initial current-attempt verifier extraction contract.
+- `c193206cd6b18045f43b67e4a0a2aa04aea26894` — publisher SHA/repository binding contract; Release Isolation TDD #108 ran 98 tests and failed only the new binding assertions.
 
-Require `.github/workflows/reusable-macos-release.yml` to call `scripts/release/verify-validated-artifact.py` before `actions/download-artifact`, and require the verifier step to receive current `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, source run ID/attempt, Artifact ID/name/digest.
-
-- [ ] **Step 3: Add the new unit-test module to Release Isolation TDD**
-
-Add `scripts.release.test_validated_artifact` to the explicit `python3 -m unittest` list.
-
-- [ ] **Step 4: Run CI and verify RED**
-
-Expected: `Release Isolation TDD` fails because `scripts.release.validated_artifact` / `verify-validated-artifact.py` do not exist and the reusable workflow still contains inline validation.
-
----
-
-### Task 2: Implement the trusted validated-artifact verifier
+### Task 2: Implement the pure verifier and CLI
 
 **Files:**
-- Create: `scripts/release/validated_artifact.py`
-- Create: `scripts/release/verify-validated-artifact.py`
+- Create/Modify: `scripts/release/validated_artifact.py`
+- Create/Modify: `scripts/release/verify-validated-artifact.py`
+- Modify: `scripts/release/test_validated_artifact.py`
 
-**Interfaces:**
-- Produces: `verify_validated_artifact(...) -> list[str]`.
-- CLI consumes an Artifact API metadata JSON file plus exact expected IDs/digest/run identities and exits nonzero on any trust mismatch.
+**Step 1: Implement canonical naming**
 
-- [ ] **Step 1: Implement canonical name derivation**
+Artifact name must be exactly:
 
-```python
-def canonical_validated_artifact_name(
-    publisher_run_id: int,
-    publisher_run_attempt: int,
-    source_run_id: int,
-    source_run_attempt: int,
-) -> str:
-    return (
-        f"validated-release-input-{publisher_run_id}-{publisher_run_attempt}-"
-        f"{source_run_id}-{source_run_attempt}"
-    )
-```
+`validated-release-input-<publisher_run_id>-<publisher_run_attempt>-<source_run_id>-<source_run_attempt>`
 
-- [ ] **Step 2: Implement fail-closed metadata verification**
+**Step 2: Implement fail-closed metadata checks**
 
-Validate positive integer IDs/attempts, canonical `sha256:<64 lowercase hex>` digest, caller-supplied artifact name equals the derived canonical name, API metadata `id/name/digest`, `expired is False`, and `workflow_run.id == publisher_run_id`.
+Require:
+- positive integer Artifact ID / run IDs / attempts / repository ID;
+- exact canonical name;
+- lowercase `sha256:<64 hex>` digest;
+- `expired == false`;
+- `workflow_run.id == current publisher run ID`;
+- `workflow_run.head_sha == trusted publisher SHA`;
+- `workflow_run.repository_id == current repository ID`;
+- `workflow_run.head_repository_id == current repository ID`.
 
-- [ ] **Step 3: Implement the CLI wrapper**
+Any missing/malformed/drifted field is an error.
 
-Parse arguments, load JSON strictly as an object, call the pure verifier, print each error to stderr, and exit `1` on validation failure / `0` on success.
+**Step 3: Implement CLI**
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+CLI accepts metadata file plus trusted expected values and exits non-zero with diagnostics when any check fails.
 
-Expected: valid artifact passes; previous publisher attempt, wrong ID, wrong digest, expired artifact, malformed workflow-run metadata all fail closed.
-
----
-
-### Task 3: Replace inline workflow validation with the trusted verifier
+### Task 3: Wire trusted verifier before download
 
 **Files:**
 - Modify: `.github/workflows/reusable-macos-release.yml`
+- Modify: `scripts/release/test_privileged_release_workflow_contract.py`
 
-**Interfaces:**
-- Consumes: current workflow inputs and GitHub Artifact API response.
-- Produces: unchanged downstream artifact download/signing behavior after a stronger testable pre-download boundary.
+**Step 1: Fetch exact Artifact API object**
 
-- [ ] **Step 1: Keep the API fetch in the secret-free pre-download step**
+Use `gh api /repos/${GITHUB_REPOSITORY}/actions/artifacts/${VALIDATED_ARTIFACT_ID}` with the existing `actions: read` permission.
 
-Fetch `/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VALIDATED_ARTIFACT_ID}` into a temporary JSON file using the existing read-only `GITHUB_TOKEN`.
+**Step 2: Validate before `actions/download-artifact`**
 
-- [ ] **Step 2: Invoke the trusted verifier**
+Pass:
+- expected artifact ID/name/digest;
+- current publisher run ID/attempt;
+- current publisher SHA;
+- current repository ID;
+- validated source run ID/attempt.
 
-Pass Artifact ID/name/digest, current publisher run ID/attempt, and source run ID/attempt to `scripts/release/verify-validated-artifact.py`.
+Only after successful validation may the artifact be downloaded.
 
-- [ ] **Step 3: Remove the duplicated inline Python validator**
+### Task 4: Verify GREEN and record exact-head evidence
 
-Keep only orchestration in YAML; trust logic lives in the tested Python module.
+**Step 1: Release Isolation TDD**
 
-- [ ] **Step 4: Run fresh exact-head CI**
+Expected: all release provenance / artifact layout / resolver / source-binding tests succeed.
 
-Require `Release Isolation TDD`, `Quality` including `Required gate`, and `Swift Quality` all to succeed, with zero unresolved review threads.
+**Step 2: Quality**
 
----
+Expected: actionlint, ShellCheck, shfmt, zizmor, Gitleaks, release isolation contract, handoff regressions, permission roundtrip, and `Required gate` succeed.
 
-### Task 4: Update PR evidence
+**Step 3: Swift Quality**
 
-**Files:**
-- PR #6 body / Issue #17 checkpoint only.
+Expected: Swift policy remains unaffected and succeeds.
 
-- [ ] **Step 1: Record RED and GREEN SHAs/run numbers**
-- [ ] **Step 2: Record the explicit previous-attempt rejection acceptance test**
-- [ ] **Step 3: Re-read the live Ruleset before any merge action**
+**Step 4: Record evidence**
+
+Current GREEN head:
+`3a1e268bb369d4ee2e84f9fb7557b742dac42f98`
+
+Fresh exact-head verification:
+- Release Isolation TDD #112 (`35168555301`): success
+- Quality #410 (`35168555758`): success, including `Required gate`
+- Swift Quality #286 (`35168556299`): success
+- unresolved review threads: 0
+
+### Safety invariants
+
+- validation remains secret-free;
+- privileged credentials remain inside the `release` Environment;
+- no `pull_request_target` path is introduced;
+- source/tag policy is not derived from artifact contents;
+- exact Artifact ID/digest plus publisher run/attempt/SHA and repository ID are all revalidated before download;
+- previous publisher attempts fail closed;
+- release enablement remains blocked until governance and Environment rollout prerequisites are satisfied.
