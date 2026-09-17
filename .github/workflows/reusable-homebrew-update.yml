@@ -64,7 +64,7 @@ jobs:
           DMG_NAME: ${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
-          if [[ ! "${SOURCE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "${SOURCE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "source_tag must use stable SemVer form vX.Y.Z." >&2
             exit 1
           fi
