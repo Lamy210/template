@@ -58,6 +58,8 @@ fi
 if [[ "${args}" == *"/actions/workflows/release-build.yml"* ]]; then
   if [[ "${scenario}" == "malformed-workflow" ]]; then
     printf '{not-json'
+  elif [[ "${scenario}" == "boolean-workflow-id" ]]; then
+    printf '{"id":true,"name":"Release Build","path":".github/workflows/release-build.yml"}'
   else
     printf '{"id":4242,"name":"Release Build","path":".github/workflows/release-build.yml"}'
   fi
@@ -74,6 +76,7 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
   head_repository_id="${repository_id}"
   run_repository_id="${repository_id}"
   case "${scenario}" in
+    boolean-workflow-id) workflow_id=true ;;
     wrong-workflow) workflow_id=9999 ;;
     wrong-path) path='.github/workflows/other.yml' ;;
     wrong-attempt) attempt=3 ;;
@@ -100,6 +103,9 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
     exit 0
   fi
   case "${scenario}" in
+    boolean-artifact-id)
+      printf '{"total_count":1,"artifacts":[{"id":true,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+      ;;
     expired)
       printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":true,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
       ;;
@@ -125,7 +131,7 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
   exit 0
 fi
 
-if [[ "${args}" == *"/actions/artifacts/7001/zip"* ]]; then
+if [[ "${args}" == *"/actions/artifacts/7001/zip"* || ( "${scenario}" == "boolean-artifact-id" && "${args}" == *"/actions/artifacts/True/zip"* ) ]]; then
   emit_zip
   exit 0
 fi
@@ -200,6 +206,8 @@ assert_status wrong-repo 4
 assert_status wrong-head-repo-id 4
 assert_status wrong-run-repo-id 4
 assert_status boolean-repository-id 3
+assert_status boolean-workflow-id 3
+assert_status boolean-artifact-id 3
 assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
