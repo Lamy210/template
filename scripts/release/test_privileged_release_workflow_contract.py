@@ -181,6 +181,14 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("safe failure", text)
         self.assertIn("Do not add a fallback", text)
 
+    def test_rollout_requires_post_split_ancestor_runtime_verification(self) -> None:
+        text = RELEASE_DOC.read_text(encoding="utf-8")
+        migration = text.split("## Migration checklist", 1)[1].split("## Rollback", 1)[0]
+        self.assertIn("post-split ancestor", migration)
+        self.assertIn("current default-branch publisher", migration)
+        self.assertIn("disposable repository", migration)
+        self.assertIn("before enabling", migration)
+
 
 if __name__ == "__main__":
     unittest.main()
