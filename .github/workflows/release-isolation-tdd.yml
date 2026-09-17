@@ -43,6 +43,10 @@ jobs:
         shell: bash
         run: bash scripts/release/test-resolve-release-build-artifact.sh
 
+      - name: Source artifact repository binding
+        shell: bash
+        run: bash scripts/release/test-source-artifact-repository-binding.sh
+
       - name: Release source binding
         shell: bash
         run: bash scripts/release/test-verify-release-source.sh
