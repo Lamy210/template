@@ -29,6 +29,8 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             "source_version:",
             "source_run_id:",
             "source_run_attempt:",
+            "source_artifact_id:",
+            "source_artifact_digest:",
             "archive_sha256:",
         ):
             with self.subTest(input_name=input_name):
@@ -89,6 +91,10 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertLess(verifier, certificate)
         self.assertLess(extractor, certificate)
         self.assertIn("inputs.archive_sha256", text)
+        self.assertIn("SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}", text)
+        self.assertIn("SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}", text)
+        self.assertIn('--source-artifact-id "${SOURCE_ARTIFACT_ID}"', text)
+        self.assertIn('--source-artifact-digest "${SOURCE_ARTIFACT_DIGEST}"', text)
 
     def test_privileged_revalidation_rejects_symlinked_info_plist_before_secrets(self) -> None:
         text = self.release_text()
@@ -143,6 +149,11 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("source_tag: ${{ needs.validate.outputs.source_tag }}", text)
         self.assertIn("source_sha: ${{ needs.validate.outputs.source_sha }}", text)
         self.assertIn("source_version: ${{ needs.validate.outputs.source_version }}", text)
+        self.assertIn("source_artifact_id: ${{ needs.validate.outputs.source_artifact_id }}", text)
+        self.assertIn(
+            "source_artifact_digest: ${{ needs.validate.outputs.source_artifact_digest }}",
+            text,
+        )
         self.assertIn("archive_sha256: ${{ needs.validate.outputs.archive_sha256 }}", text)
 
     def test_publisher_does_not_inherit_repository_or_organization_secrets(self) -> None:
