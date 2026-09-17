@@ -35,6 +35,14 @@ on:
         description: Exact unprivileged Release Build workflow run attempt.
         required: true
         type: string
+      source_artifact_id:
+        description: Exact source Release Build Actions Artifact ID validated by the publisher.
+        required: true
+        type: string
+      source_artifact_digest:
+        description: GitHub-provided sha256 digest of the exact source Release Build artifact.
+        required: true
+        type: string
       archive_sha256:
         description: Validated archive digest in sha256:<64 lowercase hex> form.
         required: true
@@ -131,6 +139,8 @@ jobs:
         env:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           SOURCE_TAG: ${{ inputs.source_tag }}
           SOURCE_VERSION: ${{ inputs.source_version }}
@@ -145,6 +155,8 @@ jobs:
             --repository "${GITHUB_REPOSITORY}" \
             --source-run-id "${SOURCE_RUN_ID}" \
             --source-run-attempt "${SOURCE_RUN_ATTEMPT}" \
+            --source-artifact-id "${SOURCE_ARTIFACT_ID}" \
+            --source-artifact-digest "${SOURCE_ARTIFACT_DIGEST}" \
             --source-sha "${SOURCE_SHA}" \
             --source-tag "${SOURCE_TAG}" \
             --source-version "${SOURCE_VERSION}" \
