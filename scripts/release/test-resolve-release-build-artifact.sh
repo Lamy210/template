@@ -77,6 +77,7 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
   run_repository_id="${repository_id}"
   case "${scenario}" in
     boolean-workflow-id) workflow_id=true ;;
+    boolean-run-attempt) attempt=true ;;
     wrong-workflow) workflow_id=9999 ;;
     wrong-path) path='.github/workflows/other.yml' ;;
     wrong-attempt) attempt=3 ;;
@@ -103,6 +104,9 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
     exit 0
   fi
   case "${scenario}" in
+    boolean-run-attempt)
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-1","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+      ;;
     boolean-artifact-id)
       printf '{"total_count":1,"artifacts":[{"id":true,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
       ;;
@@ -144,6 +148,7 @@ chmod +x "${STUB_BIN}/gh"
 run_resolver() {
   local scenario="$1"
   local output_dir="$2"
+  local run_attempt="${3:-2}"
   PATH="${STUB_BIN}:${PATH}" \
     GH_STUB_SCENARIO="${scenario}" \
     GH_TOKEN="test-token" \
@@ -151,16 +156,17 @@ run_resolver() {
     --repository Lamy210/template \
     --workflow-path .github/workflows/release-build.yml \
     --run-id 9001 \
-    --run-attempt 2 \
+    --run-attempt "${run_attempt}" \
     --output "${output_dir}"
 }
 
 assert_status() {
   local scenario="$1"
   local expected_status="$2"
+  local run_attempt="${3:-2}"
   local output_dir="${TEMP_ROOT}/out-${scenario}"
   set +e
-  run_resolver "${scenario}" "${output_dir}" >"${TEMP_ROOT}/${scenario}.stdout" 2>"${TEMP_ROOT}/${scenario}.stderr"
+  run_resolver "${scenario}" "${output_dir}" "${run_attempt}" >"${TEMP_ROOT}/${scenario}.stdout" 2>"${TEMP_ROOT}/${scenario}.stderr"
   local status=$?
   set -e
   if [[ "${status}" -ne "${expected_status}" ]]; then
@@ -208,6 +214,7 @@ assert_status wrong-run-repo-id 4
 assert_status boolean-repository-id 3
 assert_status boolean-workflow-id 3
 assert_status boolean-artifact-id 3
+assert_status boolean-run-attempt 3 1
 assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
