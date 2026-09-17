@@ -156,7 +156,10 @@ if workflow.get("path") != expected_workflow_path or workflow.get("name") != "Re
 
 checks = [
     (run.get("id") == expected_run_id, "run id mismatch"),
-    (run.get("run_attempt") == expected_attempt, "run attempt mismatch"),
+    (
+        type(run.get("run_attempt")) is int and run.get("run_attempt") == expected_attempt,
+        "run attempt mismatch",
+    ),
     (run.get("event") == "push", "triggering run event must be push"),
     (run.get("conclusion") == "success", "triggering run must have successful conclusion"),
     (run.get("workflow_id") == workflow_id, "triggering run workflow id mismatch"),
