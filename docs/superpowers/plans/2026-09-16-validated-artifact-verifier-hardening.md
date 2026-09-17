@@ -93,7 +93,7 @@ Pass:
 
 Only after successful validation may the artifact be downloaded.
 
-### Task 4: Verify GREEN and record exact-head evidence
+### Task 4: Verify GREEN and record evidence
 
 **Step 1: Release Isolation TDD**
 
@@ -109,14 +109,10 @@ Expected: Swift policy remains unaffected and succeeds.
 
 **Step 4: Record evidence**
 
-Current GREEN head:
+Implementation GREEN commit:
 `3a1e268bb369d4ee2e84f9fb7557b742dac42f98`
 
-Fresh exact-head verification:
-- Release Isolation TDD #112 (`35168555301`): success
-- Quality #410 (`35168555758`): success, including `Required gate`
-- Swift Quality #286 (`35168556299`): success
-- unresolved review threads: 0
+The plan-document update that records this result intentionally moves the branch head beyond the implementation commit; PR-level exact-head CI is the authoritative freshness evidence.
 
 ### Safety invariants
 
