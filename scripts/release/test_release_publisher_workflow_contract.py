@@ -6,9 +6,7 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PUBLISHER_WORKFLOW = REPO_ROOT / ".github/workflows/release-publisher.yml"
-if not PUBLISHER_WORKFLOW.is_file():
-    PUBLISHER_WORKFLOW = REPO_ROOT / "examples/app-release-publisher.yml"
+PUBLISHER_WORKFLOW = REPO_ROOT / "examples/app-release-publisher.yml"
 
 
 def job_block(text: str, job_name: str) -> str:
