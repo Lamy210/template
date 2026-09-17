@@ -147,7 +147,7 @@ if canonical_repository.get("full_name") != expected_repo:
     raise SystemExit(2)
 
 workflow_id = workflow.get("id")
-if not isinstance(workflow_id, int) or workflow_id <= 0:
+if type(workflow_id) is not int or workflow_id <= 0:
     print("canonical workflow id is missing or invalid", file=sys.stderr)
     raise SystemExit(1)
 if workflow.get("path") != expected_workflow_path or workflow.get("name") != "Release Build":
