@@ -149,6 +149,12 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
     missing-digest)
       printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${sha}"
       ;;
+    malformed-digest)
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"sha256:not-a-canonical-digest","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${sha}"
+      ;;
+    wrong-algorithm-digest)
+      printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"sha512:%064d","workflow_run":{"id":9001,"head_sha":"%s"}}]}' 0 "${sha}"
+      ;;
     digest-mismatch)
       printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"sha256:%064d","workflow_run":{"id":9001,"head_sha":"%s"}}]}' 0 "${sha}"
       ;;
@@ -254,6 +260,8 @@ assert_status wrong-artifact 4
 assert_status duplicate 3
 assert_status malformed-workflow 3
 assert_status missing-digest 6
+assert_status malformed-digest 6
+assert_status wrong-algorithm-digest 6
 assert_status digest-mismatch 6
 assert_status artifact-wrong-run 4
 assert_status traversal 5
