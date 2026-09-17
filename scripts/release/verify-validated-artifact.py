@@ -31,6 +31,8 @@ def main() -> int:
     parser.add_argument("--artifact-digest", required=True)
     parser.add_argument("--publisher-run-id", required=True, type=int)
     parser.add_argument("--publisher-run-attempt", required=True, type=int)
+    parser.add_argument("--publisher-sha", required=True)
+    parser.add_argument("--repository-id", required=True, type=int)
     parser.add_argument("--source-run-id", required=True, type=int)
     parser.add_argument("--source-run-attempt", required=True, type=int)
     args = parser.parse_args()
@@ -42,6 +44,8 @@ def main() -> int:
         artifact_digest=args.artifact_digest,
         publisher_run_id=args.publisher_run_id,
         publisher_run_attempt=args.publisher_run_attempt,
+        publisher_sha=args.publisher_sha,
+        repository_id=args.repository_id,
         source_run_id=args.source_run_id,
         source_run_attempt=args.source_run_attempt,
     )
