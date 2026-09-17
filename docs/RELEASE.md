@@ -363,7 +363,8 @@ For an adopter moving from the old monolithic example:
 8. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
 9. run release-isolation tests before creating a real release tag;
 10. use a disposable repository for destructive tag/ruleset tests;
-11. remove/ignore any copied legacy monolithic release workflow.
+11. before enabling the production publisher, use a disposable repository to tag a **post-split ancestor** whose commit already contains `.github/workflows/release-build.yml` while the default branch contains newer publisher control code; verify the tag-selected Release Build uses the ancestor source SHA/application bytes and the downstream workflow checks out and executes the **current default-branch publisher** control code;
+12. remove/ignore any copied legacy monolithic release workflow.
 
 ## Rollback
 
