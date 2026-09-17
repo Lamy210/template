@@ -138,6 +138,30 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
         errors = verify_validated_release_metadata(document, archive, expected_value)
         self.assertTrue(any("tag/version" in error for error in errors))
 
+    def test_rejects_semver_tag_with_leading_zeroes_even_when_expected_matches(self) -> None:
+        archive, digest = self.fixture()
+        for tag in ("v01.2.3", "v1.02.3", "v1.2.03"):
+            with self.subTest(tag=tag):
+                version = tag[1:]
+                document = metadata(digest)
+                document["tag"] = tag
+                document["version"] = version
+                expected_value = expected(digest)
+                expected_value = ExpectedValidatedRelease(
+                    **{
+                        **expected_value.__dict__,
+                        "source_tag": tag,
+                        "source_version": version,
+                    }
+                )
+
+                errors = verify_validated_release_metadata(document, archive, expected_value)
+
+                self.assertTrue(
+                    any("stable SemVer" in error for error in errors),
+                    f"privileged metadata accepted leading-zero tag: {tag}",
+                )
+
     def test_rejects_archive_digest_mismatch_even_if_metadata_matches_expected_text(self) -> None:
         archive, digest = self.fixture()
         wrong_digest = "sha256:" + "0" * 64
