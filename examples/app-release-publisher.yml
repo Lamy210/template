@@ -78,7 +78,7 @@ jobs:
 
           tag = provenance.get("tag")
           source_sha = metadata.get("sourceSHA")
-          if not isinstance(tag, str) or re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag) is None:
+          if not isinstance(tag, str) or re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", tag) is None:
               raise SystemExit("candidate tag is not a stable release tag")
           if not isinstance(source_sha, str) or re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
               raise SystemExit("resolved source metadata contains an invalid SHA")
