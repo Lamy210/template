@@ -73,9 +73,13 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             "SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}",
             "PUBLISHER_RUN_ID: ${{ github.run_id }}",
             "PUBLISHER_RUN_ATTEMPT: ${{ github.run_attempt }}",
+            "PUBLISHER_SHA: ${{ github.sha }}",
+            "REPOSITORY_ID: ${{ github.repository_id }}",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, text)
+        self.assertIn('--publisher-sha "${PUBLISHER_SHA}"', text)
+        self.assertIn('--repository-id "${REPOSITORY_ID}"', text)
 
     def test_validated_metadata_and_archive_are_reverified_before_certificate_import(self) -> None:
         text = self.release_text()
