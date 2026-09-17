@@ -20,6 +20,17 @@ jobs:
       contents: read
 
     steps:
+      - name: Validate canonical release tag
+        shell: bash
+        env:
+          SOURCE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" != "tag" || ! "${SOURCE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release Build requires a canonical stable SemVer tag (vX.Y.Z without leading zeroes): ${SOURCE_TAG}" >&2
+            exit 1
+          fi
+
       - name: Checkout release source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
