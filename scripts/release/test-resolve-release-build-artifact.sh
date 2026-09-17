@@ -18,6 +18,8 @@ sha="0123456789abcdef0123456789abcdef01234567"
 repository_id=1367784801
 if [[ "${scenario}" == "boolean-repository-id" ]]; then
   repository_id=true
+elif [[ "${scenario}" == "boolean-head-repo-id" || "${scenario}" == "boolean-run-repo-id" ]]; then
+  repository_id=1
 fi
 
 emit_zip() {
@@ -60,15 +62,21 @@ if [[ "${args}" == *"/actions/workflows/release-build.yml"* ]]; then
     printf '{not-json'
   elif [[ "${scenario}" == "boolean-workflow-id" ]]; then
     printf '{"id":true,"name":"Release Build","path":".github/workflows/release-build.yml"}'
+  elif [[ "${scenario}" == "boolean-trigger-workflow-id" ]]; then
+    printf '{"id":1,"name":"Release Build","path":".github/workflows/release-build.yml"}'
   else
     printf '{"id":4242,"name":"Release Build","path":".github/workflows/release-build.yml"}'
   fi
   exit 0
 fi
 
-if [[ "${scenario}" == "boolean-run-id" && "${args}" == *"/actions/runs/1"* && "${args}" != *"/artifacts"* ]]; then
-  printf '{"id":true,"run_attempt":2,"event":"push","conclusion":"success","head_sha":"%s","workflow_id":4242,"path":".github/workflows/release-build.yml","head_repository":{"id":%s,"full_name":"Lamy210/template"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
-    "${sha}" "${repository_id}" "${repository_id}"
+if [[ ( "${scenario}" == "boolean-run-id" || "${scenario}" == "boolean-artifact-run-id" ) && "${args}" == *"/actions/runs/1"* && "${args}" != *"/artifacts"* ]]; then
+  run_response_id=1
+  if [[ "${scenario}" == "boolean-run-id" ]]; then
+    run_response_id=true
+  fi
+  printf '{"id":%s,"run_attempt":2,"event":"push","conclusion":"success","head_sha":"%s","workflow_id":4242,"path":".github/workflows/release-build.yml","head_repository":{"id":%s,"full_name":"Lamy210/template"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
+    "${run_response_id}" "${sha}" "${repository_id}" "${repository_id}"
   exit 0
 fi
 
@@ -83,7 +91,10 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
   run_repository_id="${repository_id}"
   case "${scenario}" in
     boolean-workflow-id) workflow_id=true ;;
+    boolean-trigger-workflow-id) workflow_id=true ;;
     boolean-run-attempt) attempt=true ;;
+    boolean-head-repo-id) head_repository_id=true ;;
+    boolean-run-repo-id) run_repository_id=true ;;
     wrong-workflow) workflow_id=9999 ;;
     wrong-path) path='.github/workflows/other.yml' ;;
     wrong-attempt) attempt=3 ;;
@@ -99,9 +110,13 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
   exit 0
 fi
 
-if [[ "${scenario}" == "boolean-run-id" && "${args}" == *"/actions/runs/1/artifacts"* ]]; then
+if [[ ( "${scenario}" == "boolean-run-id" || "${scenario}" == "boolean-artifact-run-id" ) && "${args}" == *"/actions/runs/1/artifacts"* ]]; then
   digest="$(emit_digest)"
-  printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-1-2","expired":false,"digest":"%s","workflow_run":{"id":1,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+  artifact_run_id=1
+  if [[ "${scenario}" == "boolean-artifact-run-id" ]]; then
+    artifact_run_id=true
+  fi
+  printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-1-2","expired":false,"digest":"%s","workflow_run":{"id":%s,"head_sha":"%s"}}]}' "${digest}" "${artifact_run_id}" "${sha}"
   exit 0
 fi
 
@@ -230,6 +245,10 @@ assert_status boolean-workflow-id 3
 assert_status boolean-artifact-id 3
 assert_status boolean-run-attempt 3 1
 assert_status boolean-run-id 3 2 1
+assert_status boolean-trigger-workflow-id 3
+assert_status boolean-head-repo-id 3
+assert_status boolean-run-repo-id 3
+assert_status boolean-artifact-run-id 3 2 1
 assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
