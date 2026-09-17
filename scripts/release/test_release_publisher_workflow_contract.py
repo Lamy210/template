@@ -6,7 +6,9 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PUBLISHER_WORKFLOW = REPO_ROOT / "examples/app-release-publisher.yml"
+PUBLISHER_WORKFLOW = REPO_ROOT / ".github/workflows/release-publisher.yml"
+if not PUBLISHER_WORKFLOW.is_file():
+    PUBLISHER_WORKFLOW = REPO_ROOT / "examples/app-release-publisher.yml"
 
 
 def job_block(text: str, job_name: str) -> str:
@@ -78,6 +80,14 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--run-id "${SOURCE_RUN_ID}"', block)
         self.assertIn('--run-attempt "${SOURCE_RUN_ATTEMPT}"', block)
         self.assertIn("--workflow-path .github/workflows/release-build.yml", block)
+
+    def test_candidate_tag_parser_requires_canonical_stable_semver(self) -> None:
+        block = job_block(self.workflow_text(), "validate")
+        self.assertIn(
+            r're.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", tag)',
+            block,
+        )
+        self.assertNotIn(r're.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag)', block)
 
     def test_independently_verifies_tag_binding_and_release_input(self) -> None:
         block = job_block(self.workflow_text(), "validate")
