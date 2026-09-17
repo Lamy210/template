@@ -154,13 +154,18 @@ if workflow.get("path") != expected_workflow_path or workflow.get("name") != "Re
     print("canonical workflow identity does not match expected path/name", file=sys.stderr)
     raise SystemExit(2)
 
+run_id_value = run.get("id")
+if type(run_id_value) is not int or run_id_value <= 0:
+    print("triggering run id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+
 run_attempt_value = run.get("run_attempt")
 if type(run_attempt_value) is not int or run_attempt_value <= 0:
     print("triggering run attempt is missing or invalid", file=sys.stderr)
     raise SystemExit(1)
 
 checks = [
-    (run.get("id") == expected_run_id, "run id mismatch"),
+    (run_id_value == expected_run_id, "run id mismatch"),
     (run_attempt_value == expected_attempt, "run attempt mismatch"),
     (run.get("event") == "push", "triggering run event must be push"),
     (run.get("conclusion") == "success", "triggering run must have successful conclusion"),
