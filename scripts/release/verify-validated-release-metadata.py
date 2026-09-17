@@ -23,6 +23,8 @@ def main() -> int:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--source-run-id", required=True, type=int)
     parser.add_argument("--source-run-attempt", required=True, type=int)
+    parser.add_argument("--source-artifact-id", required=True, type=int)
+    parser.add_argument("--source-artifact-digest", required=True)
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--source-tag", required=True)
     parser.add_argument("--source-version", required=True)
@@ -38,6 +40,8 @@ def main() -> int:
         source_repository=args.repository,
         source_run_id=args.source_run_id,
         source_run_attempt=args.source_run_attempt,
+        source_artifact_id=args.source_artifact_id,
+        source_artifact_digest=args.source_artifact_digest,
         source_sha=args.source_sha,
         source_tag=args.source_tag,
         source_version=args.source_version,
