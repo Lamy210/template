@@ -328,7 +328,7 @@ artifact = active[0]
 artifact_id = artifact.get("id")
 digest = artifact.get("digest")
 workflow_run = artifact.get("workflow_run")
-if not isinstance(artifact_id, int) or artifact_id <= 0:
+if type(artifact_id) is not int or artifact_id <= 0:
     print("artifact id is missing or invalid", file=sys.stderr)
     raise SystemExit(1)
 if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
