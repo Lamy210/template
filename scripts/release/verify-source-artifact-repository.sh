@@ -63,7 +63,8 @@ repository_id="${repository_id_number}"
 command -v gh >/dev/null 2>&1 || die "${EXIT_USAGE}" 'gh is required'
 command -v python3 >/dev/null 2>&1 || die "${EXIT_USAGE}" 'python3 is required'
 
-if identity="$(python3 - "${source_metadata}" <<'PY'
+if identity="$(
+  python3 - "${source_metadata}" <<'PY'
 import json
 import re
 import sys

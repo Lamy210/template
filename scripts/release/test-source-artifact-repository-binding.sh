@@ -52,11 +52,11 @@ assert_status() {
     GH_STUB_SCENARIO="${scenario}" \
     GH_TOKEN="test-token" \
     bash "${VERIFIER}" \
-      --repository Lamy210/template \
-      --repository-id 1367784801 \
-      --source-metadata "${source_metadata}" \
-      >"${TEMP_ROOT}/${scenario}.stdout" \
-      2>"${TEMP_ROOT}/${scenario}.stderr"
+    --repository Lamy210/template \
+    --repository-id 1367784801 \
+    --source-metadata "${source_metadata}" \
+    >"${TEMP_ROOT}/${scenario}.stdout" \
+    2>"${TEMP_ROOT}/${scenario}.stderr"
   local status=$?
   set -e
   if [[ "${status}" -ne "${expected_status}" ]]; then
