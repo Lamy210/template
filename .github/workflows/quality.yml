@@ -75,6 +75,7 @@ jobs:
             scripts.release.test_verify_validated_release_metadata \
             -v
           bash scripts/release/test-resolve-release-build-artifact.sh
+          bash scripts/release/test-source-artifact-repository-binding.sh
           bash scripts/release/test-verify-release-source.sh
 
       - name: Release artifact handoff regression
