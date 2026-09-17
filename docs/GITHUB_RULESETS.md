@@ -62,7 +62,7 @@ Do not test this policy by creating a production-looking throwaway tag in this r
 
 ## Safe rollout
 
-The order below is required. Do not import the desired branch Ruleset in one step over the current repository configuration.
+The order below is required. Do not import the desired branch Ruleset in one step over the current repository configuration. The current repository rollout is deliberately staged as **PR #2 → PR #3 → PR #4 → PR #6**; this governance guide must not skip the consolidated test foundation in PR #2.
 
 ### 1. Minimal administrative unblock
 
@@ -74,19 +74,25 @@ Required approving reviews: 1 -> 0
 
 Do **not** add `Required gate` in this emergency edit.
 
-Why: PR #3 contains the workflow that creates `Required gate`. Requiring that check before the workflow has landed on `main` can lock the repository.
+Why: PR #3 contains the workflow that creates the stable repository-level `Required gate`. Requiring that check before PR #3 has landed on `main` can lock the repository.
 
-After saving, confirm PR #3 is no longer blocked by the one-approval rule.
+After saving, confirm PR #2 is no longer blocked by the one-approval rule.
 
-### 2. Merge PR #3 first
+### 2. Merge PR #2 first
 
-PR #3 contains the P0 release-artifact handoff fix and stable required CI gate.
+PR #2 is the consolidated macOS test/E2E/coverage/visual foundation and is the first landing PR against `main`.
 
-Merge it before importing `rulesets/main-solo.json`.
+Squash-merge PR #2 only after rechecking its exact head, review threads, and all exact-head workflows. After merge, wait for the resulting `main` workflows to finish successfully before touching PR #3.
+
+### 3. Merge PR #3
+
+Refresh/rebuild PR #3 from the post-PR-#2 `main` state, verify that its diff remains release-hardening-only, and rerun fresh CI.
+
+PR #3 contains the P0 release-artifact handoff fix and stable repository-level required CI gate. Merge it only after the post-#2 restack is verified.
 
 After merge, wait for the default-branch workflows to complete successfully.
 
-### 3. Observe the actual main-branch check names
+### 4. Observe the actual main-branch check names
 
 Do not infer check contexts from YAML display names.
 
@@ -99,7 +105,7 @@ swift-quality / Swift quality
 
 If either context is different, stop. Update the desired-state JSON only after observing the real successful name.
 
-### 4. Refresh the governance branch from current main
+### 5. Refresh the governance branch from current main
 
 Update `feat/ruleset-governance` from the post-PR-#3 `main` state before making PR #4 review-ready.
 
@@ -110,7 +116,7 @@ Both PRs modify `.github/workflows/quality.yml`. Resolve that integration by pre
 
 Do not replace one side with the other wholesale. Re-run the combined Quality workflow after reconciliation.
 
-### 5. Merge the governance implementation
+### 6. Merge the governance implementation
 
 The governance PR adds:
 
@@ -121,7 +127,7 @@ The governance PR adds:
 
 Merging this PR still does **not** synchronize live Rulesets automatically.
 
-### 6. Import the Solo default-branch Ruleset
+### 7. Import the Solo default-branch Ruleset
 
 In GitHub:
 
@@ -145,7 +151,7 @@ In GitHub:
    - no unexpected ref-mutation rules were introduced;
    - no bypass actors were introduced.
 
-### 7. Disable or replace the overlapping legacy branch Ruleset
+### 8. Disable or replace the overlapping legacy branch Ruleset
 
 GitHub combines overlapping Rulesets. A newly imported approval=0 Ruleset does **not** override an older approval=1 Ruleset; the effective result remains the more restrictive policy.
 
@@ -153,7 +159,7 @@ Therefore disable/delete or deliberately replace the obsolete legacy `main` Rule
 
 Do not leave both active unintentionally.
 
-### 8. Import the release-tag Ruleset
+### 9. Import the release-tag Ruleset
 
 Import `rulesets/release-tags.json` and verify it targets only:
 
@@ -163,7 +169,7 @@ refs/tags/v*
 
 Confirm the effective rule restricts update and deletion while still allowing creation of a new version tag through the authorized release flow. A `creation` restriction is not part of the portable Solo tag profile.
 
-### 9. Inspect effective rules
+### 10. Inspect effective rules
 
 Use GitHub Rulesets/Rule Insights to inspect the effective rules on the default branch and matching tags.
 
@@ -173,6 +179,8 @@ Verify no organization-level or repository-level overlapping Ruleset reintroduce
 - broad `release**` branch targeting;
 - missing required CI;
 - a bypass path not represented by the intended policy.
+
+Only after these governance checks are effective should PR #6 be restacked from trusted `main` and the privileged two-stage release rollout continue.
 
 ## Smoke verification after import
 
