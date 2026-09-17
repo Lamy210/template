@@ -13,6 +13,7 @@ SOURCE_SHA = "0123456789abcdef0123456789abcdef01234567"
 PUBLISHER_SHA = "1123456789abcdef0123456789abcdef01234567"
 PUBLISHER_RUN_ID = 99887766
 PUBLISHER_RUN_ATTEMPT = 4
+SOURCE_ARTIFACT_ID = 7001
 ARTIFACT_DIGEST = "sha256:" + "b" * 64
 
 
@@ -21,6 +22,8 @@ def expected(archive_digest: str) -> ExpectedValidatedRelease:
         source_repository="example/MyApp",
         source_run_id=123456789,
         source_run_attempt=2,
+        source_artifact_id=SOURCE_ARTIFACT_ID,
+        source_artifact_digest=ARTIFACT_DIGEST,
         source_sha=SOURCE_SHA,
         source_tag="v1.2.3",
         source_version="1.2.3",
@@ -41,7 +44,7 @@ def metadata(archive_digest: str) -> dict:
         "sourceRunAttempt": 2,
         "sourceSHA": SOURCE_SHA,
         "tag": "v1.2.3",
-        "sourceArtifactId": 7001,
+        "sourceArtifactId": SOURCE_ARTIFACT_ID,
         "sourceArtifactDigest": ARTIFACT_DIGEST,
         "archiveSha256": archive_digest,
         "publisherSHA": PUBLISHER_SHA,
@@ -116,7 +119,7 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
     def test_rejects_source_artifact_identity_drift(self) -> None:
         archive, digest = self.fixture()
         mutations = (
-            ("sourceArtifactId", 7002),
+            ("sourceArtifactId", SOURCE_ARTIFACT_ID + 1),
             ("sourceArtifactDigest", "sha256:" + "c" * 64),
         )
         for key, value in mutations:
