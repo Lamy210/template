@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 import unittest
 
 from scripts.ci.test_validate_rulesets import valid_main_solo, valid_release_tags
 from scripts.ci.validate_rulesets import validate_main_solo, validate_release_tags
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RULESET_GUIDE = REPO_ROOT / "docs/GITHUB_RULESETS.md"
 
 
 class PortableSoloRulesetTests(unittest.TestCase):
@@ -263,6 +268,17 @@ class PortableRulesetStructureTests(unittest.TestCase):
         self.assertTrue(
             any("rules entries must be objects with string type" in error for error in errors)
         )
+
+
+class RulesetRolloutDocumentationTests(unittest.TestCase):
+    def test_landing_order_places_pr2_before_pr3(self) -> None:
+        text = RULESET_GUIDE.read_text(encoding="utf-8")
+        pr2 = text.find("Merge PR #2")
+        pr3 = text.find("Merge PR #3")
+
+        self.assertNotEqual(-1, pr2, "operator guide must explicitly require merging PR #2")
+        self.assertNotEqual(-1, pr3, "operator guide must explicitly require merging PR #3")
+        self.assertLess(pr2, pr3, "PR #2 must land before PR #3")
 
 
 if __name__ == "__main__":
