@@ -63,7 +63,9 @@ jobs:
             --workflow-path ".github/workflows/release-build.yml" \
             --run-id "${GITHUB_RUN_ID}" \
             --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --source-event "${GITHUB_EVENT_NAME}" \
             --source-sha "${GITHUB_SHA}" \
+            --source-ref "${GITHUB_REF}" \
             --tag "${GITHUB_REF_NAME}" \
             --archive-path artifact-payload/release-input/unsigned-macos-app.tar.gz \
             --app-basename MyApp.app \

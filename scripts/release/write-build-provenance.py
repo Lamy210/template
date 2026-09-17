@@ -24,7 +24,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workflow-path", required=True)
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--run-attempt", required=True, type=int)
+    parser.add_argument("--source-event", required=True)
     parser.add_argument("--source-sha", required=True)
+    parser.add_argument("--source-ref", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--archive-path", required=True, type=Path)
     parser.add_argument("--app-basename", required=True)
@@ -47,9 +49,9 @@ def main() -> int:
         workflow_path=args.workflow_path,
         run_id=args.run_id,
         run_attempt=args.run_attempt,
-        source_event="push",
+        source_event=args.source_event,
         source_sha=args.source_sha,
-        source_ref=f"refs/tags/{args.tag}",
+        source_ref=args.source_ref,
         tag=args.tag,
         artifact_name=artifact_name,
         archive_name=archive_path.name,
