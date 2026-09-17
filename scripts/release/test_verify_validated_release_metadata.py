@@ -113,6 +113,19 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
                 errors = verify_validated_release_metadata(document, archive, expected(digest))
                 self.assertTrue(any(key in error or "expected" in error for error in errors))
 
+    def test_rejects_source_artifact_identity_drift(self) -> None:
+        archive, digest = self.fixture()
+        mutations = (
+            ("sourceArtifactId", 7002),
+            ("sourceArtifactDigest", "sha256:" + "c" * 64),
+        )
+        for key, value in mutations:
+            with self.subTest(key=key):
+                document = metadata(digest)
+                document[key] = value
+                errors = verify_validated_release_metadata(document, archive, expected(digest))
+                self.assertTrue(any(key in error or "expected" in error for error in errors))
+
     def test_rejects_tag_version_inconsistency(self) -> None:
         archive, digest = self.fixture()
         document = metadata(digest)
