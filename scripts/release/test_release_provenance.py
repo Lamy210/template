@@ -110,6 +110,26 @@ class ReleaseProvenanceTests(unittest.TestCase):
         errors = validate_build_provenance(document, expected_build())
         self.assertTrue(any("tag" in error for error in errors))
 
+    def test_rejects_semver_tag_with_leading_zeroes(self) -> None:
+        for tag in ("v01.2.3", "v1.02.3", "v1.2.03"):
+            with self.subTest(tag=tag):
+                version = tag[1:]
+                document = valid_document()
+                document["tag"] = tag
+                document["sourceRef"] = f"refs/tags/{tag}"
+                document["version"] = version
+                expected = copy.deepcopy(expected_build())
+                object.__setattr__(expected, "tag", tag)
+                object.__setattr__(expected, "source_ref", f"refs/tags/{tag}")
+                object.__setattr__(expected, "version", version)
+
+                errors = validate_build_provenance(document, expected)
+
+                self.assertTrue(
+                    any("stable SemVer" in error for error in errors),
+                    f"leading-zero tag was accepted: {tag}",
+                )
+
     def test_rejects_tag_ref_version_mismatch(self) -> None:
         mutations = (
             ("sourceRef", "refs/tags/v1.2.4"),
