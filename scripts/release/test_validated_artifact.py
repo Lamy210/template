@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 import tempfile
@@ -13,6 +14,8 @@ CLI_PATH = REPO_ROOT / "scripts/release/verify-validated-artifact.py"
 ARTIFACT_DIGEST = "sha256:" + "a" * 64
 PUBLISHER_RUN_ID = 99887766
 PUBLISHER_RUN_ATTEMPT = 4
+PUBLISHER_SHA = "c" * 40
+REPOSITORY_ID = 1367784801
 SOURCE_RUN_ID = 123456789
 SOURCE_RUN_ATTEMPT = 2
 ARTIFACT_ID = 7001
@@ -31,7 +34,12 @@ def artifact_metadata(*, name: str | None = None) -> dict[str, object]:
         "name": name or artifact_name(),
         "expired": False,
         "digest": ARTIFACT_DIGEST,
-        "workflow_run": {"id": PUBLISHER_RUN_ID},
+        "workflow_run": {
+            "id": PUBLISHER_RUN_ID,
+            "repository_id": REPOSITORY_ID,
+            "head_repository_id": REPOSITORY_ID,
+            "head_sha": PUBLISHER_SHA,
+        },
     }
 
 
@@ -82,6 +90,47 @@ class ValidatedArtifactTests(unittest.TestCase):
                 document = artifact_metadata()
                 document[key] = value
                 self.assertTrue(self.verify(module, document))
+
+    def test_binds_artifact_to_publisher_sha_and_repository_identity(self) -> None:
+        module = self.load_module()
+        parameters = inspect.signature(module.verify_validated_artifact).parameters
+        self.assertIn("publisher_sha", parameters)
+        self.assertIn("repository_id", parameters)
+
+        common = {
+            "artifact_id": ARTIFACT_ID,
+            "artifact_name": artifact_name(),
+            "artifact_digest": ARTIFACT_DIGEST,
+            "publisher_run_id": PUBLISHER_RUN_ID,
+            "publisher_run_attempt": PUBLISHER_RUN_ATTEMPT,
+            "publisher_sha": PUBLISHER_SHA,
+            "repository_id": REPOSITORY_ID,
+            "source_run_id": SOURCE_RUN_ID,
+            "source_run_attempt": SOURCE_RUN_ATTEMPT,
+        }
+        self.assertEqual(
+            [],
+            module.verify_validated_artifact(
+                artifact_metadata=artifact_metadata(),
+                **common,
+            ),
+        )
+
+        mutations = (
+            ("head_sha", "d" * 40),
+            ("repository_id", REPOSITORY_ID + 1),
+            ("head_repository_id", REPOSITORY_ID + 1),
+        )
+        for key, value in mutations:
+            with self.subTest(key=key):
+                document = artifact_metadata()
+                assert isinstance(document["workflow_run"], dict)
+                document["workflow_run"][key] = value
+                errors = module.verify_validated_artifact(
+                    artifact_metadata=document,
+                    **common,
+                )
+                self.assertTrue(errors)
 
     def test_rejects_non_object_and_malformed_expected_values(self) -> None:
         module = self.load_module()
