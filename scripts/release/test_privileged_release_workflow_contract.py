@@ -90,6 +90,16 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertLess(extractor, certificate)
         self.assertIn("inputs.archive_sha256", text)
 
+    def test_privileged_revalidation_rejects_symlinked_info_plist_before_secrets(self) -> None:
+        text = self.release_text()
+        revalidation = text.index("- name: Revalidate application metadata before secrets")
+        certificate = text.index("scripts/release/import-certificate.sh")
+        self.assertLess(revalidation, certificate)
+        self.assertIn('if [[ ! -f "${plist}" || -L "${plist}" ]]; then', text)
+        plist_guard = text.index('if [[ ! -f "${plist}" || -L "${plist}" ]]; then')
+        plist_read = text.index("PlistBuddy -c 'Print :CFBundleIdentifier'")
+        self.assertLess(plist_guard, plist_read)
+
     def test_validated_metadata_is_rebound_to_current_publisher_attempt(self) -> None:
         text = self.release_text()
         self.assertIn('--publisher-run-id "${GITHUB_RUN_ID}"', text)
