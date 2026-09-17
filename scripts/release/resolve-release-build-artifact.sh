@@ -164,32 +164,43 @@ if type(run_attempt_value) is not int or run_attempt_value <= 0:
     print("triggering run attempt is missing or invalid", file=sys.stderr)
     raise SystemExit(1)
 
+run_workflow_id = run.get("workflow_id")
+if type(run_workflow_id) is not int or run_workflow_id <= 0:
+    print("triggering run workflow id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+
+head_repository = run.get("head_repository")
+run_repository = run.get("repository")
+if not isinstance(head_repository, dict) or not isinstance(run_repository, dict):
+    print("triggering run repository metadata is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+head_repository_id = head_repository.get("id")
+run_repository_id = run_repository.get("id")
+if type(head_repository_id) is not int or head_repository_id <= 0:
+    print("triggering run head repository id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if type(run_repository_id) is not int or run_repository_id <= 0:
+    print("triggering run repository id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+
 checks = [
     (run_id_value == expected_run_id, "run id mismatch"),
     (run_attempt_value == expected_attempt, "run attempt mismatch"),
     (run.get("event") == "push", "triggering run event must be push"),
     (run.get("conclusion") == "success", "triggering run must have successful conclusion"),
-    (run.get("workflow_id") == workflow_id, "triggering run workflow id mismatch"),
+    (run_workflow_id == workflow_id, "triggering run workflow id mismatch"),
     (run.get("path") == expected_workflow_path, "triggering run workflow path mismatch"),
+    (
+        head_repository_id == expected_repository_id
+        and head_repository.get("full_name") == expected_repo,
+        "triggering run head repository identity mismatch",
+    ),
+    (
+        run_repository_id == expected_repository_id
+        and run_repository.get("full_name") == expected_repo,
+        "triggering run repository identity mismatch",
+    ),
 ]
-head_repository = run.get("head_repository")
-run_repository = run.get("repository")
-checks.extend(
-    [
-        (
-            isinstance(head_repository, dict)
-            and head_repository.get("id") == expected_repository_id
-            and head_repository.get("full_name") == expected_repo,
-            "triggering run head repository identity mismatch",
-        ),
-        (
-            isinstance(run_repository, dict)
-            and run_repository.get("id") == expected_repository_id
-            and run_repository.get("full_name") == expected_repo,
-            "triggering run repository identity mismatch",
-        ),
-    ]
-)
 for condition, message in checks:
     if not condition:
         print(message, file=sys.stderr)
@@ -347,7 +358,11 @@ if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) i
 if not isinstance(workflow_run, dict):
     print("artifact workflow_run metadata is missing", file=sys.stderr)
     raise SystemExit(2)
-if workflow_run.get("id") != expected_run_id or workflow_run.get("head_sha") != source_sha:
+workflow_run_id = workflow_run.get("id")
+if type(workflow_run_id) is not int or workflow_run_id <= 0:
+    print("artifact workflow_run id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if workflow_run_id != expected_run_id or workflow_run.get("head_sha") != source_sha:
     print("artifact is not bound to the exact triggering run/SHA", file=sys.stderr)
     raise SystemExit(2)
 print(f"{artifact_id}\t{digest}")
