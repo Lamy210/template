@@ -33,6 +33,8 @@ class ExpectedValidatedRelease:
     source_repository: str
     source_run_id: int
     source_run_attempt: int
+    source_artifact_id: int
+    source_artifact_digest: str
     source_sha: str
     source_tag: str
     source_version: str
@@ -125,6 +127,8 @@ def verify_validated_release_metadata(
         "sourceRepository": expected.source_repository,
         "sourceRunId": expected.source_run_id,
         "sourceRunAttempt": expected.source_run_attempt,
+        "sourceArtifactId": expected.source_artifact_id,
+        "sourceArtifactDigest": expected.source_artifact_digest,
         "sourceSHA": expected.source_sha,
         "tag": expected.source_tag,
         "version": expected.source_version,
