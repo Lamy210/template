@@ -66,6 +66,12 @@ if [[ "${args}" == *"/actions/workflows/release-build.yml"* ]]; then
   exit 0
 fi
 
+if [[ "${scenario}" == "boolean-run-id" && "${args}" == *"/actions/runs/1"* && "${args}" != *"/artifacts"* ]]; then
+  printf '{"id":true,"run_attempt":2,"event":"push","conclusion":"success","head_sha":"%s","workflow_id":4242,"path":".github/workflows/release-build.yml","head_repository":{"id":%s,"full_name":"Lamy210/template"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
+    "${sha}" "${repository_id}" "${repository_id}"
+  exit 0
+fi
+
 if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; then
   workflow_id=4242
   path='.github/workflows/release-build.yml'
@@ -90,6 +96,12 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
   printf '{"id":9001,"run_attempt":%s,"event":"%s","conclusion":"%s","head_sha":"%s","workflow_id":%s,"path":"%s","head_repository":{"id":%s,"full_name":"%s"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
     "${attempt}" "${event}" "${conclusion}" "${sha}" "${workflow_id}" "${path}" \
     "${head_repository_id}" "${repo}" "${run_repository_id}"
+  exit 0
+fi
+
+if [[ "${scenario}" == "boolean-run-id" && "${args}" == *"/actions/runs/1/artifacts"* ]]; then
+  digest="$(emit_digest)"
+  printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-1-2","expired":false,"digest":"%s","workflow_run":{"id":1,"head_sha":"%s"}}]}' "${digest}" "${sha}"
   exit 0
 fi
 
@@ -149,13 +161,14 @@ run_resolver() {
   local scenario="$1"
   local output_dir="$2"
   local run_attempt="${3:-2}"
+  local run_id="${4:-9001}"
   PATH="${STUB_BIN}:${PATH}" \
     GH_STUB_SCENARIO="${scenario}" \
     GH_TOKEN="test-token" \
     bash "${RESOLVER}" \
     --repository Lamy210/template \
     --workflow-path .github/workflows/release-build.yml \
-    --run-id 9001 \
+    --run-id "${run_id}" \
     --run-attempt "${run_attempt}" \
     --output "${output_dir}"
 }
@@ -164,9 +177,10 @@ assert_status() {
   local scenario="$1"
   local expected_status="$2"
   local run_attempt="${3:-2}"
+  local run_id="${4:-9001}"
   local output_dir="${TEMP_ROOT}/out-${scenario}"
   set +e
-  run_resolver "${scenario}" "${output_dir}" "${run_attempt}" >"${TEMP_ROOT}/${scenario}.stdout" 2>"${TEMP_ROOT}/${scenario}.stderr"
+  run_resolver "${scenario}" "${output_dir}" "${run_attempt}" "${run_id}" >"${TEMP_ROOT}/${scenario}.stdout" 2>"${TEMP_ROOT}/${scenario}.stderr"
   local status=$?
   set -e
   if [[ "${status}" -ne "${expected_status}" ]]; then
@@ -215,6 +229,7 @@ assert_status boolean-repository-id 3
 assert_status boolean-workflow-id 3
 assert_status boolean-artifact-id 3
 assert_status boolean-run-attempt 3 1
+assert_status boolean-run-id 3 2 1
 assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
