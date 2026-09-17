@@ -72,6 +72,8 @@ class ReleaseBuildWorkflowContractTests(unittest.TestCase):
     def test_build_writes_and_uploads_provenance_with_archive(self) -> None:
         text = self.workflow_text()
         self.assertIn("scripts/release/write-build-provenance.py", text)
+        self.assertIn('--source-event "${GITHUB_EVENT_NAME}"', text)
+        self.assertIn('--source-ref "${GITHUB_REF}"', text)
         self.assertIn("artifact-payload/release-input/unsigned-macos-app.tar.gz", text)
         self.assertIn("artifact-payload/release-input/build-provenance.json", text)
         self.assertRegex(

@@ -213,8 +213,12 @@ class BuildProvenanceWriterTests(unittest.TestCase):
                     "123456789",
                     "--run-attempt",
                     "2",
+                    "--source-event",
+                    "push",
                     "--source-sha",
                     SHA,
+                    "--source-ref",
+                    "refs/tags/v1.2.3",
                     "--tag",
                     "v1.2.3",
                     "--archive-path",
@@ -233,6 +237,7 @@ class BuildProvenanceWriterTests(unittest.TestCase):
             document = json.loads(output.read_text(encoding="utf-8"))
             expected_digest = "sha256:" + hashlib.sha256(payload).hexdigest()
             self.assertEqual(expected_digest, document["archiveSha256"])
+            self.assertEqual("push", document["sourceEvent"])
             self.assertEqual("refs/tags/v1.2.3", document["sourceRef"])
             self.assertEqual("1.2.3", document["version"])
             self.assertEqual("unsigned-macos-release-123456789-2", document["artifactName"])
