@@ -31,6 +31,15 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("SOURCE_TAG: ${{ inputs.source_tag }}", text)
         self.assertIn('gh release download "${SOURCE_TAG}"', text)
 
+    def test_homebrew_rejects_noncanonical_stable_release_tags(self) -> None:
+        block = step_block(self.homebrew_text(), "Validate release identity and inputs")
+        self.assertTrue(block)
+        self.assertIn(
+            r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$",
+            block,
+        )
+        self.assertNotIn(r"^v[0-9]+\.[0-9]+\.[0-9]+$", block)
+
     def test_homebrew_never_derives_release_identity_from_github_ref(self) -> None:
         text = self.homebrew_text()
         for forbidden in ("github.ref_name", "GITHUB_REF_NAME", "GITHUB_REF_TYPE"):
