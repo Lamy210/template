@@ -79,6 +79,17 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--run-attempt "${SOURCE_RUN_ATTEMPT}"', block)
         self.assertIn("--workflow-path .github/workflows/release-build.yml", block)
 
+    def test_rebinds_source_artifact_repository_identity_before_candidate_parsing(self) -> None:
+        block = job_block(self.workflow_text(), "validate")
+        verifier = block.find("      - name: Rebind source artifact repository identity\n")
+        candidate = block.find("      - name: Read candidate tag and validated source SHA\n")
+        self.assertGreaterEqual(verifier, 0, "source Artifact repository verifier is required")
+        self.assertGreater(candidate, verifier, "repository identity must be rebound before candidate parsing")
+        self.assertIn("scripts/release/verify-source-artifact-repository.sh", block)
+        self.assertIn("EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}", block)
+        self.assertIn('--repository-id "${EXPECTED_REPOSITORY_ID}"', block)
+        self.assertIn("--source-metadata source-artifact/source-artifact-metadata.json", block)
+
     def test_candidate_tag_parser_requires_canonical_stable_semver(self) -> None:
         block = job_block(self.workflow_text(), "validate")
         self.assertIn(
