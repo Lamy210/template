@@ -25,7 +25,7 @@ METADATA_FIELDS = {
 }
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
+TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 
 
 @dataclass(frozen=True)
