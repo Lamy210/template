@@ -132,6 +132,29 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
             privileged,
         )
 
+    def test_exports_source_artifact_identity_to_privileged_job(self) -> None:
+        validate = job_block(self.workflow_text(), "validate")
+        self.assertIn(
+            "source_artifact_id: ${{ steps.release_outputs.outputs.source_artifact_id }}",
+            validate,
+        )
+        self.assertIn(
+            "source_artifact_digest: ${{ steps.release_outputs.outputs.source_artifact_digest }}",
+            validate,
+        )
+        self.assertIn('"source_artifact_id": metadata["sourceArtifactId"]', validate)
+        self.assertIn('"source_artifact_digest": metadata["sourceArtifactDigest"]', validate)
+
+        privileged = job_block(self.workflow_text(), "sign-and-publish")
+        self.assertIn(
+            "source_artifact_id: ${{ needs.validate.outputs.source_artifact_id }}",
+            privileged,
+        )
+        self.assertIn(
+            "source_artifact_digest: ${{ needs.validate.outputs.source_artifact_digest }}",
+            privileged,
+        )
+
     def test_privileged_release_policy_comes_from_trusted_publisher(self) -> None:
         block = job_block(self.workflow_text(), "sign-and-publish")
         self.assertTrue(block, "sign-and-publish job is required")
