@@ -4,6 +4,7 @@ import re
 
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def canonical_validated_artifact_name(
@@ -30,6 +31,8 @@ def verify_validated_artifact(
     artifact_digest: str,
     publisher_run_id: int,
     publisher_run_attempt: int,
+    publisher_sha: str,
+    repository_id: int,
     source_run_id: int,
     source_run_attempt: int,
 ) -> list[str]:
@@ -39,6 +42,7 @@ def verify_validated_artifact(
         ("artifact ID", artifact_id),
         ("publisher run ID", publisher_run_id),
         ("publisher run attempt", publisher_run_attempt),
+        ("repository ID", repository_id),
         ("source run ID", source_run_id),
         ("source run attempt", source_run_attempt),
     )
@@ -46,17 +50,21 @@ def verify_validated_artifact(
         if not _is_positive_int(value):
             errors.append(f"{label} must be a positive integer")
 
+    if not isinstance(publisher_sha, str) or SHA_RE.fullmatch(publisher_sha) is None:
+        errors.append("publisher SHA must be 40 lowercase hexadecimal characters")
+
     if not isinstance(artifact_digest, str) or DIGEST_RE.fullmatch(artifact_digest) is None:
         errors.append("validated artifact digest must use sha256:<64 lowercase hex>")
 
     canonical_name = ""
-    if all(_is_positive_int(value) for _, value in integer_fields[1:]):
-        canonical_name = canonical_validated_artifact_name(
-            publisher_run_id,
-            publisher_run_attempt,
-            source_run_id,
-            source_run_attempt,
-        )
+    canonical_identity = (
+        publisher_run_id,
+        publisher_run_attempt,
+        source_run_id,
+        source_run_attempt,
+    )
+    if all(_is_positive_int(value) for value in canonical_identity):
+        canonical_name = canonical_validated_artifact_name(*canonical_identity)
         if artifact_name != canonical_name:
             errors.append(
                 "validated artifact name must equal canonical current publisher-attempt name "
@@ -93,5 +101,22 @@ def verify_validated_artifact(
         workflow_run_id = workflow_run.get("id")
         if not _is_positive_int(workflow_run_id) or workflow_run_id != publisher_run_id:
             errors.append("validated artifact does not belong to the current publisher run")
+
+        workflow_repository_id = workflow_run.get("repository_id")
+        if not _is_positive_int(workflow_repository_id) or workflow_repository_id != repository_id:
+            errors.append("validated artifact repository ID does not match the current repository")
+
+        workflow_head_repository_id = workflow_run.get("head_repository_id")
+        if (
+            not _is_positive_int(workflow_head_repository_id)
+            or workflow_head_repository_id != repository_id
+        ):
+            errors.append("validated artifact head repository ID does not match the current repository")
+
+        workflow_head_sha = workflow_run.get("head_sha")
+        if not isinstance(workflow_head_sha, str) or SHA_RE.fullmatch(workflow_head_sha) is None:
+            errors.append("validated artifact publisher head SHA is missing or malformed")
+        elif workflow_head_sha != publisher_sha:
+            errors.append("validated artifact publisher head SHA mismatch")
 
     return errors
