@@ -101,6 +101,8 @@ jobs:
           SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
           PUBLISHER_RUN_ID: ${{ github.run_id }}
           PUBLISHER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PUBLISHER_SHA: ${{ github.sha }}
+          REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           set -euo pipefail
           gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VALIDATED_ARTIFACT_ID}" \
@@ -112,6 +114,8 @@ jobs:
             --artifact-digest "${VALIDATED_ARTIFACT_DIGEST}" \
             --publisher-run-id "${PUBLISHER_RUN_ID}" \
             --publisher-run-attempt "${PUBLISHER_RUN_ATTEMPT}" \
+            --publisher-sha "${PUBLISHER_SHA}" \
+            --repository-id "${REPOSITORY_ID}" \
             --source-run-id "${SOURCE_RUN_ID}" \
             --source-run-attempt "${SOURCE_RUN_ATTEMPT}"
 
