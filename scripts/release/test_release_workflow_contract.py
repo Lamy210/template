@@ -20,15 +20,19 @@ class ReleaseBuildWorkflowContractTests(unittest.TestCase):
         self.assertIn("name: Release Build", text)
         self.assertIn('      - "v[0-9]+.[0-9]+.[0-9]+"', text)
 
-    def test_rejects_noncanonical_tag_before_checkout_or_build(self) -> None:
+    def test_rejects_noncanonical_event_or_tag_before_checkout_or_build(self) -> None:
         text = self.workflow_text()
         validation = text.find("      - name: Validate canonical release tag\n")
         checkout = text.find("      - name: Checkout release source\n")
         build = text.find("      - name: Build and test unsigned application\n")
-        self.assertGreaterEqual(validation, 0, "canonical release-tag validation step is required")
-        self.assertGreater(checkout, validation, "tag validation must run before checkout")
-        self.assertGreater(build, validation, "tag validation must run before application build")
+        self.assertGreaterEqual(validation, 0, "canonical release-context validation step is required")
+        self.assertGreater(checkout, validation, "release-context validation must run before checkout")
+        self.assertGreater(build, validation, "release-context validation must run before application build")
         self.assertIn("SOURCE_TAG: ${{ github.ref_name }}", text)
+        self.assertIn(
+            'if [[ "${GITHUB_EVENT_NAME}" != "push" || "${GITHUB_REF_TYPE}" != "tag" ||',
+            text,
+        )
         self.assertIn(
             r'^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$',
             text,
