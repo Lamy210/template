@@ -16,6 +16,9 @@ scenario="${GH_STUB_SCENARIO:?GH_STUB_SCENARIO is required}"
 args="$*"
 sha="0123456789abcdef0123456789abcdef01234567"
 repository_id=1367784801
+if [[ "${scenario}" == "boolean-repository-id" ]]; then
+  repository_id=true
+fi
 
 emit_zip() {
   python3 - "${scenario}" <<'PY'
@@ -196,6 +199,7 @@ assert_status failed-run 4
 assert_status wrong-repo 4
 assert_status wrong-head-repo-id 4
 assert_status wrong-run-repo-id 4
+assert_status boolean-repository-id 3
 assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
