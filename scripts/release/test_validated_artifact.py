@@ -63,6 +63,8 @@ class ValidatedArtifactTests(unittest.TestCase):
             artifact_digest=ARTIFACT_DIGEST,
             publisher_run_id=PUBLISHER_RUN_ID,
             publisher_run_attempt=PUBLISHER_RUN_ATTEMPT,
+            publisher_sha=PUBLISHER_SHA,
+            repository_id=REPOSITORY_ID,
             source_run_id=SOURCE_RUN_ID,
             source_run_attempt=SOURCE_RUN_ATTEMPT,
         )
@@ -142,6 +144,8 @@ class ValidatedArtifactTests(unittest.TestCase):
             artifact_digest="sha512:" + "a" * 64,
             publisher_run_id=PUBLISHER_RUN_ID,
             publisher_run_attempt=0,
+            publisher_sha="C" * 40,
+            repository_id=False,
             source_run_id=SOURCE_RUN_ID,
             source_run_attempt=SOURCE_RUN_ATTEMPT,
         )
