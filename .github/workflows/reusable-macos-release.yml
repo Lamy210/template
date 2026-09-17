@@ -177,6 +177,11 @@ jobs:
           fi
 
           plist="${APP_PATH}/Contents/Info.plist"
+          if [[ ! -f "${plist}" || -L "${plist}" ]]; then
+            echo "Info.plist must be a regular non-symlink file: ${plist}" >&2
+            exit 1
+          fi
+
           actual_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${plist}")"
           actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${plist}")"
           actual_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${plist}")"
