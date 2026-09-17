@@ -76,6 +76,9 @@ case "${args}" in
   *"/git/ref/tags/v1.0.0"*)
     printf '{"ref":"refs/tags/v1.0.0","object":{"type":"commit","sha":"%s"}}' "${TEST_FIRST_SHA}"
     ;;
+  *"/git/ref/tags/v01.0.0"*)
+    printf '{"ref":"refs/tags/v01.0.0","object":{"type":"commit","sha":"%s"}}' "${TEST_FIRST_SHA}"
+    ;;
   *"/git/ref/tags/v1.0.1"*)
     printf '{"ref":"refs/tags/v1.0.1","object":{"type":"tag","sha":"%s"}}' "${annotated_sha}"
     ;;
@@ -116,6 +119,11 @@ resolved="$(run_verify v1.0.0 "${first}" "${second}")"
 
 annotated_resolved="$(run_verify v1.0.1 "${first}" "${second}")"
 [[ "${annotated_resolved}" == "${first}" ]]
+
+if run_verify v01.0.0 "${first}" "${second}" >/dev/null 2>&1; then
+  echo 'leading-zero stable SemVer tag was accepted' >&2
+  exit 1
+fi
 
 if run_verify v1.0.0 "${second}" "${second}" >/dev/null 2>&1; then
   echo 'mismatched tag/source SHA was accepted' >&2
