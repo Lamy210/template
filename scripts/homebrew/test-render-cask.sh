@@ -10,7 +10,9 @@ output="${TEMP_ROOT}/rendered.rb"
 sentinel="${TEMP_ROOT}/interpolated"
 
 cat >"${template}" <<'RUBY'
+version = "1.2.3"
 puts "{{DESCRIPTION}}"
+puts "{{DMG_BASENAME}}"
 RUBY
 
 dangerous='#{File.write(ENV.fetch(%q{INTERPOLATION_SENTINEL}), %q{executed})}'
@@ -37,4 +39,30 @@ if [[ -e "${sentinel}" ]]; then
 fi
 
 grep -F "${dangerous}" "${TEMP_ROOT}/stdout" >/dev/null
+grep -F 'ExampleApp-v1.2.3.dmg' "${TEMP_ROOT}/stdout" >/dev/null
+
+malicious_dmg='ExampleApp-v#{File.write(ENV.fetch(%q{INTERPOLATION_SENTINEL}), %q{executed})}.dmg'
+set +e
+CASK_TEMPLATE="${template}" \
+  CASK_TOKEN='example-app' \
+  VERSION='1.2.3' \
+  SHA256='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+  GITHUB_OWNER='example' \
+  GITHUB_REPO='example-app' \
+  DMG_BASENAME="${malicious_dmg}" \
+  APP_NAME='ExampleApp' \
+  DESCRIPTION='safe description' \
+  HOMEPAGE='https://example.com' \
+  BUNDLE_ID='com.example.ExampleApp' \
+  OUTPUT_CASK="${TEMP_ROOT}/malicious.rb" \
+  bash "${REPO_ROOT}/scripts/homebrew/render-cask.sh" \
+  >"${TEMP_ROOT}/malicious.stdout" \
+  2>"${TEMP_ROOT}/malicious.stderr"
+status=$?
+set -e
+if [[ "${status}" -eq 0 ]]; then
+  echo 'Unsafe DMG basename interpolation was accepted.' >&2
+  exit 1
+fi
+
 printf 'Homebrew Cask renderer interpolation test passed\n'
