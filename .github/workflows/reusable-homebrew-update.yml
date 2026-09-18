@@ -81,8 +81,8 @@ jobs:
             echo "tap_default_branch must be a valid Git branch name." >&2
             exit 1
           fi
-          if [[ "${DMG_NAME}" == */* || "${DMG_NAME}" != *.dmg ]]; then
-            echo "dmg_name must be a DMG basename, not a path." >&2
+          if [[ ! "${DMG_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*\.dmg$ ]]; then
+            echo "dmg_name must be a literal DMG asset basename." >&2
             exit 1
           fi
 
