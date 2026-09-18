@@ -47,6 +47,14 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('git check-ref-format --branch "${TAP_DEFAULT_BRANCH}"', block)
         self.assertNotIn("secrets.tap_token", block)
 
+    def test_homebrew_requires_literal_dmg_asset_basename(self) -> None:
+        block = step_block(self.homebrew_text(), "Validate release identity and inputs")
+        self.assertTrue(block)
+        self.assertIn(
+            r"^[A-Za-z0-9][A-Za-z0-9._+-]*\.dmg$",
+            block,
+        )
+
     def test_homebrew_never_derives_release_identity_from_github_ref(self) -> None:
         text = self.homebrew_text()
         for forbidden in ("github.ref_name", "GITHUB_REF_NAME", "GITHUB_REF_TYPE"):
