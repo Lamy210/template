@@ -90,6 +90,10 @@ jobs:
         shell: bash
         run: bash scripts/release/test-create-dmg-input-validation.sh
 
+      - name: Homebrew Cask renderer interpolation regression
+        shell: bash
+        run: bash scripts/homebrew/test-render-cask.sh
+
       - name: Homebrew Cask renderer smoke test
         shell: bash
         env:
