@@ -67,6 +67,7 @@ jobs:
           python3 -m unittest \
             scripts.ci.test_validate_rulesets \
             scripts.ci.test_validate_rulesets_portability \
+            scripts.ci.test_audit_effective_rules \
             -v
           python3 scripts/ci/validate_rulesets.py
 
