@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 import sys
 import tarfile
@@ -185,6 +186,10 @@ class ReleaseInputValidationTests(unittest.TestCase):
         self.assertEqual(PUBLISHER_SHA, validated["publisherSHA"])
         self.assertEqual(PUBLISHER_RUN_ID, validated["publisherRunId"])
         self.assertEqual(PUBLISHER_RUN_ATTEMPT, validated["publisherRunAttempt"])
+        self.assertRegex(
+            validated["validatedAt"],
+            r"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+        )
         self.assertEqual("com.example.MyApp", validated["bundleId"])
 
     def test_rejects_provenance_run_identity_mismatch(self) -> None:
