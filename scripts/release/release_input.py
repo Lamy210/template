@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import hashlib
 import os
 from pathlib import Path
@@ -268,6 +269,7 @@ def validate_release_input(
         "publisherSHA": publisher_sha,
         "publisherRunId": publisher_run_id,
         "publisherRunAttempt": publisher_run_attempt,
+        "validatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "appBasename": expected_app_basename,
         "bundleId": expected_bundle_id,
         "version": version,

@@ -50,6 +50,7 @@ def metadata(archive_digest: str) -> dict:
         "publisherSHA": PUBLISHER_SHA,
         "publisherRunId": PUBLISHER_RUN_ID,
         "publisherRunAttempt": PUBLISHER_RUN_ATTEMPT,
+        "validatedAt": "2026-09-19T07:11:12Z",
         "appBasename": "MyApp.app",
         "bundleId": "com.example.MyApp",
         "version": "1.2.3",
@@ -85,6 +86,21 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
         errors = verify_validated_release_metadata(document, archive, expected(digest))
         self.assertTrue(any("unexpected fields" in error for error in errors))
         self.assertTrue(any("missing fields" in error for error in errors))
+
+    def test_rejects_malformed_validation_timestamp(self) -> None:
+        archive, digest = self.fixture()
+        for value in (
+            "",
+            "2026-09-19T07:11:12+00:00",
+            "2026-09-19T07:11Z",
+            "2026-13-19T07:11:12Z",
+            True,
+        ):
+            with self.subTest(value=value):
+                document = metadata(digest)
+                document["validatedAt"] = value
+                errors = verify_validated_release_metadata(document, archive, expected(digest))
+                self.assertTrue(any("validatedAt" in error for error in errors))
 
     def test_rejects_bool_for_integer_identity(self) -> None:
         archive, digest = self.fixture()

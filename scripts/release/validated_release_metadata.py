@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import hashlib
 from pathlib import Path
 import re
@@ -19,6 +20,7 @@ METADATA_FIELDS = {
     "publisherSHA",
     "publisherRunId",
     "publisherRunAttempt",
+    "validatedAt",
     "appBasename",
     "bundleId",
     "version",
@@ -52,6 +54,16 @@ def _sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return f"sha256:{digest.hexdigest()}"
+
+
+def _valid_utc_timestamp(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return False
+    return parsed.strftime("%Y-%m-%dT%H:%M:%SZ") == value
 
 
 def _safe_app_basename(value: object) -> bool:
@@ -106,6 +118,9 @@ def verify_validated_release_metadata(
         value = document.get(field)
         if not isinstance(value, str) or DIGEST_RE.fullmatch(value) is None:
             errors.append(f"{field} must use sha256:<64 lowercase hex>")
+
+    if not _valid_utc_timestamp(document.get("validatedAt")):
+        errors.append("validatedAt must be canonical UTC RFC3339 seconds (YYYY-MM-DDTHH:MM:SSZ)")
 
     tag = document.get("tag")
     version = document.get("version")
