@@ -63,16 +63,16 @@ print(quote(sys.argv[1], safe=""))
 PY
 )"
 
-gh api "${api_headers[@]}"   "repos/${repository}/commits/${encoded_default_branch}"   >"${temp_root}/default-commit.json"
+gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch}" >"${temp_root}/default-commit.json"
 
-gh api "${api_headers[@]}"   "repos/${repository}/actions/runs/${source_run_id}"   >"${temp_root}/source-run.json"
+gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${source_run_id}" >"${temp_root}/source-run.json"
 
-gh api "${api_headers[@]}"   "repos/${repository}/actions/runs/${publisher_run_id}"   >"${temp_root}/publisher-run.json"
+gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${publisher_run_id}" >"${temp_root}/publisher-run.json"
 
-gh api "${api_headers[@]}"   --paginate   --slurp   "repos/${repository}/actions/runs/${publisher_run_id}/artifacts?per_page=100"   >"${temp_root}/artifacts.json"
+gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${publisher_run_id}/artifacts?per_page=100" >"${temp_root}/artifacts.json"
 
 artifact_name="$(
-  python3 -     "${temp_root}/source-run.json"     "${temp_root}/publisher-run.json"     "${temp_root}/artifacts.json" <<'PY'
+  python3 - "${temp_root}/source-run.json" "${temp_root}/publisher-run.json" "${temp_root}/artifacts.json" <<'PY'
 import json
 import sys
 
@@ -125,10 +125,10 @@ PY
 )"
 
 mkdir -p "${temp_root}/validator-artifact"
-gh run download "${publisher_run_id}"   --repo "${repository}"   --name "${artifact_name}"   --dir "${temp_root}/validator-artifact"
+gh run download "${publisher_run_id}" --repo "${repository}" --name "${artifact_name}" --dir "${temp_root}/validator-artifact"
 
 mapfile -d '' metadata_files < <(
-  find "${temp_root}/validator-artifact"     -type f     -name 'validated-release-metadata.json'     -print0
+  find "${temp_root}/validator-artifact" -type f -name 'validated-release-metadata.json' -print0
 )
 if (("${#metadata_files[@]}" != 1)); then
   echo "Expected exactly one validated-release-metadata.json; found ${#metadata_files[@]}." >&2
@@ -137,7 +137,7 @@ fi
 cp "${metadata_files[0]}" "${temp_root}/metadata.json"
 
 readarray -t shas < <(
-  python3 -     "${temp_root}/source-run.json"     "${temp_root}/publisher-run.json" <<'PY'
+  python3 - "${temp_root}/source-run.json" "${temp_root}/publisher-run.json" <<'PY'
 import json
 import re
 import sys
@@ -156,6 +156,6 @@ PY
 source_sha="${shas[0]}"
 publisher_sha="${shas[1]}"
 
-gh api "${api_headers[@]}"   "repos/${repository}/compare/${source_sha}...${publisher_sha}"   >"${temp_root}/compare.json"
+gh api "${api_headers[@]}" "repos/${repository}/compare/${source_sha}...${publisher_sha}" >"${temp_root}/compare.json"
 
-python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py"   --repository "${temp_root}/repository.json"   --default-commit "${temp_root}/default-commit.json"   --source-run "${temp_root}/source-run.json"   --publisher-run "${temp_root}/publisher-run.json"   --artifacts "${temp_root}/artifacts.json"   --metadata "${temp_root}/metadata.json"   --compare "${temp_root}/compare.json"
+python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py" --repository "${temp_root}/repository.json" --default-commit "${temp_root}/default-commit.json" --source-run "${temp_root}/source-run.json" --publisher-run "${temp_root}/publisher-run.json" --artifacts "${temp_root}/artifacts.json" --metadata "${temp_root}/metadata.json" --compare "${temp_root}/compare.json"
