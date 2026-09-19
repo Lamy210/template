@@ -428,7 +428,7 @@ For an adopter moving from the old monolithic example:
 9. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
 10. run release-isolation tests before creating a real release tag;
 11. use a disposable repository for destructive tag/ruleset tests;
-12. before enabling the production publisher, perform the disposable post-split ancestor proof above and require `audit-post-split-runtime-proof.sh` to pass;
+12. before enabling the production publisher, perform the disposable post-split ancestor proof above, require `audit-post-split-runtime-proof.sh` to pass, and confirm the downstream run used the **current default-branch publisher** control code;
 13. remove/ignore any copied legacy monolithic release workflow.
 
 ## Rollback
