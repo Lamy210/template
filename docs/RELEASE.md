@@ -374,6 +374,45 @@ Repeated runtime tag-to-SHA binding remains mandatory defense in depth, but it i
 
 If this Ruleset has not been verified, keep the privileged publisher disabled and do not treat the two-stage release path as production-ready.
 
+## Disposable post-split ancestor runtime proof
+
+Before enabling the two-stage publisher for production, prove the architecture with a **disposable repository**. This proof is specifically about control-code selection; it is separate from Apple signing/notarization and from the immutable-tag Ruleset proof.
+
+1. Put the current two-stage publisher on the disposable repository default branch.
+2. Choose an older **post-split ancestor** that already contains `.github/workflows/release-build.yml` but predates the current publisher-control changes.
+3. Create a canonical stable SemVer tag such as `v0.0.1` pointing to that ancestor.
+4. Wait for that tag's **Release Build** run to complete successfully.
+5. Wait for the downstream **Release Publisher** validation job to produce its `validated-release-input-...` artifact. The later signing/publication job may fail when the disposable repository intentionally has no Apple credentials; that does not invalidate this control-code proof.
+6. Record the Release Build run ID and Release Publisher run ID.
+7. Before advancing the disposable repository default branch again, run:
+
+```bash
+bash scripts/release/audit-post-split-runtime-proof.sh \
+  owner/disposable-repo \
+  SOURCE_RUN_ID \
+  PUBLISHER_RUN_ID
+```
+
+The read-only proof collector verifies all of the following from GitHub API evidence and the publisher-owned validator artifact:
+
+- source run is the successful same-repository `Release Build` push workflow at `.github/workflows/release-build.yml`;
+- publisher run is the same-repository `workflow_run`-triggered `Release Publisher` at `.github/workflows/release-publisher.yml`;
+- source SHA is a **strict ancestor** of the publisher SHA;
+- publisher SHA equals the repository's current default-branch head at proof time;
+- the validator Artifact name is bound to the exact publisher run/attempt and source run/attempt;
+- the Artifact is non-expired and is itself bound to the publisher SHA/repository identity;
+- `validated-release-metadata.json` binds the same source repository/run/attempt/SHA and publisher run/attempt/SHA.
+
+A successful proof demonstrates the intended property:
+
+> Historical post-split application bytes came from the tagged ancestor, while validation/control code came from the current default branch.
+
+The command performs only reads and artifact download. It does not create/move/delete tags, mutate Rulesets, change Environments, or publish releases.
+
+Run this proof immediately after the disposable test. Because it deliberately requires the publisher SHA to equal the **current** default-branch head, later default-branch commits make an old proof fail closed rather than silently treating stale evidence as current.
+
+This proof does **not** replace the separate release-tag immutability test. The disposable repository must still prove that a newly-created `v*` tag can be created once but cannot later be updated or deleted.
+
 ## Migration checklist
 
 For an adopter moving from the old monolithic example:
@@ -389,7 +428,7 @@ For an adopter moving from the old monolithic example:
 9. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
 10. run release-isolation tests before creating a real release tag;
 11. use a disposable repository for destructive tag/ruleset tests;
-12. before enabling the production publisher, use a disposable repository to tag a **post-split ancestor** whose commit already contains `.github/workflows/release-build.yml` while the default branch contains newer publisher control code; verify the tag-selected Release Build uses the ancestor source SHA/application bytes and the downstream workflow checks out and executes the **current default-branch publisher** control code;
+12. before enabling the production publisher, perform the disposable post-split ancestor proof above and require `audit-post-split-runtime-proof.sh` to pass;
 13. remove/ignore any copied legacy monolithic release workflow.
 
 ## Rollback
