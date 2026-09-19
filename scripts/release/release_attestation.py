@@ -78,7 +78,12 @@ def validate_release_attestation(document: object) -> list[str]:
             errors.append(f"{field} must be a positive integer")
 
     repository = document.get("sourceRepository")
-    if not isinstance(repository, str) or REPOSITORY_RE.fullmatch(repository) is None:
+    repository_valid = (
+        isinstance(repository, str)
+        and REPOSITORY_RE.fullmatch(repository) is not None
+        and all(component not in {".", ".."} for component in repository.split("/", 1))
+    )
+    if not repository_valid:
         errors.append("sourceRepository must be in owner/repo form")
 
     for field in ("sourceSHA", "publisherSHA"):
