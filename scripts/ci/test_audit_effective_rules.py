@@ -10,6 +10,10 @@ import unittest
 from scripts.ci.audit_effective_rules import validate_effective_main_rules
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+LIVE_AUDIT = REPO_ROOT / "scripts/ci/audit-live-main-rules.sh"
+
+
 def desired_rules() -> list[dict]:
     return [
         {
@@ -160,6 +164,22 @@ class EffectiveMainRulesAuditTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("match the Solo governance contract", result.stdout)
+
+    def test_live_audit_wrapper_is_read_only_and_uses_effective_rules_endpoint(self) -> None:
+        text = LIVE_AUDIT.read_text(encoding="utf-8")
+        self.assertIn('rules/branches/', text)
+        self.assertIn('--paginate', text)
+        self.assertIn('--slurp', text)
+        self.assertIn('audit_effective_rules.py', text)
+        for mutation in (
+            '--method POST',
+            '--method PUT',
+            '--method PATCH',
+            '--method DELETE',
+            'rulesets/',
+        ):
+            with self.subTest(mutation=mutation):
+                self.assertNotIn(mutation, text)
 
     def test_cli_reports_live_policy_drift(self) -> None:
         legacy = [
