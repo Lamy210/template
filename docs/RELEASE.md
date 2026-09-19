@@ -128,6 +128,7 @@ Reusable macOS Release (environment: release)
   |
   | metadata/digest/archive revalidation
   | Apple signing -> DMG -> notarization -> verification
+  | publisher-owned release-provenance.json
   v
 Immutable GitHub Release
   |
@@ -246,6 +247,7 @@ validated archive
   -> staple ticket
   -> verify Gatekeeper/signature/executable
   -> generate SHA-256
+  -> write publisher-owned release-provenance.json
   -> publish immutable GitHub Release
 ```
 
@@ -257,6 +259,25 @@ Entitlements are security-sensitive publisher configuration. The default contrac
 
 Do not allow an application archive to supply executable release hooks or replace publisher entitlements.
 
+## Final release attestation
+
+After signing, notarization, stapling, and final release verification, the privileged publisher writes `release-provenance.json` from publisher-observed facts. This file is separate from the untrusted build provenance and is audit evidence rather than a replacement for runtime validation.
+
+Its closed schema records:
+
+- source repository;
+- source run ID and run attempt;
+- source SHA and stable tag;
+- exact source Artifact ID and GitHub digest;
+- validated unsigned archive SHA-256;
+- publisher workflow run ID;
+- trusted publisher SHA;
+- SHA-256 recomputed from the final signed/notarized DMG.
+
+The attestation intentionally omits a wall-clock timestamp and `publisherRunAttempt`. A full publisher rerun keeps the same workflow run ID but increments `github.run_attempt`; excluding attempt-local data keeps the attestation deterministic when all release facts and final DMG bytes are identical, preserving immutable/idempotent release retry behavior.
+
+The verified Actions Artifact contains the DMG, checksum, and `release-provenance.json`. When GitHub Release publication is enabled, all three are published as immutable release assets.
+
 ## GitHub Release immutability
 
 Stable releases are append-never/replace-never.
@@ -264,7 +285,7 @@ Stable releases are append-never/replace-never.
 `publish-github-release.sh`:
 
 - creates a missing release using the already-validated tag;
-- treats an existing release as a no-op only when the expected DMG and checksum assets are byte-identical by SHA-256;
+- treats an existing release as a no-op only when the expected DMG, checksum, and final release-attestation assets are byte-identical by SHA-256;
 - fails when an expected asset is missing or differs;
 - never uses `--clobber` for stable release assets.
 
