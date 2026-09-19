@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 from scripts.release.post_split_runtime_proof import validate_post_split_runtime_proof
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+LIVE_AUDIT = REPO_ROOT / "scripts/release/audit-post-split-runtime-proof.sh"
 REPO_ID = 1367784801
 REPOSITORY = "example/template"
 SOURCE_SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -234,6 +241,73 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             repository(), default_commit(), run, publisher_run(), artifacts(), metadata(), compare()
         )
         self.assertTrue(any("source run id" in error for error in errors))
+
+    def test_cli_accepts_paginated_artifact_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixtures = {
+                "repository.json": repository(),
+                "default-commit.json": default_commit(),
+                "source-run.json": source_run(),
+                "publisher-run.json": publisher_run(),
+                "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
+                "metadata.json": metadata(),
+                "compare.json": compare(),
+            }
+            for name, document in fixtures.items():
+                (root / name).write_text(json.dumps(document) + "\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/release/audit-post-split-runtime-proof.py",
+                    "--repository",
+                    str(root / "repository.json"),
+                    "--default-commit",
+                    str(root / "default-commit.json"),
+                    "--source-run",
+                    str(root / "source-run.json"),
+                    "--publisher-run",
+                    str(root / "publisher-run.json"),
+                    "--artifacts",
+                    str(root / "artifacts.json"),
+                    "--metadata",
+                    str(root / "metadata.json"),
+                    "--compare",
+                    str(root / "compare.json"),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("post-split runtime proof is valid", result.stdout)
+
+    def test_live_wrapper_is_read_only_and_downloads_exact_publisher_artifact(self) -> None:
+        text = LIVE_AUDIT.read_text(encoding="utf-8")
+        for token in (
+            "actions/runs/",
+            "/artifacts?per_page=100",
+            "compare/",
+            "gh run download",
+            "validated-release-input-",
+            "audit-post-split-runtime-proof.py",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, text)
+        for mutation in (
+            "--method POST",
+            "--method PUT",
+            "--method PATCH",
+            "--method DELETE",
+            "git/refs",
+            "rulesets/",
+            "/environments/release/deployment-branch-policies/",
+        ):
+            with self.subTest(mutation=mutation):
+                self.assertNotIn(mutation, text)
 
 
 if __name__ == "__main__":
