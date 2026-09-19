@@ -209,6 +209,16 @@ For a private repository, run it with a `gh` authentication context that can rea
 
 This doctor covers the default-branch effective policy. Release-tag immutability still requires the separate disposable-repository/runtime proof described below; do not infer tag update/deletion behavior from a successful branch audit.
 
+### Run the same audit from GitHub Actions
+
+After `.github/workflows/governance-audit.yml` has landed on the repository default branch, operators can run **Governance Audit** manually from the Actions tab.
+
+The workflow is intentionally `workflow_dispatch`-only. It does not run on pull requests, pushes, or schedules, and it grants only `contents: read`. Checkout credentials are not persisted. The audit uses the ephemeral `github.token` only for read-only GitHub API calls made by `audit-live-main-rules.sh`.
+
+A failed manual run is actionable evidence of live-policy drift. For example, if a legacy overlapping Ruleset still requires one approval, the workflow should fail until that Ruleset is disabled/replaced. Do not weaken the checked-in Solo profile or the auditor merely to make this workflow green.
+
+The workflow is a verification surface, not an administration surface: it never imports, updates, disables, or deletes Rulesets.
+
 ## Smoke verification after import
 
 Open a harmless pull request and verify:
@@ -240,6 +250,8 @@ After live import, additionally run:
 ```bash
 bash scripts/ci/audit-live-main-rules.sh owner/repo
 ```
+
+Once the manual workflow is present on the default branch, run **Actions → Governance Audit → Run workflow** as the hosted equivalent and require it to pass before treating the live default-branch policy as verified.
 
 The validator rejects policy weakening, noncanonical state, or lockout regressions such as:
 
