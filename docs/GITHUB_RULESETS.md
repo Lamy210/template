@@ -182,6 +182,33 @@ Verify no organization-level or repository-level overlapping Ruleset reintroduce
 
 Only after these governance checks are effective should PR #6 be restacked from trusted `main` and the privileged two-stage release rollout continue.
 
+## Read-only effective-main doctor
+
+After importing/replacing the reviewed branch Ruleset, audit the rules that GitHub is **actually enforcing** on the repository default branch:
+
+```bash
+bash scripts/ci/audit-live-main-rules.sh owner/repo
+```
+
+The command is read-only. It resolves the repository default branch, calls GitHub's effective branch-rules API, and validates the resulting active policy against the Solo contract.
+
+It detects operational drift that desired-state JSON validation alone cannot see, including:
+
+- a legacy overlapping Ruleset that still requires one or more approvals;
+- multiple active `pull_request` or `required_status_checks` rules applying to the default branch;
+- missing linear-history, force-push, or deletion protection;
+- missing/renamed required checks;
+- disabled strict status checks;
+- unresolved-conversation enforcement being disabled;
+- merge/rebase being allowed when the Solo profile expects squash-only;
+- unexpected effective rule types.
+
+The effective-rules API includes active rules from every applicable level, including repository and organization Rulesets. This is why the doctor is preferable to checking only the newly imported Ruleset in isolation.
+
+For a private repository, run it with a `gh` authentication context that can read repository metadata. Do not give the doctor Administration/write credentials merely to perform this audit.
+
+This doctor covers the default-branch effective policy. Release-tag immutability still requires the separate disposable-repository/runtime proof described below; do not infer tag update/deletion behavior from a successful branch audit.
+
 ## Smoke verification after import
 
 Open a harmless pull request and verify:
@@ -206,6 +233,12 @@ python3 -m unittest \
   scripts.ci.test_validate_rulesets_portability \
   -v
 python3 scripts/ci/validate_rulesets.py
+```
+
+After live import, additionally run:
+
+```bash
+bash scripts/ci/audit-live-main-rules.sh owner/repo
 ```
 
 The validator rejects policy weakening, noncanonical state, or lockout regressions such as:
