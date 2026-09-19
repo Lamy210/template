@@ -73,6 +73,16 @@ Where the repository has an independent release reviewer, required-reviewer prot
 
 Keep privileged release secrets in this Environment rather than exposing them to ordinary PR jobs.
 
+After configuring the Environment, run the read-only doctor:
+
+```bash
+bash scripts/release/audit-release-environment.sh owner/repo
+```
+
+The doctor verifies that the Environment is named `release`, uses custom deployment branch policies rather than unrestricted/protected-branches mode, and has exactly one deployment policy whose name equals the repository default branch. It uses only read endpoints and does not modify Environment settings.
+
+GitHub's deployment-branch-policy list response does not always expose whether a returned policy was originally created as a branch or tag policy. When a `type` field is present the doctor requires `branch`; when GitHub omits it, the doctor cannot prove branch-vs-tag identity from REST output alone. Therefore the first-release negative runtime check below remains mandatory: a feature/PR ref and arbitrary tag must not be able to enter the `release` Environment.
+
 ## 6. Release secrets
 
 Add the following secrets to the `release` Environment:
