@@ -19,6 +19,8 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
             "scripts.release.test_release_provenance",
             "scripts.release.test_validate_actions_artifact",
             "scripts.release.test_validate_release_input",
+            "scripts.release.test_publisher_attempt_binding",
+            "scripts.release.test_validated_artifact",
             "scripts.release.test_release_workflow_contract",
             "scripts.release.test_release_publisher_workflow_contract",
             "scripts.release.test_privileged_release_workflow_contract",
