@@ -17,6 +17,7 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
         self.assertIn("- name: Release isolation contract", text)
         for module in (
             "scripts.release.test_release_provenance",
+            "scripts.release.test_release_attestation",
             "scripts.release.test_validate_actions_artifact",
             "scripts.release.test_validate_release_input",
             "scripts.release.test_publisher_attempt_binding",
