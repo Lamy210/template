@@ -385,11 +385,12 @@ For an adopter moving from the old monolithic example:
 5. keep the tag-build workflow secret-free/read-only;
 6. ensure the publisher validation job has only `actions: read` + `contents: read`;
 7. verify only the privileged reusable macOS release job declares `environment: release`;
-8. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
-9. run release-isolation tests before creating a real release tag;
-10. use a disposable repository for destructive tag/ruleset tests;
-11. before enabling the production publisher, use a disposable repository to tag a **post-split ancestor** whose commit already contains `.github/workflows/release-build.yml` while the default branch contains newer publisher control code; verify the tag-selected Release Build uses the ancestor source SHA/application bytes and the downstream workflow checks out and executes the **current default-branch publisher** control code;
-12. remove/ignore any copied legacy monolithic release workflow.
+8. run `bash scripts/release/audit-release-environment.sh owner/repo` and confirm the read-only doctor accepts the default-branch-only `release` Environment configuration; retain the negative runtime proof because GitHub's REST list response may omit branch/tag type;
+9. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
+10. run release-isolation tests before creating a real release tag;
+11. use a disposable repository for destructive tag/ruleset tests;
+12. before enabling the production publisher, use a disposable repository to tag a **post-split ancestor** whose commit already contains `.github/workflows/release-build.yml` while the default branch contains newer publisher control code; verify the tag-selected Release Build uses the ancestor source SHA/application bytes and the downstream workflow checks out and executes the **current default-branch publisher** control code;
+13. remove/ignore any copied legacy monolithic release workflow.
 
 ## Rollback
 
