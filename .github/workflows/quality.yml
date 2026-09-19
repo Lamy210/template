@@ -66,6 +66,7 @@ jobs:
           set -euo pipefail
           python3 -m unittest \
             scripts.release.test_release_provenance \
+            scripts.release.test_release_attestation \
             scripts.release.test_validate_actions_artifact \
             scripts.release.test_validate_release_input \
             scripts.release.test_publisher_attempt_binding \
