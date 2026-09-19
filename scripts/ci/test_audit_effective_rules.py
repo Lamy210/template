@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 from scripts.ci.audit_effective_rules import validate_effective_main_rules
@@ -133,6 +138,64 @@ class EffectiveMainRulesAuditTests(unittest.TestCase):
     def test_rejects_malformed_payload(self) -> None:
         self.assertTrue(validate_effective_main_rules({"rules": []}))
         self.assertTrue(validate_effective_main_rules([{"ruleset_id": 1}]))
+
+    def test_cli_accepts_gh_paginate_slurp_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            payload = Path(temporary_directory) / "effective-rules.json"
+            payload.write_text(
+                json.dumps([desired_rules()]) + "\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/ci/audit_effective_rules.py",
+                    str(payload),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("match the Solo governance contract", result.stdout)
+
+    def test_cli_reports_live_policy_drift(self) -> None:
+        legacy = [
+            {"type": "deletion", "ruleset_id": 23140953},
+            {"type": "non_fast_forward", "ruleset_id": 23140953},
+            {
+                "type": "pull_request",
+                "ruleset_id": 23140953,
+                "parameters": {
+                    "required_approving_review_count": 1,
+                    "dismiss_stale_reviews_on_push": True,
+                    "require_code_owner_review": False,
+                    "require_last_push_approval": False,
+                    "required_review_thread_resolution": False,
+                    "allowed_merge_methods": ["merge", "squash", "rebase"],
+                },
+            },
+        ]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            payload = Path(temporary_directory) / "legacy-rules.json"
+            payload.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/ci/audit_effective_rules.py",
+                    str(payload),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("required_approving_review_count must equal 0", result.stderr)
+        self.assertIn("required_status_checks rule is required", result.stderr)
 
 
 if __name__ == "__main__":
