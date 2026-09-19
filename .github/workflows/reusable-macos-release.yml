@@ -275,6 +275,35 @@ jobs:
           DMG_PATH: release-output/${{ inputs.dmg_name }}
         run: bash scripts/release/verify-release.sh
 
+      - name: Write final release attestation
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+          PUBLISHER_RUN_ID: ${{ github.run_id }}
+          PUBLISHER_SHA: ${{ github.sha }}
+          DMG_PATH: release-output/${{ inputs.dmg_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/write-release-provenance.py \
+            --source-repository "${GITHUB_REPOSITORY}" \
+            --source-run-id "${SOURCE_RUN_ID}" \
+            --source-run-attempt "${SOURCE_RUN_ATTEMPT}" \
+            --source-sha "${SOURCE_SHA}" \
+            --tag "${SOURCE_TAG}" \
+            --source-artifact-id "${SOURCE_ARTIFACT_ID}" \
+            --source-artifact-digest "${SOURCE_ARTIFACT_DIGEST}" \
+            --archive-sha256 "${ARCHIVE_SHA256}" \
+            --publisher-run-id "${PUBLISHER_RUN_ID}" \
+            --publisher-sha "${PUBLISHER_SHA}" \
+            --dmg-path "${DMG_PATH}" \
+            --output release-output/release-provenance.json
+
       - name: Upload verified release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -282,6 +311,7 @@ jobs:
           path: |
             release-output/${{ inputs.dmg_name }}
             release-output/${{ inputs.dmg_name }}.sha256
+            release-output/release-provenance.json
           if-no-files-found: error
           retention-days: 14
 
@@ -302,6 +332,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ inputs.source_tag }}
           DMG_PATH: release-output/${{ inputs.dmg_name }}
+          RELEASE_PROVENANCE_PATH: release-output/release-provenance.json
         run: bash scripts/release/publish-github-release.sh
 
       - name: Delete temporary signing keychain
