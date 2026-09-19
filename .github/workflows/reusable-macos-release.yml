@@ -3,12 +3,48 @@ name: Reusable macOS Release
 on:
   workflow_call:
     inputs:
-      artifact_name:
-        description: Name of the Actions Artifact containing the unsigned application archive.
+      validated_artifact_name:
+        description: Publisher-run artifact containing validated release metadata and the unsigned app archive.
         required: true
         type: string
-      artifact_archive_name:
-        description: Tar.gz filename inside the downloaded Actions Artifact.
+      validated_artifact_id:
+        description: Exact Actions Artifact ID produced by the current publisher validation attempt.
+        required: true
+        type: string
+      validated_artifact_digest:
+        description: GitHub-provided sha256 digest for the current publisher validation artifact.
+        required: true
+        type: string
+      source_tag:
+        description: Validated stable release tag, for example v1.2.3.
+        required: true
+        type: string
+      source_sha:
+        description: Validated 40-character source commit SHA bound to the release tag.
+        required: true
+        type: string
+      source_version:
+        description: Validated application version without the leading v.
+        required: true
+        type: string
+      source_run_id:
+        description: Exact unprivileged Release Build workflow run ID.
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact unprivileged Release Build workflow run attempt.
+        required: true
+        type: string
+      source_artifact_id:
+        description: Exact source Release Build Actions Artifact ID validated by the publisher.
+        required: true
+        type: string
+      source_artifact_digest:
+        description: GitHub-provided sha256 digest of the exact source Release Build artifact.
+        required: true
+        type: string
+      archive_sha256:
+        description: Validated archive digest in sha256:<64 lowercase hex> form.
         required: true
         type: string
       app_name:
@@ -32,14 +68,9 @@ on:
         required: true
         type: string
       entitlements_path:
-        description: Optional entitlements file path in the caller repository.
+        description: Optional entitlements file path from the trusted publisher/default-branch checkout.
         required: false
         default: ""
-        type: string
-      release_branch:
-        description: Trusted long-lived branch that release tag commits must belong to.
-        required: false
-        default: main
         type: string
       publish_github_release:
         description: Publish an immutable GitHub Release after notarization and verification.
@@ -56,86 +87,100 @@ jobs:
     timeout-minutes: 30
     environment: release
     permissions:
+      actions: read
       contents: write
 
     steps:
-      - name: Validate trusted release context
-        shell: bash
-        env:
-          APP_PATH_INPUT: ${{ inputs.app_path }}
-          ARTIFACT_ARCHIVE_NAME: ${{ inputs.artifact_archive_name }}
-          DMG_NAME: ${{ inputs.dmg_name }}
-          RELEASE_BRANCH: ${{ inputs.release_branch }}
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
-            echo "Release workflow must run from a protected tag." >&2
-            exit 1
-          fi
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Only stable SemVer tags in the form vX.Y.Z are accepted." >&2
-            exit 1
-          fi
-          if [[ "${APP_PATH_INPUT}" == */* || "${APP_PATH_INPUT}" != *.app ]]; then
-            echo "app_path must be a .app basename." >&2
-            exit 1
-          fi
-          if [[ "${ARTIFACT_ARCHIVE_NAME}" == */* || "${ARTIFACT_ARCHIVE_NAME}" != *.tar.gz ]]; then
-            echo "artifact_archive_name must be a .tar.gz basename." >&2
-            exit 1
-          fi
-          if [[ "${DMG_NAME}" == */* || "${DMG_NAME}" != *.dmg ]]; then
-            echo "dmg_name must be a DMG basename, not a path." >&2
-            exit 1
-          fi
-          if ! git check-ref-format --branch "${RELEASE_BRANCH}" >/dev/null 2>&1; then
-            echo "release_branch is not a valid branch name: ${RELEASE_BRANCH}" >&2
-            exit 1
-          fi
-
-      - name: Checkout tagged release source with history
+      - name: Checkout trusted publisher control code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify release tag belongs to trusted branch
+      - name: Verify validated handoff artifact identity
         shell: bash
         env:
-          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          GH_TOKEN: ${{ github.token }}
+          VALIDATED_ARTIFACT_ID: ${{ inputs.validated_artifact_id }}
+          VALIDATED_ARTIFACT_NAME: ${{ inputs.validated_artifact_name }}
+          VALIDATED_ARTIFACT_DIGEST: ${{ inputs.validated_artifact_digest }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          PUBLISHER_RUN_ID: ${{ github.run_id }}
+          PUBLISHER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PUBLISHER_SHA: ${{ github.sha }}
+          REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           set -euo pipefail
-          trusted_ref="refs/remotes/origin/${RELEASE_BRANCH}"
-          if ! git show-ref --verify --quiet "${trusted_ref}"; then
-            echo "Trusted release branch is unavailable: ${trusted_ref}" >&2
-            exit 1
-          fi
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VALIDATED_ARTIFACT_ID}" \
+            >validated-artifact-metadata.json
+          python3 scripts/release/verify-validated-artifact.py \
+            --metadata validated-artifact-metadata.json \
+            --artifact-id "${VALIDATED_ARTIFACT_ID}" \
+            --artifact-name "${VALIDATED_ARTIFACT_NAME}" \
+            --artifact-digest "${VALIDATED_ARTIFACT_DIGEST}" \
+            --publisher-run-id "${PUBLISHER_RUN_ID}" \
+            --publisher-run-attempt "${PUBLISHER_RUN_ATTEMPT}" \
+            --publisher-sha "${PUBLISHER_SHA}" \
+            --repository-id "${REPOSITORY_ID}" \
+            --source-run-id "${SOURCE_RUN_ID}" \
+            --source-run-attempt "${SOURCE_RUN_ATTEMPT}"
 
-          release_commit="$(git rev-parse 'HEAD^{commit}')"
-          if ! git merge-base --is-ancestor "${release_commit}" "${trusted_ref}"; then
-            echo "Release tag ${GITHUB_REF_NAME} points to ${release_commit}, which is not contained in ${RELEASE_BRANCH}." >&2
-            exit 1
-          fi
-
-      - name: Download unsigned application artifact
+      - name: Download exact validated release input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.artifact_name }}
-          path: release-artifact
+          artifact-ids: ${{ inputs.validated_artifact_id }}
+          path: validated-release-input
+          merge-multiple: true
 
-      - name: Extract unsigned application archive
+      - name: Reverify publisher-owned metadata and archive digest
         shell: bash
         env:
-          ARCHIVE_PATH: release-artifact/${{ inputs.artifact_archive_name }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_VERSION: ${{ inputs.source_version }}
+          ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+          APP_BASENAME: ${{ inputs.app_path }}
+          EXPECTED_BUNDLE_ID: ${{ inputs.bundle_id }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/verify-validated-release-metadata.py \
+            --metadata validated-release-input/validated-release-metadata.json \
+            --archive validated-release-input/unsigned-macos-app.tar.gz \
+            --repository "${GITHUB_REPOSITORY}" \
+            --source-run-id "${SOURCE_RUN_ID}" \
+            --source-run-attempt "${SOURCE_RUN_ATTEMPT}" \
+            --source-artifact-id "${SOURCE_ARTIFACT_ID}" \
+            --source-artifact-digest "${SOURCE_ARTIFACT_DIGEST}" \
+            --source-sha "${SOURCE_SHA}" \
+            --source-tag "${SOURCE_TAG}" \
+            --source-version "${SOURCE_VERSION}" \
+            --publisher-sha "${GITHUB_SHA}" \
+            --publisher-run-id "${GITHUB_RUN_ID}" \
+            --publisher-run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --archive-sha256 "${ARCHIVE_SHA256}" \
+            --app-basename "${APP_BASENAME}" \
+            --bundle-id "${EXPECTED_BUNDLE_ID}"
+
+      - name: Extract validated unsigned application archive
+        shell: bash
+        env:
+          ARCHIVE_PATH: validated-release-input/unsigned-macos-app.tar.gz
           OUTPUT_DIR: release-input
           APP_BASENAME: ${{ inputs.app_path }}
         run: bash scripts/release/extract-app-artifact.sh
 
-      - name: Validate application metadata
+      - name: Revalidate application metadata before secrets
         shell: bash
         env:
           APP_PATH: release-input/${{ inputs.app_path }}
           EXPECTED_BUNDLE_ID: ${{ inputs.bundle_id }}
+          EXPECTED_VERSION: ${{ inputs.source_version }}
         run: |
           set -euo pipefail
           if [[ ! -d "${APP_PATH}" ]]; then
@@ -144,23 +189,36 @@ jobs:
           fi
 
           plist="${APP_PATH}/Contents/Info.plist"
+          if [[ ! -f "${plist}" || -L "${plist}" ]]; then
+            echo "Info.plist must be a regular non-symlink file: ${plist}" >&2
+            exit 1
+          fi
+
           actual_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${plist}")"
           actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${plist}")"
           actual_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${plist}")"
-          expected_version="${GITHUB_REF_NAME#v}"
 
           if [[ "${actual_bundle_id}" != "${EXPECTED_BUNDLE_ID}" ]]; then
             echo "Bundle ID mismatch: expected ${EXPECTED_BUNDLE_ID}, got ${actual_bundle_id}" >&2
             exit 1
           fi
-          if [[ "${actual_version}" != "${expected_version}" ]]; then
-            echo "Version mismatch: tag=${expected_version}, app=${actual_version}" >&2
+          if [[ "${actual_version}" != "${EXPECTED_VERSION}" ]]; then
+            echo "Version mismatch: expected=${EXPECTED_VERSION}, app=${actual_version}" >&2
             exit 1
           fi
 
           APP_PATH="${APP_PATH}" \
             EXECUTABLE_NAME="${actual_executable}" \
             bash scripts/release/verify-app-executable.sh
+
+      - name: Rebind release tag before secrets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: bash scripts/release/verify-release-source.sh >/dev/null
 
       - name: Import Developer ID certificate
         id: certificate
@@ -217,23 +275,64 @@ jobs:
           DMG_PATH: release-output/${{ inputs.dmg_name }}
         run: bash scripts/release/verify-release.sh
 
+      - name: Write final release attestation
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+          PUBLISHER_RUN_ID: ${{ github.run_id }}
+          PUBLISHER_SHA: ${{ github.sha }}
+          DMG_PATH: release-output/${{ inputs.dmg_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/write-release-provenance.py \
+            --source-repository "${GITHUB_REPOSITORY}" \
+            --source-run-id "${SOURCE_RUN_ID}" \
+            --source-run-attempt "${SOURCE_RUN_ATTEMPT}" \
+            --source-sha "${SOURCE_SHA}" \
+            --tag "${SOURCE_TAG}" \
+            --source-artifact-id "${SOURCE_ARTIFACT_ID}" \
+            --source-artifact-digest "${SOURCE_ARTIFACT_DIGEST}" \
+            --archive-sha256 "${ARCHIVE_SHA256}" \
+            --publisher-run-id "${PUBLISHER_RUN_ID}" \
+            --publisher-sha "${PUBLISHER_SHA}" \
+            --dmg-path "${DMG_PATH}" \
+            --output release-output/release-provenance.json
+
       - name: Upload verified release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: verified-macos-release
+          name: verified-macos-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             release-output/${{ inputs.dmg_name }}
             release-output/${{ inputs.dmg_name }}.sha256
+            release-output/release-provenance.json
           if-no-files-found: error
           retention-days: 14
+
+      - name: Rebind release tag before publication
+        if: ${{ inputs.publish_github_release }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: bash scripts/release/verify-release-source.sh >/dev/null
 
       - name: Publish immutable GitHub Release
         if: ${{ inputs.publish_github_release }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ inputs.source_tag }}
           DMG_PATH: release-output/${{ inputs.dmg_name }}
+          RELEASE_PROVENANCE_PATH: release-output/release-provenance.json
         run: bash scripts/release/publish-github-release.sh
 
       - name: Delete temporary signing keychain

@@ -1,0 +1,154 @@
+name: Release Isolation TDD
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    name: Release provenance contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Release provenance tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest \
+            scripts.release.test_release_provenance \
+            scripts.release.test_release_attestation \
+            scripts.release.test_release_environment_policy \
+            scripts.release.test_post_split_runtime_proof \
+            scripts.release.test_validate_actions_artifact \
+            scripts.release.test_validate_release_input \
+            scripts.release.test_publisher_attempt_binding \
+            scripts.release.test_validated_artifact \
+            scripts.release.test_release_workflow_contract \
+            scripts.release.test_release_publisher_workflow_contract \
+            scripts.release.test_privileged_release_workflow_contract \
+            scripts.release.test_homebrew_publisher_workflow_contract \
+            scripts.release.test_quality_release_isolation_contract \
+            scripts.release.test_verify_validated_release_metadata \
+            -v
+
+      - name: Exact release build artifact resolver
+        shell: bash
+        run: bash scripts/release/test-resolve-release-build-artifact.sh
+
+      - name: Source artifact repository binding
+        shell: bash
+        run: bash scripts/release/test-source-artifact-repository-binding.sh
+
+      - name: Release source binding
+        shell: bash
+        run: bash scripts/release/test-verify-release-source.sh
+
+  artifact-layout:
+    name: Release artifact layout contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create namespaced release artifact fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact-payload/release-input
+          printf 'archive-fixture\n' >artifact-payload/release-input/unsigned-macos-app.tar.gz
+          printf '{"schemaVersion":1}\n' >artifact-payload/release-input/build-provenance.json
+
+      - name: Upload namespaced release artifact fixture
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-layout-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifact-payload/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download namespaced release artifact fixture
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.upload.outputs.artifact-id }}
+          path: downloaded
+          merge-multiple: true
+
+      - name: Require resolver-compatible artifact namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f downloaded/release-input/unsigned-macos-app.tar.gz
+          test -f downloaded/release-input/build-provenance.json
+          test "$(find downloaded -type f | wc -l | tr -d ' ')" = 2
+
+      - name: Verify raw Artifact API digest and strict ZIP contract
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          RAW_ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          [[ "${ARTIFACT_ID}" =~ ^[0-9]+$ ]]
+
+          if [[ "${RAW_ARTIFACT_DIGEST}" =~ ^[0-9a-f]{64}$ ]]; then
+            canonical_digest="sha256:${RAW_ARTIFACT_DIGEST}"
+          elif [[ "${RAW_ARTIFACT_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            canonical_digest="${RAW_ARTIFACT_DIGEST}"
+          else
+            echo "upload-artifact returned an unsupported digest: ${RAW_ARTIFACT_DIGEST}" >&2
+            exit 1
+          fi
+
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}" >artifact-metadata.json
+          api_digest="$(python3 - <<'PY'
+          import json
+          import re
+
+          with open("artifact-metadata.json", encoding="utf-8") as handle:
+              metadata = json.load(handle)
+          digest = metadata.get("digest")
+          if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+              raise SystemExit("Artifact API returned an invalid digest")
+          print(digest)
+          PY
+          )"
+          test "${api_digest}" = "${canonical_digest}"
+
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" >artifact-api.zip
+          actual_digest="$(python3 - <<'PY'
+          import hashlib
+
+          digest = hashlib.sha256()
+          with open("artifact-api.zip", "rb") as handle:
+              for block in iter(lambda: handle.read(1024 * 1024), b""):
+                  digest.update(block)
+          print("sha256:" + digest.hexdigest())
+          PY
+          )"
+          test "${actual_digest}" = "${canonical_digest}"
+
+          python3 scripts/release/validate-actions-artifact.py \
+            --archive artifact-api.zip \
+            --output api-extracted
+          test -f api-extracted/release-input/unsigned-macos-app.tar.gz
+          test -f api-extracted/release-input/build-provenance.json
