@@ -134,6 +134,31 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         )
         self.assertNotIn("name: verified-macos-release\n", text)
 
+    def test_final_release_attestation_is_generated_before_upload_and_publication(self) -> None:
+        text = self.release_text()
+        writer = text.index("- name: Write final release attestation")
+        upload = text.index("- name: Upload verified release artifacts")
+        publication = text.index("- name: Publish immutable GitHub Release")
+        self.assertLess(writer, upload)
+        self.assertLess(writer, publication)
+        self.assertIn("scripts/release/write-release-provenance.py", text)
+        for token in (
+            "SOURCE_RUN_ID: ${{ inputs.source_run_id }}",
+            "SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}",
+            "SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}",
+            "SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}",
+            "ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}",
+            "PUBLISHER_RUN_ID: ${{ github.run_id }}",
+            "PUBLISHER_SHA: ${{ github.sha }}",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, text)
+        self.assertGreaterEqual(text.count("release-output/release-provenance.json"), 2)
+        self.assertIn(
+            "RELEASE_PROVENANCE_PATH: release-output/release-provenance.json",
+            text,
+        )
+
     def test_github_release_uses_validated_source_tag(self) -> None:
         text = self.release_text()
         self.assertIn("TAG_NAME: ${{ inputs.source_tag }}", text)
