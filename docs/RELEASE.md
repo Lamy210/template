@@ -299,9 +299,13 @@ The publisher resolves the exact attempt that triggered it. It does not silently
 
 ### Publisher/signing retry
 
-A failed publisher job may be retried while its same-run validated artifact still exists. The privileged job rechecks metadata and archive digest on every attempt.
+Retry the publisher with **Re-run all jobs** so the secret-free validation job runs again and creates a fresh validator-owned handoff bound to the current `github.run_attempt`.
 
-Immutable GitHub Release publication makes a retry safe after publication: identical assets are a no-op; different assets are rejected.
+Do not use `Re-run failed jobs` or rerun only `sign-and-publish` to reuse a previous attempt's validator artifact. The privileged verifier intentionally rejects a handoff from an older publisher attempt, because a retry must rerun provenance, tag, artifact, archive, and application validation rather than reuse an earlier trust decision.
+
+The verified release artifact is also named with the publisher run ID and run attempt, so retries do not collide with an immutable Actions Artifact from a prior attempt.
+
+Immutable GitHub Release publication makes a full retry safe after publication: identical assets are a no-op; different assets are rejected.
 
 ### Expired source artifact
 
