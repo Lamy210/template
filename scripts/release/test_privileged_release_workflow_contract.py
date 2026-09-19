@@ -126,6 +126,14 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertGreaterEqual(text.count("SOURCE_SHA: ${{ inputs.source_sha }}"), 2)
         self.assertGreaterEqual(text.count("PUBLISHER_SHA: ${{ github.sha }}"), 2)
 
+    def test_verified_release_artifact_is_bound_to_publisher_attempt(self) -> None:
+        text = self.release_text()
+        self.assertIn(
+            "name: verified-macos-release-${{ github.run_id }}-${{ github.run_attempt }}",
+            text,
+        )
+        self.assertNotIn("name: verified-macos-release\n", text)
+
     def test_github_release_uses_validated_source_tag(self) -> None:
         text = self.release_text()
         self.assertIn("TAG_NAME: ${{ inputs.source_tag }}", text)
