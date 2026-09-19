@@ -189,6 +189,14 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("safe failure", text)
         self.assertIn("Do not add a fallback", text)
 
+    def test_retry_docs_require_full_publisher_rerun(self) -> None:
+        text = RELEASE_DOC.read_text(encoding="utf-8")
+        retry = text.split("### Publisher/signing retry", 1)[1].split(
+            "### Expired source artifact", 1
+        )[0]
+        self.assertIn("Re-run all jobs", retry)
+        self.assertIn("Do not use `Re-run failed jobs`", retry)
+        self.assertIn("current `github.run_attempt`", retry)
     def test_rollout_requires_post_split_ancestor_runtime_verification(self) -> None:
         text = RELEASE_DOC.read_text(encoding="utf-8")
         migration = text.split("## Migration checklist", 1)[1].split("## Rollback", 1)[0]
