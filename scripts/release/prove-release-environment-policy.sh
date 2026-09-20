@@ -119,7 +119,7 @@ print(sha)
 ' <<<"${commit_json}"
 )"
 
-gh api "${api_headers[@]}"   "repos/${repository}/contents/.github/workflows/${workflow_name}?ref=${default_branch}"   >/dev/null
+gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${workflow_name}?ref=${default_branch}" >/dev/null
 
 branch_name="environment-proof/${nonce}"
 tag_name="environment-proof-${nonce}"
@@ -128,10 +128,10 @@ tag_created=false
 
 cleanup() {
   if [[ "${branch_created}" == true ]]; then
-    gh api "${api_headers[@]}"       --method DELETE       "repos/${repository}/git/refs/heads/${branch_name}"       >/dev/null 2>&1 || true
+    gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/heads/${branch_name}" >/dev/null 2>&1 || true
   fi
   if [[ "${tag_created}" == true ]]; then
-    gh api "${api_headers[@]}"       --method DELETE       "repos/${repository}/git/refs/tags/${tag_name}"       >/dev/null 2>&1 || true
+    gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/tags/${tag_name}" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -145,10 +145,10 @@ if gh api "${api_headers[@]}" "repos/${repository}/git/ref/tags/${tag_name}" >/d
   exit 3
 fi
 
-gh api "${api_headers[@]}"   --method POST   "repos/${repository}/git/refs"   -f "ref=refs/heads/${branch_name}"   -f "sha=${default_sha}"   >/dev/null
+gh api "${api_headers[@]}" --method POST "repos/${repository}/git/refs" -f "ref=refs/heads/${branch_name}" -f "sha=${default_sha}" >/dev/null
 branch_created=true
 
-gh api "${api_headers[@]}"   --method POST   "repos/${repository}/git/refs"   -f "ref=refs/tags/${tag_name}"   -f "sha=${default_sha}"   >/dev/null
+gh api "${api_headers[@]}" --method POST "repos/${repository}/git/refs" -f "ref=refs/tags/${tag_name}" -f "sha=${default_sha}" >/dev/null
 tag_created=true
 
 find_run_id() {
@@ -156,7 +156,7 @@ find_run_id() {
   local attempt list_json run_id
   for ((attempt = 1; attempt <= poll_attempts; attempt++)); do
     list_json="$(
-      gh run list         --repo "${repository}"         --workflow "${workflow_name}"         --event workflow_dispatch         --limit 100         --json databaseId,displayTitle
+      gh run list --repo "${repository}" --workflow "${workflow_name}" --event workflow_dispatch --limit 100 --json databaseId,displayTitle
     )"
     run_id="$(
       python3 -c '
@@ -247,7 +247,7 @@ prove_ref_denied() {
   local title="Release Environment Negative Proof / ${nonce}-${suffix}"
   local run_id conclusion
 
-  gh workflow run "${workflow_name}"     --repo "${repository}"     --ref "${ref}"     -f "nonce=${nonce}-${suffix}"
+  gh workflow run "${workflow_name}" --repo "${repository}" --ref "${ref}" -f "nonce=${nonce}-${suffix}"
 
   run_id="$(find_run_id "${title}")"
   conclusion="$(wait_for_completion "${run_id}")"
