@@ -69,6 +69,7 @@ jobs:
             scripts.ci.test_validate_rulesets_portability \
             scripts.ci.test_audit_effective_rules \
             scripts.ci.test_governance_audit_workflow \
+            scripts.ci.test_release_tag_immutability_proof \
             -v
           python3 scripts/ci/validate_rulesets.py
 
