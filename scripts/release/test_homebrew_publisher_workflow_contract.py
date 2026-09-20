@@ -7,6 +7,8 @@ import unittest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOMEBREW_WORKFLOW = REPO_ROOT / ".github/workflows/reusable-homebrew-update.yml"
 PUBLISHER_EXAMPLE = REPO_ROOT / "examples/app-release-publisher.yml"
+BUILD_EXAMPLE = REPO_ROOT / "examples/app-release-build.yml"
+REUSABLE_RELEASE = REPO_ROOT / ".github/workflows/reusable-macos-release.yml"
 
 
 def step_block(text: str, step_name: str) -> str:
@@ -97,6 +99,31 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("uses: ./.github/workflows/reusable-homebrew-update.yml", text)
         self.assertIn("source_tag: ${{ needs.validate.outputs.source_tag }}", text)
         self.assertIn("tap_token: ${{ secrets.HOMEBREW_TAP_TOKEN }}", text)
+
+    def test_tag_selected_build_and_apple_release_never_receive_homebrew_token(self) -> None:
+        build = BUILD_EXAMPLE.read_text(encoding="utf-8")
+        privileged_release = REUSABLE_RELEASE.read_text(encoding="utf-8")
+        publisher = self.publisher_text()
+
+        for label, text in (
+            ("tag-selected release build", build),
+            ("Apple signing reusable release", privileged_release),
+        ):
+            with self.subTest(label=label):
+                self.assertNotIn("HOMEBREW_TAP_TOKEN", text)
+                self.assertNotIn("secrets.tap_token", text)
+
+        self.assertEqual(1, publisher.count("HOMEBREW_TAP_TOKEN"))
+        homebrew_start = publisher.index("  homebrew:")
+        self.assertGreater(publisher.index("HOMEBREW_TAP_TOKEN"), homebrew_start)
+
+    def test_homebrew_write_path_is_after_immutable_publication_path(self) -> None:
+        publisher = self.publisher_text()
+        homebrew = publisher.index("  homebrew:")
+        sign_and_publish = publisher.index("  sign-and-publish:")
+        self.assertLess(sign_and_publish, homebrew)
+        self.assertIn("needs: [validate, sign-and-publish]", publisher[homebrew:])
+        self.assertIn("publish_github_release: true", publisher[sign_and_publish:homebrew])
 
 
 if __name__ == "__main__":
