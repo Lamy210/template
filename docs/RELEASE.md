@@ -374,6 +374,36 @@ Repeated runtime tag-to-SHA binding remains mandatory defense in depth, but it i
 
 If this Ruleset has not been verified, keep the privileged publisher disabled and do not treat the two-stage release path as production-ready.
 
+## Disposable release Environment negative runtime proof
+
+The read-only Environment doctor proves the configured policy shape, but GitHub's branch-policy list response may omit branch/tag type. Before production enablement, also prove the enforcement path in a **disposable repository**.
+
+1. Configure the disposable repository's `release` Environment with the same selected-branch policy: only the default branch is allowed as a **Branch** rule.
+2. Copy `examples/release-environment-proof.yml` to `.github/workflows/release-environment-proof.yml` on the disposable repository default branch.
+3. Run:
+
+```bash
+bash scripts/release/prove-release-environment-policy.sh \
+  --repository owner/disposable-release-proof \
+  --confirm-disposable owner/disposable-release-proof
+```
+
+The example workflow contains two jobs and no secret references:
+
+- `Baseline runner` does **not** reference an Environment and must succeed;
+- `Release environment probe` references `environment: release` and contains only a trivial echo step.
+
+The proof creates a temporary branch and arbitrary tag at the same default-branch SHA and dispatches the workflow from each ref. For both refs it requires:
+
+- the workflow itself to run;
+- `Baseline runner` to succeed;
+- the overall workflow to fail;
+- `Release environment probe` to fail rather than enter the Environment.
+
+Because the two refs point at the same commit as the default branch and the baseline succeeds, the ref identity is the material difference exercised by the proof. The script removes the temporary branch/tag in an EXIT cleanup path and refuses to target the current `GITHUB_REPOSITORY`.
+
+This is a negative proof only. It does not access Apple credentials and does not replace the read-only Environment doctor. Keep both checks: configuration-shape audit plus runtime denial from unauthorized branch/tag refs.
+
 ## Disposable post-split ancestor runtime proof
 
 Before enabling the two-stage publisher for production, prove the architecture with a **disposable repository**. This proof is specifically about control-code selection; it is separate from Apple signing/notarization and from the immutable-tag Ruleset proof.
@@ -424,12 +454,13 @@ For an adopter moving from the old monolithic example:
 5. keep the tag-build workflow secret-free/read-only;
 6. ensure the publisher validation job has only `actions: read` + `contents: read`;
 7. verify only the privileged reusable macOS release job declares `environment: release`;
-8. run `bash scripts/release/audit-release-environment.sh owner/repo` and confirm the read-only doctor accepts the default-branch-only `release` Environment configuration; retain the negative runtime proof because GitHub's REST list response may omit branch/tag type;
-9. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
-10. run release-isolation tests before creating a real release tag;
-11. use a disposable repository for destructive tag/ruleset tests;
-12. before enabling the production publisher, perform the disposable post-split ancestor proof above, require `audit-post-split-runtime-proof.sh` to pass, and confirm the downstream run used the **current default-branch publisher** control code;
-13. remove/ignore any copied legacy monolithic release workflow.
+8. run `bash scripts/release/audit-release-environment.sh owner/repo` and confirm the read-only doctor accepts the default-branch-only `release` Environment configuration;
+9. in a disposable repository, run `prove-release-environment-policy.sh` and require both an unauthorized branch and arbitrary tag to be denied by the `release` Environment;
+10. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
+11. run release-isolation tests before creating a real release tag;
+12. use a disposable repository for destructive tag/ruleset tests;
+13. before enabling the production publisher, perform the disposable post-split ancestor proof above, require `audit-post-split-runtime-proof.sh` to pass, and confirm the downstream run used the **current default-branch publisher** control code;
+14. remove/ignore any copied legacy monolithic release workflow.
 
 ## Rollback
 
