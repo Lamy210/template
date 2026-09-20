@@ -60,6 +60,36 @@ The portable profile intentionally contains only the `update` and `deletion` res
 
 Do not test this policy by creating a production-looking throwaway tag in this repository. A correctly immutable tag may intentionally be impossible to clean up afterward. Use GitHub Rule Insights/effective-rule inspection here; use a disposable test repository for destructive tag-rule testing.
 
+### Disposable runtime proof for immutable release tags
+
+After importing the release-tag Ruleset into a **disposable repository**, run the destructive proof tool with two distinct existing commits:
+
+```bash
+bash scripts/ci/prove-release-tag-immutability.sh \
+  --repository owner/disposable-ruleset-proof \
+  --confirm-disposable owner/disposable-ruleset-proof \
+  --tag v0.0.1 \
+  --initial-sha <older-or-first-test-commit-sha> \
+  --move-sha <different-test-commit-sha>
+```
+
+The command proves the three required runtime behaviors in order:
+
+1. creation of a new canonical `vX.Y.Z` tag succeeds;
+2. moving that exact tag to the second commit is rejected, and a read-back still resolves the tag to the initial SHA;
+3. deleting that exact tag is rejected, and a read-back proves the tag still exists at the initial SHA.
+
+The script is deliberately destructive and fail-closed:
+
+- `--confirm-disposable` must exactly repeat the target repository;
+- it refuses to target `GITHUB_REPOSITORY` when that environment variable names the same repository;
+- the tag must be canonical stable SemVer;
+- both commit SHAs must be canonical, distinct 40-character lowercase hexadecimal values and must exist;
+- the chosen tag must not already exist;
+- if update or deletion unexpectedly succeeds, the proof fails immediately.
+
+With the correct immutable-tag Ruleset, the test tag cannot be cleaned up. That permanent test ref is expected in the disposable repository. Do not run this command against the production/template repository.
+
 ## Safe rollout
 
 The order below is required. Do not import the desired branch Ruleset in one step over the current repository configuration. The current repository rollout is deliberately staged as **PR #2 → PR #3 → PR #4 → PR #6**; this governance guide must not skip the consolidated test foundation in PR #2.
@@ -168,6 +198,8 @@ refs/tags/v*
 ```
 
 Confirm the effective rule restricts update and deletion while still allowing creation of a new version tag through the authorized release flow. A `creation` restriction is not part of the portable Solo tag profile.
+
+After visual/effective-rule inspection, run the disposable runtime proof above and require it to pass before treating tag immutability as verified.
 
 ### 10. Inspect effective rules
 
