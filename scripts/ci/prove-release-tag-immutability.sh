@@ -121,7 +121,7 @@ if gh api "${api_headers[@]}" "${ref_endpoint}" >/dev/null 2>&1; then
   exit 3
 fi
 
-gh api "${api_headers[@]}"   --method POST   "repos/${repository}/git/refs"   -f "ref=refs/tags/${tag}"   -f "sha=${initial_sha}"   >/dev/null
+gh api "${api_headers[@]}" --method POST "repos/${repository}/git/refs" -f "ref=refs/tags/${tag}" -f "sha=${initial_sha}" >/dev/null
 
 created_sha="$(ref_sha)"
 if [[ "${created_sha}" != "${initial_sha}" ]]; then
@@ -130,7 +130,7 @@ if [[ "${created_sha}" != "${initial_sha}" ]]; then
 fi
 echo "creation succeeded: refs/tags/${tag} -> ${initial_sha}"
 
-if gh api "${api_headers[@]}"   --method PATCH   "repos/${repository}/git/refs/tags/${tag}"   -f "sha=${move_sha}"   -F force=true   >/dev/null 2>&1; then
+if gh api "${api_headers[@]}" --method PATCH "repos/${repository}/git/refs/tags/${tag}" -f "sha=${move_sha}" -F force=true >/dev/null 2>&1; then
   echo "update unexpectedly succeeded; immutable release-tag policy is NOT enforced." >&2
   exit 4
 fi
@@ -142,7 +142,7 @@ if [[ "${after_update_sha}" != "${initial_sha}" ]]; then
 fi
 echo "update rejected; tag still points to initial SHA ${initial_sha}"
 
-if gh api "${api_headers[@]}"   --method DELETE   "repos/${repository}/git/refs/tags/${tag}"   >/dev/null 2>&1; then
+if gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/tags/${tag}" >/dev/null 2>&1; then
   echo "deletion unexpectedly succeeded; immutable release-tag policy is NOT enforced." >&2
   exit 5
 fi
