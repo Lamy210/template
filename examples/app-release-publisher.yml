@@ -183,20 +183,10 @@ jobs:
           RAW_ARTIFACT_DIGEST: ${{ steps.validated_upload.outputs.artifact-digest }}
         run: |
           set -euo pipefail
-          if ! [[ "${RAW_ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]; then
-            echo "upload-artifact returned an invalid artifact ID: ${RAW_ARTIFACT_ID}" >&2
-            exit 1
-          fi
-          if [[ "${RAW_ARTIFACT_DIGEST}" =~ ^[0-9a-f]{64}$ ]]; then
-            canonical_digest="sha256:${RAW_ARTIFACT_DIGEST}"
-          elif [[ "${RAW_ARTIFACT_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            canonical_digest="${RAW_ARTIFACT_DIGEST}"
-          else
-            echo "upload-artifact returned an unsupported digest: ${RAW_ARTIFACT_DIGEST}" >&2
-            exit 1
-          fi
-          printf 'id=%s\n' "${RAW_ARTIFACT_ID}" >>"${GITHUB_OUTPUT}"
-          printf 'digest=%s\n' "${canonical_digest}" >>"${GITHUB_OUTPUT}"
+          python3 scripts/release/normalize-validated-artifact-identity.py \
+            --artifact-id "${RAW_ARTIFACT_ID}" \
+            --artifact-digest "${RAW_ARTIFACT_DIGEST}" \
+            >>"${GITHUB_OUTPUT}"
 
   sign-and-publish:
     name: Sign and publish validated release
