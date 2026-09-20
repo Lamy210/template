@@ -81,12 +81,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                     fi
 
                     if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      cat <<'JSON'
-                    [
-                      {"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"},
-                      {"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag"}
-                    ]
-                    JSON
+                      printf '%s\n' '[{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag"}]'
                       exit 0
                     fi
 
@@ -96,12 +91,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
 
                     if [[ "$args" == *"repos/example/disposable/actions/runs/101/jobs"* ]] ||
                        [[ "$args" == *"repos/example/disposable/actions/runs/102/jobs"* ]]; then
-                      cat <<'JSON'
-                    {"jobs":[
-                      {"name":"Baseline runner","status":"completed","conclusion":"success"},
-                      {"name":"Release environment probe","status":"completed","conclusion":"failure"}
-                    ]}
-                    JSON
+                      printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"failure"}]}'
                       exit 0
                     fi
 
@@ -230,7 +220,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
             )
 
         self.assertNotEqual(0, result.returncode)
-        self.assertIn("probe job must fail", result.stderr)
+        self.assertIn("Expected unauthorized branch run to fail", result.stderr)
 
 
 if __name__ == "__main__":
