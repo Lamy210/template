@@ -147,7 +147,7 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
             block,
         )
         self.assertIn('[[ "${RAW_ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]', block)
-        self.assertIn("printf 'id=%s\\n' "${RAW_ARTIFACT_ID}"", block)
+        self.assertIn('printf \'id=%s\\\\n\' "${RAW_ARTIFACT_ID}"', block)
         self.assertIn("sha256:${RAW_ARTIFACT_DIGEST}", block)
 
         privileged = job_block(self.workflow_text(), "sign-and-publish")
