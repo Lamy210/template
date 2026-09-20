@@ -83,6 +83,24 @@ The doctor verifies that the Environment is named `release`, uses custom deploym
 
 GitHub's deployment-branch-policy list response does not always expose whether a returned policy was originally created as a branch or tag policy. When a `type` field is present the doctor requires `branch`; when GitHub omits it, the doctor cannot prove branch-vs-tag identity from REST output alone. Therefore the first-release negative runtime check below remains mandatory: a feature/PR ref and arbitrary tag must not be able to enter the `release` Environment.
 
+For the negative runtime proof, use a **disposable repository** with the same `release` Environment policy. Copy the inert example workflow onto that disposable repository's default branch:
+
+```bash
+mkdir -p .github/workflows
+cp examples/release-environment-proof.yml \
+  .github/workflows/release-environment-proof.yml
+```
+
+Commit/push that workflow in the disposable repository, then run:
+
+```bash
+bash scripts/release/prove-release-environment-policy.sh \
+  --repository owner/disposable-release-proof \
+  --confirm-disposable owner/disposable-release-proof
+```
+
+The proof creates a temporary branch and arbitrary tag at the same default-branch commit, dispatches the secret-free proof workflow from each ref, and requires the baseline runner to succeed while the `release` Environment job fails before entry. Temporary refs are removed afterward. The script refuses the current `GITHUB_REPOSITORY`, so do not weaken that guardrail to test the production repository.
+
 ## 6. Release secrets
 
 Add the following secrets to the `release` Environment:
