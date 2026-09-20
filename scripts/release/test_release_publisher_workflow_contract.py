@@ -146,9 +146,13 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
             "RAW_ARTIFACT_DIGEST: ${{ steps.validated_upload.outputs.artifact-digest }}",
             block,
         )
-        self.assertIn('[[ "${RAW_ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]', block)
-        self.assertIn('printf \'id=%s\\\\n\' "${RAW_ARTIFACT_ID}"', block)
-        self.assertIn("sha256:${RAW_ARTIFACT_DIGEST}", block)
+        self.assertIn(
+            "python3 scripts/release/normalize-validated-artifact-identity.py",
+            block,
+        )
+        self.assertIn('--artifact-id "${RAW_ARTIFACT_ID}"', block)
+        self.assertIn('--artifact-digest "${RAW_ARTIFACT_DIGEST}"', block)
+        self.assertIn('>>"${GITHUB_OUTPUT}"', block)
 
         privileged = job_block(self.workflow_text(), "sign-and-publish")
         self.assertIn(
