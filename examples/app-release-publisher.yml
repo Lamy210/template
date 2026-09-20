@@ -28,8 +28,8 @@ jobs:
       contents: read
     outputs:
       validated_artifact_name: ${{ steps.release_outputs.outputs.validated_artifact_name }}
-      validated_artifact_id: ${{ steps.validated_upload.outputs.artifact-id }}
-      validated_artifact_digest: ${{ steps.validated_digest.outputs.digest }}
+      validated_artifact_id: ${{ steps.validated_identity.outputs.id }}
+      validated_artifact_digest: ${{ steps.validated_identity.outputs.digest }}
       source_tag: ${{ steps.release_outputs.outputs.source_tag }}
       source_sha: ${{ steps.release_outputs.outputs.source_sha }}
       source_version: ${{ steps.release_outputs.outputs.source_version }}
@@ -175,13 +175,18 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Normalize validated artifact digest
-        id: validated_digest
+      - name: Normalize validated artifact identity
+        id: validated_identity
         shell: bash
         env:
+          RAW_ARTIFACT_ID: ${{ steps.validated_upload.outputs.artifact-id }}
           RAW_ARTIFACT_DIGEST: ${{ steps.validated_upload.outputs.artifact-digest }}
         run: |
           set -euo pipefail
+          if ! [[ "${RAW_ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "upload-artifact returned an invalid artifact ID: ${RAW_ARTIFACT_ID}" >&2
+            exit 1
+          fi
           if [[ "${RAW_ARTIFACT_DIGEST}" =~ ^[0-9a-f]{64}$ ]]; then
             canonical_digest="sha256:${RAW_ARTIFACT_DIGEST}"
           elif [[ "${RAW_ARTIFACT_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
@@ -190,6 +195,7 @@ jobs:
             echo "upload-artifact returned an unsupported digest: ${RAW_ARTIFACT_DIGEST}" >&2
             exit 1
           fi
+          printf 'id=%s\n' "${RAW_ARTIFACT_ID}" >>"${GITHUB_OUTPUT}"
           printf 'digest=%s\n' "${canonical_digest}" >>"${GITHUB_OUTPUT}"
 
   sign-and-publish:
