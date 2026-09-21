@@ -374,7 +374,7 @@ Repeated runtime tag-to-SHA binding remains mandatory defense in depth, but it i
 
 If this Ruleset has not been verified, keep the privileged publisher disabled and do not treat the two-stage release path as production-ready.
 
-## Disposable release Environment negative runtime proof
+## Disposable release Environment runtime policy proof
 
 The read-only Environment doctor proves the configured policy shape, but GitHub's branch-policy list response may omit branch/tag type. Before production enablement, also prove the enforcement path in a **disposable repository**.
 
@@ -393,16 +393,18 @@ The example workflow contains two jobs and no secret references:
 - `Baseline runner` does **not** reference an Environment and must succeed;
 - `Release environment probe` references `environment: release` and contains only a trivial echo step.
 
-The proof creates a temporary branch and arbitrary tag at the same default-branch SHA and dispatches the workflow from each ref. For both refs it requires:
+The proof first dispatches the workflow from the repository default branch and requires both `Baseline runner` and `Release environment probe` to succeed. This positive control proves that the Environment is not accidentally configured to deny every ref.
+
+It then creates a temporary branch and arbitrary tag at the same default-branch SHA and dispatches the same workflow from each unauthorized ref. For both refs it requires:
 
 - the workflow itself to run;
 - `Baseline runner` to succeed;
 - the overall workflow to fail;
 - `Release environment probe` to fail rather than enter the Environment.
 
-Because the two refs point at the same commit as the default branch and the baseline succeeds, the ref identity is the material difference exercised by the proof. The script removes the temporary branch/tag in an EXIT cleanup path and refuses to target the current `GITHUB_REPOSITORY`.
+Because all three refs point at the same commit and execute the same secret-free workflow, the deployment-ref identity is the material difference exercised by the proof. The script removes the temporary branch/tag in an EXIT cleanup path and refuses to target the current `GITHUB_REPOSITORY`.
 
-This is a negative proof only. It does not access Apple credentials and does not replace the read-only Environment doctor. Keep both checks: configuration-shape audit plus runtime denial from unauthorized branch/tag refs.
+This proof does not access Apple credentials and does not replace the read-only Environment doctor. Keep both checks: configuration-shape audit plus runtime evidence that the authorized default branch is admitted while unauthorized branch/tag refs are denied.
 
 ## Disposable post-split ancestor runtime proof
 
@@ -455,7 +457,7 @@ For an adopter moving from the old monolithic example:
 6. ensure the publisher validation job has only `actions: read` + `contents: read`;
 7. verify only the privileged reusable macOS release job declares `environment: release`;
 8. run `bash scripts/release/audit-release-environment.sh owner/repo` and confirm the read-only doctor accepts the default-branch-only `release` Environment configuration;
-9. in a disposable repository, run `prove-release-environment-policy.sh` and require both an unauthorized branch and arbitrary tag to be denied by the `release` Environment;
+9. in a disposable repository, run `prove-release-environment-policy.sh` and require the default branch to enter the `release` Environment while both an unauthorized branch and arbitrary tag are denied;
 10. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
 11. run release-isolation tests before creating a real release tag;
 12. use a disposable repository for destructive tag/ruleset tests;
