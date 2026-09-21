@@ -241,6 +241,35 @@ For a private repository, run it with a `gh` authentication context that can rea
 
 This doctor covers the default-branch effective policy. Release-tag immutability still requires the separate disposable-repository/runtime proof described below; do not infer tag update/deletion behavior from a successful branch audit.
 
+## Read-only live release-tag Ruleset doctor
+
+After importing the reviewed immutable-tag profile, audit the live repository Ruleset object itself:
+
+```bash
+bash scripts/ci/audit-live-release-tag-ruleset.sh owner/repo
+```
+
+The doctor is read-only. It lists tag-targeting Rulesets, requires exactly one active Ruleset named `Immutable release tags`, fetches that Ruleset by ID, and verifies the repository-owned live configuration against the checked-in contract:
+
+- target is `tag`;
+- enforcement is `active`;
+- source is the expected repository;
+- ref target is exactly `refs/tags/v*`;
+- update protection is enabled with `update_allows_fetch_and_merge=false`;
+- deletion protection is enabled;
+- no creation or other unexpected tag rule is present;
+- bypass actors are empty when GitHub exposes that field to the caller.
+
+GitHub documents that `bypass_actors` is returned by the Ruleset API only when the caller has write access to the Ruleset. The read-only doctor therefore validates an empty bypass list when the field is visible, but it does **not** treat an omitted field as proof that bypass actors do not exist. Verify bypass actors in the administrator Ruleset UI/import review as part of rollout.
+
+The repository Ruleset API can list/filter tag-targeting Rulesets and fetch individual Rulesets, but GitHub's effective-rules endpoint is branch-oriented. For that reason release-tag assurance deliberately uses three complementary checks rather than claiming one read-only query proves everything:
+
+1. offline canonical JSON validation;
+2. this live Ruleset configuration audit;
+3. the disposable-repository creation/update/deletion runtime proof.
+
+Do not replace the disposable runtime proof with this configuration audit.
+
 ### Run the same audit from GitHub Actions
 
 After `.github/workflows/governance-audit.yml` has landed on the repository default branch, operators can run **Governance Audit** manually from the Actions tab.
@@ -281,6 +310,7 @@ After live import, additionally run:
 
 ```bash
 bash scripts/ci/audit-live-main-rules.sh owner/repo
+bash scripts/ci/audit-live-release-tag-ruleset.sh owner/repo
 ```
 
 Once the manual workflow is present on the default branch, run **Actions → Governance Audit → Run workflow** as the hosted equivalent and require it to pass before treating the live default-branch policy as verified.
