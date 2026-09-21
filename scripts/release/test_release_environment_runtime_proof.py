@@ -84,7 +84,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                     fi
 
                     if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      printf '%s\n' '[{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag"}]'
+                      printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag"}]'
                       exit 0
                     fi
 
@@ -92,12 +92,20 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                       exit 90
                     fi
 
+                    if [[ "$args" == *"repos/example/disposable/actions/runs/100/jobs"* ]]; then
+                      printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"success"}]}'
+                      exit 0
+                    fi
                     if [[ "$args" == *"repos/example/disposable/actions/runs/101/jobs"* ]] ||
                        [[ "$args" == *"repos/example/disposable/actions/runs/102/jobs"* ]]; then
                       printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"failure"}]}'
                       exit 0
                     fi
 
+                    if [[ "$args" == *"repos/example/disposable/actions/runs/100"* ]]; then
+                      printf '%s\n' '{"status":"completed","conclusion":"success"}'
+                      exit 0
+                    fi
                     if [[ "$args" == *"repos/example/disposable/actions/runs/101"* ]] ||
                        [[ "$args" == *"repos/example/disposable/actions/runs/102"* ]]; then
                       printf '%s\n' '{"status":"completed","conclusion":"failure"}'
@@ -155,6 +163,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("default branch admitted", result.stdout)
         self.assertIn("unauthorized branch denied", result.stdout)
         self.assertIn("unauthorized tag denied", result.stdout)
         self.assertIn("release Environment negative runtime proof passed", result.stdout)
@@ -250,15 +259,17 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
 
                     if [[ "$1" == "workflow" && "$2" == "run" ]]; then exit 0; fi
                     if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      printf '%s\n' '[{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"}]'
+                      printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"}]'
                       exit 0
                     fi
                     if [[ "$1" != "api" ]]; then exit 90; fi
-                    if [[ "$args" == *"actions/runs/101/jobs"* ]]; then
+                    if [[ "$args" == *"actions/runs/100/jobs"* ]] ||
+                       [[ "$args" == *"actions/runs/101/jobs"* ]]; then
                       printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"success"}]}'
                       exit 0
                     fi
-                    if [[ "$args" == *"actions/runs/101"* ]]; then
+                    if [[ "$args" == *"actions/runs/100"* ]] ||
+                       [[ "$args" == *"actions/runs/101"* ]]; then
                       printf '%s\n' '{"status":"completed","conclusion":"success"}'
                       exit 0
                     fi
