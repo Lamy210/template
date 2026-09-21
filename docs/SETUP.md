@@ -81,9 +81,9 @@ bash scripts/release/audit-release-environment.sh owner/repo
 
 The doctor verifies that the Environment is named `release`, uses custom deployment branch policies rather than unrestricted/protected-branches mode, and has exactly one deployment policy whose name equals the repository default branch. It uses only read endpoints and does not modify Environment settings.
 
-GitHub's deployment-branch-policy list response does not always expose whether a returned policy was originally created as a branch or tag policy. When a `type` field is present the doctor requires `branch`; when GitHub omits it, the doctor cannot prove branch-vs-tag identity from REST output alone. Therefore the first-release negative runtime check below remains mandatory: a feature/PR ref and arbitrary tag must not be able to enter the `release` Environment.
+GitHub's deployment-branch-policy list response does not always expose whether a returned policy was originally created as a branch or tag policy. When a `type` field is present the doctor requires `branch`; when GitHub omits it, the doctor cannot prove branch-vs-tag identity from REST output alone. Therefore the first-release runtime policy proof below remains mandatory: the default branch must be able to enter the `release` Environment while a feature/temporary branch and arbitrary tag must not.
 
-For the negative runtime proof, use a **disposable repository** with the same `release` Environment policy. Copy the inert example workflow onto that disposable repository's default branch:
+For the runtime policy proof, use a **disposable repository** with the same `release` Environment policy. Copy the inert example workflow onto that disposable repository's default branch:
 
 ```bash
 mkdir -p .github/workflows
@@ -99,7 +99,7 @@ bash scripts/release/prove-release-environment-policy.sh \
   --confirm-disposable owner/disposable-release-proof
 ```
 
-The proof creates a temporary branch and arbitrary tag at the same default-branch commit, dispatches the secret-free proof workflow from each ref, and requires the baseline runner to succeed while the `release` Environment job fails before entry. Temporary refs are removed afterward. The script refuses the current `GITHUB_REPOSITORY`, so do not weaken that guardrail to test the production repository.
+The proof first dispatches the secret-free workflow from the default branch and requires the `release` Environment job to succeed. It then creates a temporary branch and arbitrary tag at the same commit and requires those two Environment jobs to be denied while their non-Environment baseline jobs still succeed. This positive control prevents an accidentally deny-all Environment from producing a false pass. Temporary refs are removed afterward. The script refuses the current `GITHUB_REPOSITORY`, so do not weaken that guardrail to test the production repository.
 
 ## 6. Release secrets
 
