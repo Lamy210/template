@@ -105,9 +105,11 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
                       exit 0
                     fi
                     if [[ "$args" == *"--method PATCH"* ]]; then
+                      echo "Repository rule violations found" >&2
                       exit 1
                     fi
                     if [[ "$args" == *"--method DELETE"* ]]; then
+                      echo "Repository rule violations found" >&2
                       exit 1
                     fi
                     exit 9
@@ -134,6 +136,57 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
         self.assertIn("update rejected", result.stdout)
         self.assertIn("deletion rejected", result.stdout)
         self.assertIn("release-tag immutability proof passed", result.stdout)
+
+    def test_fails_if_update_is_rejected_for_non_ruleset_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            state = root / "state"
+            fake_gh = root / "gh"
+            fake_gh.write_text(
+                textwrap.dedent(
+                    f"""                    #!/usr/bin/env bash
+                    set -euo pipefail
+                    state={state!s}
+                    args="$*"
+                    if [[ "$args" == *"repos/example/disposable-proof/commits/"* ]]; then
+                      printf '{{"sha":"ok"}}\n'
+                      exit 0
+                    fi
+                    if [[ "$args" == *"repos/example/disposable-proof/git/ref/tags/v0.0.1"* ]]; then
+                      if [[ ! -f "$state" ]]; then exit 1; fi
+                      sha="$(cat "$state")"
+                      printf '{{"object":{{"sha":"%s"}}}}\n' "$sha"
+                      exit 0
+                    fi
+                    if [[ "$args" == *"--method POST"* ]]; then
+                      printf '%s\n' '{"1"*40}' >"$state"
+                      exit 0
+                    fi
+                    if [[ "$args" == *"--method PATCH"* ]]; then
+                      echo "HTTP 403: Resource not accessible by integration" >&2
+                      exit 1
+                    fi
+                    exit 9
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            result = run_script(
+                "--repository", "example/disposable-proof",
+                "--confirm-disposable", "example/disposable-proof",
+                "--tag", "v0.0.1",
+                "--initial-sha", "1" * 40,
+                "--move-sha", "2" * 40,
+                env={
+                    "PATH": f"{root}:{os.environ['PATH']}",
+                    "GITHUB_REPOSITORY": "example/template",
+                },
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("not a confirmed repository-rule rejection", result.stderr)
 
     def test_fails_if_update_unexpectedly_succeeds(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
