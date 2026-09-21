@@ -36,7 +36,19 @@ fi
 
 case "$2" in
   view)
-    [[ "${GH_FAKE_RELEASE_EXISTS:-false}" == "true" ]]
+    [[ "${GH_FAKE_RELEASE_EXISTS:-false}" == "true" ]] || exit 1
+    if [[ " $* " == *" --json assets "* ]]; then
+      : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
+      python3 - "${GH_FAKE_REMOTE_DIR}" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+remote_dir = Path(sys.argv[1])
+assets = [{"name": path.name} for path in sorted(remote_dir.iterdir()) if path.is_file()]
+print(json.dumps({"assets": assets}, separators=(",", ":")))
+PY
+    fi
     ;;
   create)
     exit 0
@@ -113,6 +125,18 @@ if grep -F -- "--clobber" "${LOG_PATH}" >/dev/null; then
   echo "Publisher must never use --clobber." >&2
   exit 1
 fi
+
+printf 'unexpected-release-asset\n' >"${REMOTE_DIR}/unexpected-debug-symbols.zip"
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true run_publisher; then
+  echo "Existing release with an unexpected extra asset was incorrectly accepted." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Existing release with an unexpected extra asset was mutated instead of rejected." >&2
+  exit 1
+fi
+rm -f "${REMOTE_DIR}/unexpected-debug-symbols.zip"
 
 printf 'different-release-payload\n' >"${REMOTE_DIR}/$(basename "${DMG_PATH}")"
 : >"${LOG_PATH}"
