@@ -11,6 +11,7 @@ FAKE_BIN="${TMP_ROOT}/bin"
 LOG_PATH="${TMP_ROOT}/gh.log"
 DMG_PATH="${LOCAL_DIR}/ExampleApp-v1.2.3.dmg"
 CHECKSUM_PATH="${DMG_PATH}.sha256"
+RELEASE_PROVENANCE_PATH="${LOCAL_DIR}/release-provenance.json"
 TAG_NAME="v1.2.3"
 
 mkdir -p "${LOCAL_DIR}" "${REMOTE_DIR}" "${FAKE_BIN}"
@@ -19,6 +20,7 @@ printf 'stable-release-payload\n' >"${DMG_PATH}"
   cd "${LOCAL_DIR}"
   shasum -a 256 "$(basename "${DMG_PATH}")" >"$(basename "${CHECKSUM_PATH}")"
 )
+printf '{"schemaVersion":1,"dmgSha256":"sha256:test"}\n' >"${RELEASE_PROVENANCE_PATH}"
 
 cat >"${FAKE_BIN}/gh" <<'FAKE_GH'
 #!/usr/bin/env bash
@@ -79,6 +81,7 @@ run_publisher() {
     PATH="${FAKE_BIN}:${PATH}" \
     TAG_NAME="${TAG_NAME}" \
     DMG_PATH="${DMG_PATH}" \
+    RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
     bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
 }
 
@@ -92,9 +95,14 @@ if grep -F -- "--clobber" "${LOG_PATH}" >/dev/null; then
   echo "Publisher must never use --clobber." >&2
   exit 1
 fi
+if ! grep -F "$(basename "${RELEASE_PROVENANCE_PATH}")" "${LOG_PATH}" >/dev/null; then
+  echo "New release did not include release provenance." >&2
+  exit 1
+fi
 
 cp "${DMG_PATH}" "${REMOTE_DIR}/$(basename "${DMG_PATH}")"
 cp "${CHECKSUM_PATH}" "${REMOTE_DIR}/$(basename "${CHECKSUM_PATH}")"
+cp "${RELEASE_PROVENANCE_PATH}" "${REMOTE_DIR}/$(basename "${RELEASE_PROVENANCE_PATH}")"
 : >"${LOG_PATH}"
 GH_FAKE_RELEASE_EXISTS=true run_publisher
 if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
@@ -121,6 +129,14 @@ rm -f "${REMOTE_DIR}/$(basename "${CHECKSUM_PATH}")"
 : >"${LOG_PATH}"
 if GH_FAKE_RELEASE_EXISTS=true run_publisher; then
   echo "Existing release with missing checksum asset was incorrectly accepted." >&2
+  exit 1
+fi
+
+cp "${CHECKSUM_PATH}" "${REMOTE_DIR}/$(basename "${CHECKSUM_PATH}")"
+rm -f "${REMOTE_DIR}/$(basename "${RELEASE_PROVENANCE_PATH}")"
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true run_publisher; then
+  echo "Existing release with missing provenance asset was incorrectly accepted." >&2
   exit 1
 fi
 

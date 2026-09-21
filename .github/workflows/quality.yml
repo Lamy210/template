@@ -73,6 +73,31 @@ jobs:
             -v
           python3 scripts/ci/validate_rulesets.py
 
+      - name: Release isolation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest \
+            scripts.release.test_release_provenance \
+            scripts.release.test_release_attestation \
+            scripts.release.test_artifact_identity \
+            scripts.release.test_release_environment_policy \
+            scripts.release.test_release_environment_runtime_proof \
+            scripts.release.test_post_split_runtime_proof \
+            scripts.release.test_validate_actions_artifact \
+            scripts.release.test_validate_release_input \
+            scripts.release.test_publisher_attempt_binding \
+            scripts.release.test_validated_artifact \
+            scripts.release.test_release_workflow_contract \
+            scripts.release.test_release_publisher_workflow_contract \
+            scripts.release.test_privileged_release_workflow_contract \
+            scripts.release.test_homebrew_publisher_workflow_contract \
+            scripts.release.test_verify_validated_release_metadata \
+            -v
+          bash scripts/release/test-resolve-release-build-artifact.sh
+          bash scripts/release/test-source-artifact-repository-binding.sh
+          bash scripts/release/test-verify-release-source.sh
+
       - name: Release artifact handoff regression
         shell: bash
         run: bash scripts/release/test-app-artifact-handoff.sh
@@ -84,6 +109,10 @@ jobs:
       - name: DMG input validation regression
         shell: bash
         run: bash scripts/release/test-create-dmg-input-validation.sh
+
+      - name: Homebrew Cask renderer interpolation regression
+        shell: bash
+        run: bash scripts/homebrew/test-render-cask.sh
 
       - name: Homebrew Cask renderer smoke test
         shell: bash
