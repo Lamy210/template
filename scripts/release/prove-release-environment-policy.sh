@@ -12,9 +12,9 @@ The disposable repository must already contain:
   .github/workflows/release-environment-proof.yml
 
 That workflow is copied from examples/release-environment-proof.yml and is
-intentionally secret-free. This proof creates temporary branch/tag refs,
-dispatches the workflow on each ref, requires the baseline job to succeed and
-the release Environment probe to fail, then removes the temporary refs.
+intentionally secret-free. This proof first requires the repository default
+branch to enter the release Environment successfully, then creates temporary
+branch/tag refs and requires those unauthorized refs to be denied.
 EOF
 }
 
@@ -214,6 +214,33 @@ print(
   return 1
 }
 
+assert_allowed_jobs() {
+  local run_id="$1"
+  local jobs_json
+  jobs_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${run_id}/jobs?per_page=100")"
+  python3 -c '
+import json
+import sys
+
+document = json.load(sys.stdin)
+jobs = document.get("jobs")
+if not isinstance(jobs, list):
+    raise SystemExit("workflow jobs response is malformed")
+
+by_name = {
+    job.get("name"): job
+    for job in jobs
+    if isinstance(job, dict) and isinstance(job.get("name"), str)
+}
+baseline = by_name.get("Baseline runner")
+probe = by_name.get("Release environment probe")
+if not isinstance(baseline, dict) or baseline.get("conclusion") != "success":
+    raise SystemExit("baseline job must succeed before treating the proof as meaningful")
+if not isinstance(probe, dict) or probe.get("conclusion") != "success":
+    raise SystemExit("release Environment probe job must succeed for the authorized default branch")
+' <<<"${jobs_json}"
+}
+
 assert_denied_jobs() {
   local run_id="$1"
   local jobs_json
@@ -241,6 +268,23 @@ if not isinstance(probe, dict) or probe.get("conclusion") != "failure":
 ' <<<"${jobs_json}"
 }
 
+prove_ref_allowed() {
+  local ref="$1"
+  local suffix="$2"
+  local title="Release Environment Negative Proof / ${nonce}-${suffix}"
+  local run_id conclusion
+
+  gh workflow run "${workflow_name}" --repo "${repository}" --ref "${ref}" -f "nonce=${nonce}-${suffix}"
+
+  run_id="$(find_run_id "${title}")"
+  conclusion="$(wait_for_completion "${run_id}")"
+  if [[ "${conclusion}" != success ]]; then
+    echo "Expected authorized ${suffix} run to succeed; got conclusion '${conclusion}'." >&2
+    return 1
+  fi
+  assert_allowed_jobs "${run_id}"
+}
+
 prove_ref_denied() {
   local ref="$1"
   local suffix="$2"
@@ -257,6 +301,9 @@ prove_ref_denied() {
   fi
   assert_denied_jobs "${run_id}"
 }
+
+prove_ref_allowed "${default_branch}" default
+echo "default branch admitted by release Environment policy"
 
 prove_ref_denied "${branch_name}" branch
 echo "unauthorized branch denied by release Environment policy"
