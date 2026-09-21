@@ -56,13 +56,16 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("refuses the current repository", result.stderr)
 
-    def test_contract_dispatches_branch_and_tag_and_requires_probe_failure(self) -> None:
+    def test_contract_requires_positive_default_and_negative_branch_tag_controls(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("gh workflow run", text)
         self.assertIn("refs/heads/", text)
         self.assertIn("refs/tags/", text)
         self.assertIn("Baseline runner", text)
         self.assertIn("Release environment probe", text)
+        self.assertIn("prove_ref_allowed", text)
+        self.assertIn('prove_ref_allowed "${default_branch}" default', text)
+        self.assertIn("default branch admitted by release Environment policy", text)
         self.assertIn("probe job must fail", text)
         self.assertIn("--method DELETE", text)
 
@@ -155,6 +158,85 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("unauthorized branch denied", result.stdout)
         self.assertIn("unauthorized tag denied", result.stdout)
         self.assertIn("release Environment negative runtime proof passed", result.stdout)
+
+    def test_fake_github_fails_if_default_branch_cannot_enter_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            fake_gh.write_text(
+                textwrap.dedent(
+                    """                    #!/usr/bin/env bash
+                    set -euo pipefail
+                    args="$*"
+
+                    if [[ "$1" == "workflow" && "$2" == "run" ]]; then
+                      exit 0
+                    fi
+
+                    if [[ "$1" == "run" && "$2" == "list" ]]; then
+                      printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag"}]'
+                      exit 0
+                    fi
+
+                    if [[ "$1" != "api" ]]; then
+                      exit 90
+                    fi
+
+                    if [[ "$args" == *"actions/runs/100/jobs"* ]] ||
+                       [[ "$args" == *"actions/runs/101/jobs"* ]] ||
+                       [[ "$args" == *"actions/runs/102/jobs"* ]]; then
+                      printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"failure"}]}'
+                      exit 0
+                    fi
+
+                    if [[ "$args" == *"actions/runs/100"* ]] ||
+                       [[ "$args" == *"actions/runs/101"* ]] ||
+                       [[ "$args" == *"actions/runs/102"* ]]; then
+                      printf '%s\n' '{"status":"completed","conclusion":"failure"}'
+                      exit 0
+                    fi
+
+                    if [[ "$args" == *"contents/.github/workflows/release-environment-proof.yml"* ]]; then
+                      printf '%s\n' '{"type":"file"}'
+                      exit 0
+                    fi
+                    if [[ "$args" == *"commits/main"* ]]; then
+                      printf '%s\n' '{"sha":"1111111111111111111111111111111111111111"}'
+                      exit 0
+                    fi
+                    if [[ "$args" == *"git/ref/heads/environment-proof/proof"* ]] ||
+                       [[ "$args" == *"git/ref/tags/environment-proof-proof"* ]]; then
+                      exit 1
+                    fi
+                    if [[ "$args" == *"--method POST"* ]]; then exit 0; fi
+                    if [[ "$args" == *"--method DELETE"* ]]; then exit 0; fi
+                    if [[ "$args" == *"repos/example/disposable"* ]]; then
+                      printf '%s\n' '{"default_branch":"main"}'
+                      exit 0
+                    fi
+                    exit 91
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            result = run_script(
+                "--repository",
+                "example/disposable",
+                "--confirm-disposable",
+                "example/disposable",
+                env={
+                    "PATH": f"{root}:{os.environ['PATH']}",
+                    "GITHUB_REPOSITORY": "example/template",
+                    "PROOF_NONCE": "proof",
+                    "PROOF_POLL_ATTEMPTS": "1",
+                    "PROOF_POLL_SECONDS": "0",
+                },
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Expected authorized default run to succeed", result.stderr)
 
     def test_fake_github_fails_if_probe_enters_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
