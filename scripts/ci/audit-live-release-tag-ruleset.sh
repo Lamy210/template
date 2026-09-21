@@ -38,7 +38,7 @@ cleanup() {
 trap cleanup EXIT
 
 rulesets_json="${work_root}/rulesets.json"
-gh api   --paginate   --slurp   -H 'Accept: application/vnd.github+json'   -H 'X-GitHub-Api-Version: 2026-03-10'   "repos/${repository}/rulesets?targets=tag&includes_parents=true&per_page=100"   >"${rulesets_json}"
+gh api --paginate --slurp -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "repos/${repository}/rulesets?targets=tag&includes_parents=true&per_page=100" >"${rulesets_json}"
 
 candidate_id="$(
   python3 - "${rulesets_json}" <<'PY'
@@ -75,6 +75,6 @@ PY
 )"
 
 detail_json="${work_root}/ruleset.json"
-gh api   -H 'Accept: application/vnd.github+json'   -H 'X-GitHub-Api-Version: 2026-03-10'   "repos/${repository}/rulesets/${candidate_id}?includes_parents=true"   >"${detail_json}"
+gh api -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2026-03-10' "repos/${repository}/rulesets/${candidate_id}?includes_parents=true" >"${detail_json}"
 
-python3 "${repo_root}/scripts/ci/audit_release_tag_ruleset.py"   "${detail_json}"   "${repository}"
+python3 "${repo_root}/scripts/ci/audit_release_tag_ruleset.py" "${detail_json}" "${repository}"
