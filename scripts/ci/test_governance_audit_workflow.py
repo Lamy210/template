@@ -30,6 +30,11 @@ class GovernanceAuditWorkflowContractTests(unittest.TestCase):
         self.assertIn("${{ github.repository }}", text)
         self.assertIn("GH_TOKEN: ${{ github.token }}", text)
 
+    def test_workflow_runs_release_tag_ruleset_doctor_for_current_repository(self) -> None:
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("bash scripts/ci/audit-live-release-tag-ruleset.sh", text)
+        self.assertIn("${{ github.repository }}", text)
+
     def test_checkout_does_not_persist_credentials(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("persist-credentials: false", text)
