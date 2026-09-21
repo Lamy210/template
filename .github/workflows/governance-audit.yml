@@ -27,3 +27,7 @@ jobs:
       - name: Audit effective default-branch rules
         shell: bash
         run: bash scripts/ci/audit-live-main-rules.sh "${{ github.repository }}"
+
+      - name: Audit live immutable release-tag Ruleset
+        shell: bash
+        run: bash scripts/ci/audit-live-release-tag-ruleset.sh "${{ github.repository }}"
