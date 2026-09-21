@@ -86,7 +86,8 @@ The script is deliberately destructive and fail-closed:
 - the tag must be canonical stable SemVer;
 - both commit SHAs must be canonical, distinct 40-character lowercase hexadecimal values and must exist;
 - the chosen tag must not already exist;
-- if update or deletion unexpectedly succeeds, the proof fails immediately.
+- if update or deletion unexpectedly succeeds, the proof fails immediately;
+- a failed update/deletion counts as protection only when GitHub reports a repository-rule violation; authentication failures, permission failures, network/API errors, or other ambiguous failures fail the proof instead of being treated as immutability evidence.
 
 With the correct immutable-tag Ruleset, the test tag cannot be cleaned up. That permanent test ref is expected in the disposable repository. Do not run this command against the production/template repository.
 
