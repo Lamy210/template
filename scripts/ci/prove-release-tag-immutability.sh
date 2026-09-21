@@ -89,6 +89,16 @@ command -v gh >/dev/null 2>&1 || {
   exit 2
 }
 
+mutation_result="$(mktemp "${TMPDIR:-/tmp}/release-tag-mutation.XXXXXX")"
+cleanup() {
+  rm -f "${mutation_result}"
+}
+trap cleanup EXIT
+
+confirmed_ruleset_rejection() {
+  grep -F "Repository rule violations found" "${mutation_result}" >/dev/null
+}
+
 api_headers=(
   -H 'Accept: application/vnd.github+json'
   -H 'X-GitHub-Api-Version: 2026-03-10'
@@ -130,8 +140,14 @@ if [[ "${created_sha}" != "${initial_sha}" ]]; then
 fi
 echo "creation succeeded: refs/tags/${tag} -> ${initial_sha}"
 
-if gh api "${api_headers[@]}" --method PATCH "repos/${repository}/git/refs/tags/${tag}" -f "sha=${move_sha}" -F force=true >/dev/null 2>&1; then
+: >"${mutation_result}"
+if gh api "${api_headers[@]}" --method PATCH "repos/${repository}/git/refs/tags/${tag}" -f "sha=${move_sha}" -F force=true >"${mutation_result}" 2>&1; then
   echo "update unexpectedly succeeded; immutable release-tag policy is NOT enforced." >&2
+  exit 4
+fi
+if ! confirmed_ruleset_rejection; then
+  echo "update failed but was not a confirmed repository-rule rejection." >&2
+  cat "${mutation_result}" >&2
   exit 4
 fi
 
@@ -142,8 +158,14 @@ if [[ "${after_update_sha}" != "${initial_sha}" ]]; then
 fi
 echo "update rejected; tag still points to initial SHA ${initial_sha}"
 
-if gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/tags/${tag}" >/dev/null 2>&1; then
+: >"${mutation_result}"
+if gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/tags/${tag}" >"${mutation_result}" 2>&1; then
   echo "deletion unexpectedly succeeded; immutable release-tag policy is NOT enforced." >&2
+  exit 5
+fi
+if ! confirmed_ruleset_rejection; then
+  echo "deletion failed but was not a confirmed repository-rule rejection." >&2
+  cat "${mutation_result}" >&2
   exit 5
 fi
 
