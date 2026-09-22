@@ -220,6 +220,15 @@ jobs:
           PUBLISHER_SHA: ${{ github.sha }}
         run: bash scripts/release/verify-release-source.sh >/dev/null
 
+      - name: Validate trusted release output name before secrets
+        shell: bash
+        env:
+          DMG_NAME: ${{ inputs.dmg_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/validate-release-output-name.py \
+            --dmg-name "${DMG_NAME}"
+
       - name: Import Developer ID certificate
         id: certificate
         shell: bash
