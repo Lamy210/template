@@ -4,7 +4,7 @@ import subprocess
 import sys
 import unittest
 
-from scripts.release.validate_release_output_name import validate_dmg_name
+from scripts.release.release_output_name import validate_dmg_name
 
 
 class ReleaseOutputNameTests(unittest.TestCase):
