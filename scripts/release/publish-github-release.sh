@@ -23,7 +23,9 @@ command -v python3 >/dev/null 2>&1 || {
 }
 
 if ! checksum_digest="$(
-  python3 "$(dirname "${BASH_SOURCE[0]}")/../homebrew/parse_release_checksum.py"     "${checksum_path}"     "$(basename "${DMG_PATH}")"
+  python3 "$(dirname "${BASH_SOURCE[0]}")/../homebrew/parse_release_checksum.py" \
+    "${checksum_path}" \
+    "$(basename "${DMG_PATH}")"
 )"; then
   echo "Release checksum asset failed canonical validation." >&2
   exit 1
