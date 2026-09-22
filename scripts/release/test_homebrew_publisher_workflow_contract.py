@@ -68,6 +68,15 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("ref: ${{ github.sha }}", text)
         self.assertIn("persist-credentials: false", text)
 
+    def test_published_checksum_uses_strict_trusted_parser(self) -> None:
+        block = step_block(self.homebrew_text(), "Download published checksum")
+        self.assertTrue(block)
+        self.assertIn("source/scripts/homebrew/parse_release_checksum.py", block)
+        self.assertIn('"${checksum_file}"', block)
+        self.assertIn('"${DMG_NAME}"', block)
+        self.assertNotIn("awk 'NR == 1", block)
+        self.assertNotIn("[0-9a-fA-F]{64}", block)
+
     def test_rendered_cask_is_syntax_checked_before_tap_write(self) -> None:
         block = step_block(self.homebrew_text(), "Render Cask")
         self.assertTrue(block)
