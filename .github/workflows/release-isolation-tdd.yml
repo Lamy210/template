@@ -40,6 +40,7 @@ jobs:
             scripts.release.test_release_publisher_workflow_contract \
             scripts.release.test_privileged_release_workflow_contract \
             scripts.release.test_homebrew_publisher_workflow_contract \
+            scripts.homebrew.test_release_checksum \
             scripts.release.test_quality_release_isolation_contract \
             scripts.release.test_verify_validated_release_metadata \
             -v
