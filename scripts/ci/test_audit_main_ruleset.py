@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 from scripts.ci.audit_main_ruleset import validate_live_main_ruleset
@@ -124,6 +126,55 @@ class LiveMainRulesetAuditTests(unittest.TestCase):
                     "example/repo",
                 ],
                 cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("matches the Solo default-branch contract", result.stdout)
+
+    def test_live_wrapper_reads_list_and_exact_ruleset_detail(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            detail = valid_live_ruleset()
+            summary = {
+                "id": detail["id"],
+                "name": detail["name"],
+                "target": detail["target"],
+                "source_type": detail["source_type"],
+                "source": detail["source"],
+                "enforcement": detail["enforcement"],
+            }
+            fake_gh.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env python3
+                    import json
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if "rulesets?targets=branch&includes_parents=true&per_page=100" in endpoint:
+                        print(json.dumps([[{summary!r}]]))
+                        raise SystemExit(0)
+                    if endpoint.endswith("rulesets/84?includes_parents=true"):
+                        print(json.dumps({detail!r}))
+                        raise SystemExit(0)
+                    print("unexpected endpoint: " + endpoint, file=sys.stderr)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            result = subprocess.run(
+                ["bash", str(LIVE_AUDIT), "example/repo"],
+                cwd=REPO_ROOT,
+                env=env,
                 text=True,
                 capture_output=True,
                 check=False,
