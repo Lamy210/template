@@ -322,6 +322,31 @@ for page in range(1, page_count + 1):
         raise SystemExit(1)
     combined.extend(artifacts)
 
+if expected_total_count is None:
+    print("artifact pagination did not produce a total_count", file=sys.stderr)
+    raise SystemExit(1)
+if len(combined) != expected_total_count:
+    print(
+        "artifact pagination was incomplete: "
+        f"collected {len(combined)} of {expected_total_count} entries",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+artifact_ids: set[int] = set()
+for index, artifact in enumerate(combined):
+    if not isinstance(artifact, dict):
+        print(f"artifact entry {index} must be an object", file=sys.stderr)
+        raise SystemExit(1)
+    artifact_id = artifact.get("id")
+    if type(artifact_id) is not int or artifact_id <= 0:
+        print(f"artifact entry {index} id must be a positive integer", file=sys.stderr)
+        raise SystemExit(1)
+    if artifact_id in artifact_ids:
+        print(f"duplicate artifact id while paginating: {artifact_id}", file=sys.stderr)
+        raise SystemExit(1)
+    artifact_ids.add(artifact_id)
+
 with output_path.open("w", encoding="utf-8") as handle:
     json.dump(
         {"total_count": expected_total_count, "artifacts": combined},
