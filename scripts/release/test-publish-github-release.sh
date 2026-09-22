@@ -37,7 +37,7 @@ fi
 case "$2" in
   view)
     [[ "${GH_FAKE_RELEASE_EXISTS:-false}" == "true" ]] || exit 1
-    if [[ " $* " == *" --json assets "* ]]; then
+    if [[ " $* " == *" --json assets,isDraft,isPrerelease,tagName "* ]]; then
       : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
       python3 - "${GH_FAKE_REMOTE_DIR}" <<'PY'
 import json
