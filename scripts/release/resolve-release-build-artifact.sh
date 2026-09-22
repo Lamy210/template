@@ -277,7 +277,7 @@ if total_count > max_artifacts:
         f"{total_count} > {max_artifacts}",
         file=sys.stderr,
     )
-    raise SystemExit(1)
+    raise SystemExit(2)
 if not isinstance(artifacts, list):
     print("artifacts response artifacts must be a list", file=sys.stderr)
     raise SystemExit(1)
@@ -286,6 +286,10 @@ PY
 then
   :
 else
+  artifact_count_status=$?
+  if ((artifact_count_status == 2)); then
+    die "${EXIT_REJECTED}" 'triggering run artifact count exceeds release policy'
+  fi
   die "${EXIT_INFRA}" 'artifacts response was malformed'
 fi
 
