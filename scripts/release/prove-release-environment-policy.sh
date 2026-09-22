@@ -151,37 +151,77 @@ branch_created=true
 gh api "${api_headers[@]}" --method POST "repos/${repository}/git/refs" -f "ref=refs/tags/${tag_name}" -f "sha=${default_sha}" >/dev/null
 tag_created=true
 
+list_workflow_runs() {
+  gh run list \
+    --repo "${repository}" \
+    --workflow "${workflow_name}" \
+    --event workflow_dispatch \
+    --limit 100 \
+    --json databaseId,displayTitle,headBranch
+}
+
+snapshot_run_ids() {
+  local destination="$1"
+  list_workflow_runs |
+    python3 -c '
+import json
+import sys
+
+runs = json.load(sys.stdin)
+ids = sorted(
+    item.get("databaseId")
+    for item in runs
+    if isinstance(item, dict)
+    and type(item.get("databaseId")) is int
+    and item.get("databaseId") > 0
+)
+json.dump(ids, sys.stdout, separators=(",", ":"))
+sys.stdout.write("\n")
+' >"${destination}"
+}
+
 find_run_id() {
   local title="$1"
+  local expected_ref="$2"
+  local baseline_run_ids="$3"
   local attempt list_json run_id
   for ((attempt = 1; attempt <= poll_attempts; attempt++)); do
-    list_json="$(
-      gh run list --repo "${repository}" --workflow "${workflow_name}" --event workflow_dispatch --limit 100 --json databaseId,displayTitle
-    )"
+    list_json="$(list_workflow_runs)"
     run_id="$(
       python3 -c '
 import json
 import sys
 
-title = sys.argv[1]
+title, expected_ref, baseline_path = sys.argv[1:]
 runs = json.load(sys.stdin)
+with open(baseline_path, encoding="utf-8") as handle:
+    baseline = set(json.load(handle))
+
 matches = [
     item.get("databaseId")
     for item in runs
-    if isinstance(item, dict) and item.get("displayTitle") == title
+    if isinstance(item, dict)
+    and item.get("displayTitle") == title
+    and item.get("headBranch") == expected_ref
+    and type(item.get("databaseId")) is int
+    and item.get("databaseId") > 0
+    and item.get("databaseId") not in baseline
 ]
-matches = [value for value in matches if type(value) is int and value > 0]
 if len(matches) == 1:
     print(matches[0])
-' "${title}" <<<"${list_json}"
-    )"
+elif len(matches) > 1:
+    raise SystemExit(
+        f"multiple fresh workflow runs matched title={title!r} ref={expected_ref!r}: {matches!r}"
+    )
+' "${title}" "${expected_ref}" "${baseline_run_ids}" <<<"${list_json}"
+    )" || return 1
     if [[ "${run_id}" =~ ^[1-9][0-9]*$ ]]; then
       printf '%s\n' "${run_id}"
       return 0
     fi
     sleep "${poll_seconds}"
   done
-  echo "Unable to locate dispatched workflow run: ${title}" >&2
+  echo "Unable to locate fresh dispatched workflow run: ${title} ref=${expected_ref}" >&2
   return 1
 }
 
@@ -272,11 +312,13 @@ prove_ref_allowed() {
   local ref="$1"
   local suffix="$2"
   local title="Release Environment Negative Proof / ${nonce}-${suffix}"
+  local baseline_run_ids="${temp_root}/baseline-${suffix}.json"
   local run_id conclusion
 
+  snapshot_run_ids "${baseline_run_ids}"
   gh workflow run "${workflow_name}" --repo "${repository}" --ref "${ref}" -f "nonce=${nonce}-${suffix}"
 
-  run_id="$(find_run_id "${title}")"
+  run_id="$(find_run_id "${title}" "${ref}" "${baseline_run_ids}")"
   conclusion="$(wait_for_completion "${run_id}")"
   if [[ "${conclusion}" != success ]]; then
     echo "Expected authorized ${suffix} run to succeed; got conclusion '${conclusion}'." >&2
@@ -289,11 +331,13 @@ prove_ref_denied() {
   local ref="$1"
   local suffix="$2"
   local title="Release Environment Negative Proof / ${nonce}-${suffix}"
+  local baseline_run_ids="${temp_root}/baseline-${suffix}.json"
   local run_id conclusion
 
+  snapshot_run_ids "${baseline_run_ids}"
   gh workflow run "${workflow_name}" --repo "${repository}" --ref "${ref}" -f "nonce=${nonce}-${suffix}"
 
-  run_id="$(find_run_id "${title}")"
+  run_id="$(find_run_id "${title}" "${ref}" "${baseline_run_ids}")"
   conclusion="$(wait_for_completion "${run_id}")"
   if [[ "${conclusion}" != failure ]]; then
     echo "Expected unauthorized ${suffix} run to fail; got conclusion '${conclusion}'." >&2
