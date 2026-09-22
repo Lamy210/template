@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -16,8 +17,11 @@ def job_block(text: str, job_id: str) -> str:
     start = text.find(marker)
     if start < 0:
         return ""
-    next_job = text.find("\n  ", start + len(marker))
-    return text[start:] if next_job < 0 else text[start:next_job]
+    match = re.search(r"(?m)^  [A-Za-z0-9_-]+:\n", text[start + len(marker) :])
+    if match is None:
+        return text[start:]
+    end = start + len(marker) + match.start()
+    return text[start:end]
 
 
 class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
