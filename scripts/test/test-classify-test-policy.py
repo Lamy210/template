@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -35,6 +36,34 @@ class TestPolicyClassifierTests(unittest.TestCase):
             )
             output = json.loads(completed.stdout) if completed.stdout.strip() else None
             return completed, output
+
+    def run_classifier_from_env(self, **overrides):
+        env = os.environ.copy()
+        policy_variables = (
+            "MACOS_TEST_ADAPTER",
+            "MACOS_INTEGRATION_ENABLED",
+            "MACOS_INTEGRATION_REQUIRED",
+            "MACOS_COVERAGE_ENABLED",
+            "MACOS_COVERAGE_REQUIRED",
+            "MACOS_E2E_ENABLED",
+            "MACOS_E2E_REQUIRED",
+            "MACOS_VISUAL_ENABLED",
+            "MACOS_VISUAL_REQUIRED",
+            "MACOS_VISUAL_BOOTSTRAP",
+        )
+        for name in policy_variables:
+            env.pop(name, None)
+        env.update(overrides)
+
+        completed = subprocess.run(
+            ["python3", str(CLASSIFIER), "--from-env"],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=env,
+        )
+        output = json.loads(completed.stdout) if completed.stdout.strip() else None
+        return completed, output
 
     def test_unconfigured_template_is_explicit(self):
         completed, output = self.run_classifier()
@@ -106,6 +135,50 @@ class TestPolicyClassifierTests(unittest.TestCase):
         completed, output = self.run_classifier(adapter="xcode", coverageRequired=True)
         self.assertEqual(completed.returncode, 2)
         self.assertIn("Coverage cannot be required while disabled", output["errors"])
+
+    def test_malformed_enabled_environment_boolean_fails_closed(self):
+        completed, output = self.run_classifier_from_env(
+            MACOS_TEST_ADAPTER="xcode",
+            MACOS_E2E_ENABLED="tru",
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertTrue(output["configurationError"])
+        self.assertIn(
+            "MACOS_E2E_ENABLED must be true, false, or empty",
+            output["errors"],
+        )
+
+    def test_malformed_required_environment_boolean_fails_closed(self):
+        completed, output = self.run_classifier_from_env(
+            MACOS_TEST_ADAPTER="xcode",
+            MACOS_COVERAGE_ENABLED="true",
+            MACOS_COVERAGE_REQUIRED="yes",
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertTrue(output["configurationError"])
+        self.assertIn(
+            "MACOS_COVERAGE_REQUIRED must be true, false, or empty",
+            output["errors"],
+        )
+
+    def test_environment_coverage_required_defaults_to_enabled_state(self):
+        completed, output = self.run_classifier_from_env(
+            MACOS_TEST_ADAPTER="swiftpm",
+            MACOS_COVERAGE_ENABLED="true",
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(output["coverageEnabled"])
+        self.assertTrue(output["coverageRequired"])
+
+    def test_environment_coverage_required_explicit_false_is_preserved(self):
+        completed, output = self.run_classifier_from_env(
+            MACOS_TEST_ADAPTER="swiftpm",
+            MACOS_COVERAGE_ENABLED="true",
+            MACOS_COVERAGE_REQUIRED="false",
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(output["coverageEnabled"])
+        self.assertFalse(output["coverageRequired"])
 
     def test_invalid_adapter_is_configuration_error(self):
         completed, output = self.run_classifier(adapter="unknown")
