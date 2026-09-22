@@ -129,7 +129,23 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
     if [[ "${args}" == *"page=2"* ]]; then
       printf '{"total_count":101,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
     else
-      printf '{"total_count":101,"artifacts":[{"id":6999,"name":"decoy","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+      python3 - "${digest}" "${sha}" <<'PY'
+import json
+import sys
+
+digest, sha = sys.argv[1:]
+artifacts = [
+    {
+        "id": 8000 + index,
+        "name": f"decoy-{index}",
+        "expired": False,
+        "digest": digest,
+        "workflow_run": {"id": 9001, "head_sha": sha},
+    }
+    for index in range(100)
+]
+print(json.dumps({"total_count": 101, "artifacts": artifacts}, separators=(",", ":")))
+PY
     fi
     exit 0
   fi
