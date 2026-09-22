@@ -223,7 +223,9 @@ if (
     print("triggering run head ref must be a canonical stable release tag", file=sys.stderr)
     raise SystemExit(2)
 
-print(f"{workflow_id}\t{source_sha}\t{source_tag}")
+print(workflow_id)
+print(source_sha)
+print(source_tag)
 PY
 then
   :
@@ -235,7 +237,13 @@ else
   die "${EXIT_INFRA}" 'repository/workflow/run response was malformed'
 fi
 
-IFS="${work_root}/artifact-pages"
+mapfile -t identity_values <"${identity_file}"
+(("${#identity_values[@]}" == 3)) || die "${EXIT_INFRA}" 'trusted release identity tuple was malformed'
+workflow_id="${identity_values[0]}"
+source_sha="${identity_values[1]}"
+source_tag="${identity_values[2]}"
+
+artifact_pages_dir="${work_root}/artifact-pages"
 mkdir -p "${artifact_pages_dir}"
 first_artifact_page="${artifact_pages_dir}/page-1.json"
 api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100&page=1" "${first_artifact_page}" || die "${EXIT_INFRA}" 'failed to query triggering run artifacts'
