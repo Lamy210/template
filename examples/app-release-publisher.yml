@@ -83,12 +83,10 @@ jobs:
           import json
           import re
 
-          with open("source-artifact/release-input/build-provenance.json", encoding="utf-8") as handle:
-              provenance = json.load(handle)
           with open("source-artifact/source-artifact-metadata.json", encoding="utf-8") as handle:
               metadata = json.load(handle)
 
-          tag = provenance.get("tag")
+          tag = metadata.get("sourceTag")
           source_sha = metadata.get("sourceSHA")
           if not isinstance(tag, str) or re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", tag) is None:
               raise SystemExit("candidate tag is not a stable release tag")
