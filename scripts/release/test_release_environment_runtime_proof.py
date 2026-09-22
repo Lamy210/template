@@ -69,6 +69,13 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("probe job must fail", text)
         self.assertIn("--method DELETE", text)
 
+    def test_contract_binds_dispatched_run_to_new_id_and_expected_ref(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("baseline_run_ids", text)
+        self.assertIn("headBranch", text)
+        self.assertIn("expected_ref", text)
+        self.assertIn("databaseId,displayTitle,headBranch", text)
+
     def test_fake_github_proves_branch_and_tag_are_denied(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -79,12 +86,31 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                     set -euo pipefail
                     args="$*"
 
+                    : "${GH_STUB_STATE:?GH_STUB_STATE is required}"
+
                     if [[ "$1" == "workflow" && "$2" == "run" ]]; then
+                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+                      count=$((count + 1))
+                      printf '%s\n' "${count}" >"${GH_STUB_STATE}"
                       exit 0
                     fi
 
                     if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag"}]'
+                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+                      case "${count}" in
+                        0)
+                          printf '%s\n' '[]'
+                          ;;
+                        1)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"}]'
+                          ;;
+                        2)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"}]'
+                          ;;
+                        *)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag","headBranch":"environment-proof-proof"}]'
+                          ;;
+                      esac
                       exit 0
                     fi
 
@@ -156,6 +182,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                 env={
                     "PATH": f"{root}:{os.environ['PATH']}",
                     "GITHUB_REPOSITORY": "example/template",
+                    "GH_STUB_STATE": str(root / "dispatch-state"),
                     "PROOF_NONCE": "proof",
                     "PROOF_POLL_ATTEMPTS": "1",
                     "PROOF_POLL_SECONDS": "0",
@@ -178,12 +205,31 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                     set -euo pipefail
                     args="$*"
 
+                    : "${GH_STUB_STATE:?GH_STUB_STATE is required}"
+
                     if [[ "$1" == "workflow" && "$2" == "run" ]]; then
+                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+                      count=$((count + 1))
+                      printf '%s\n' "${count}" >"${GH_STUB_STATE}"
                       exit 0
                     fi
 
                     if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag"}]'
+                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+                      case "${count}" in
+                        0)
+                          printf '%s\n' '[]'
+                          ;;
+                        1)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"}]'
+                          ;;
+                        2)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"}]'
+                          ;;
+                        *)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag","headBranch":"environment-proof-proof"}]'
+                          ;;
+                      esac
                       exit 0
                     fi
 
@@ -238,6 +284,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                 env={
                     "PATH": f"{root}:{os.environ['PATH']}",
                     "GITHUB_REPOSITORY": "example/template",
+                    "GH_STUB_STATE": str(root / "dispatch-state"),
                     "PROOF_NONCE": "proof",
                     "PROOF_POLL_ATTEMPTS": "1",
                     "PROOF_POLL_SECONDS": "0",
@@ -257,9 +304,31 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                     set -euo pipefail
                     args="$*"
 
-                    if [[ "$1" == "workflow" && "$2" == "run" ]]; then exit 0; fi
+                    : "${GH_STUB_STATE:?GH_STUB_STATE is required}"
+
+                    if [[ "$1" == "workflow" && "$2" == "run" ]]; then
+                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+                      count=$((count + 1))
+                      printf '%s\n' "${count}" >"${GH_STUB_STATE}"
+                      exit 0
+                    fi
+
                     if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch"}]'
+                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+                      case "${count}" in
+                        0)
+                          printf '%s\n' '[]'
+                          ;;
+                        1)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"}]'
+                          ;;
+                        2)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"}]'
+                          ;;
+                        *)
+                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag","headBranch":"environment-proof-proof"}]'
+                          ;;
+                      esac
                       exit 0
                     fi
                     if [[ "$1" != "api" ]]; then exit 90; fi
@@ -306,6 +375,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                 env={
                     "PATH": f"{root}:{os.environ['PATH']}",
                     "GITHUB_REPOSITORY": "example/template",
+                    "GH_STUB_STATE": str(root / "dispatch-state"),
                     "PROOF_NONCE": "proof",
                     "PROOF_POLL_ATTEMPTS": "1",
                     "PROOF_POLL_SECONDS": "0",
