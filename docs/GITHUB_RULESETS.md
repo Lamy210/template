@@ -147,7 +147,7 @@ After PR #2 reaches `main`:
 4. run fresh exact-head Quality, Swift Quality, and Release Isolation TDD;
 5. require zero unresolved review threads.
 
-### 4. Merge integrated PR #3
+### 4. Merge PR #3 (integrated)
 
 Squash-merge PR #3 only after the post-#2 restack is clean and the fresh exact-head CI is successful.
 
