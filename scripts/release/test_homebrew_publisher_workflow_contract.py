@@ -92,6 +92,23 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
                 self.assertTrue(block, f"missing step: {step_name}")
                 self.assertNotIn("secrets.tap_token", block)
 
+    def test_existing_automation_branch_is_rebuilt_from_trusted_tap_default(self) -> None:
+        prepare = step_block(self.homebrew_text(), "Prepare tap update branch")
+        push = step_block(self.homebrew_text(), "Commit and push Cask branch")
+        self.assertTrue(prepare)
+        self.assertTrue(push)
+
+        self.assertIn('git switch -C "${branch}" "origin/${TAP_DEFAULT_BRANCH}"', prepare)
+        self.assertNotIn('git switch -C "${branch}" "origin/${branch}"', prepare)
+        self.assertIn('remote_branch_sha=', prepare)
+        self.assertIn('remote_branch_sha=${remote_branch_sha}', prepare)
+
+        self.assertIn("REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}", push)
+        self.assertIn(
+            '--force-with-lease=refs/heads/${BRANCH}:${REMOTE_BRANCH_SHA}',
+            push,
+        )
+
     def test_publisher_runs_homebrew_only_after_sign_and_publish(self) -> None:
         text = self.publisher_text()
         self.assertIn("  homebrew:", text)
