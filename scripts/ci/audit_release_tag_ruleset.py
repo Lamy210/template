@@ -48,6 +48,12 @@ def validate_live_release_tag_ruleset(
     if "bypass_actors" in document and document.get("bypass_actors") != []:
         errors.append("bypass_actors must be empty when returned by GitHub")
 
+    if (
+        "current_user_can_bypass" in document
+        and document.get("current_user_can_bypass") != "never"
+    ):
+        errors.append("current_user_can_bypass must equal 'never' when returned by GitHub")
+
     canonical = {
         key: value
         for key, value in document.items()
