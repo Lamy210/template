@@ -183,7 +183,8 @@ The publisher does not trust only `github.event.workflow_run` display data or an
 - artifact metadata bound to another run/SHA;
 - malformed artifact digest;
 - downloaded ZIP digest mismatch;
-- ZIP traversal/symlink/duplicate/unexpected-file attacks.
+- ZIP traversal/symlink/duplicate/unexpected-file attacks;
+- excessive source-artifact member count or declared uncompressed size.
 
 The resolver writes source-artifact metadata itself; it does not accept source-owned claims for GitHub artifact ID/digest as authoritative.
 
@@ -207,7 +208,10 @@ Do not upload a raw `.app` directory with `actions/upload-artifact`. Artifact st
 - duplicate canonical member paths;
 - symlinks escaping the app;
 - hard links escaping the app;
-- FIFOs/devices/other unsupported special members.
+- FIFOs/devices/other unsupported special members;
+- archives above the configured member-count or extracted-file-byte limits.
+
+The default application-archive limits are 100,000 members and 8 GiB of declared regular-file payload. Trusted publisher control code may lower or raise them with `MAX_APP_ARCHIVE_MEMBERS` and `MAX_APP_EXTRACTED_BYTES`; malformed or non-positive values fail closed. The outer Actions Artifact ZIP is separately capped to a small member set and roughly 4 GiB of declared uncompressed payload.
 
 Legitimate in-bundle symlinks/hard links remain supported for normal macOS framework layouts.
 
