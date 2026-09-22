@@ -69,6 +69,13 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("probe job must fail", text)
         self.assertIn("--method DELETE", text)
 
+    def test_contract_binds_dispatched_run_to_new_id_and_expected_ref(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("baseline_run_ids", text)
+        self.assertIn("headBranch", text)
+        self.assertIn("expected_ref", text)
+        self.assertIn("databaseId,displayTitle,headBranch", text)
+
     def test_fake_github_proves_branch_and_tag_are_denied(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
