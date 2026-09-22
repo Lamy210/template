@@ -181,6 +181,19 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             text,
         )
 
+    def test_verified_release_payload_is_exact_before_provenance_and_publication(self) -> None:
+        text = self.release_text()
+        download = text.index("artifact-ids: ${{ needs.release.outputs.verified_artifact_id }}")
+        payload = text.index("scripts/release/validate-verified-release-payload.py")
+        provenance = text.index("scripts/release/verify-release-provenance.py")
+        publication = text.index("scripts/release/publish-github-release.sh")
+        self.assertLess(download, payload)
+        self.assertLess(payload, provenance)
+        self.assertLess(payload, publication)
+        self.assertIn("--root release-output", text)
+        self.assertIn('DMG_NAME: ${{ inputs.dmg_name }}', text)
+        self.assertIn('--dmg-name "${DMG_NAME}"', text)
+
     def test_final_release_attestation_is_reverified_before_publication(self) -> None:
         text = self.release_text()
         verifier = text.index("scripts/release/verify-release-provenance.py")
