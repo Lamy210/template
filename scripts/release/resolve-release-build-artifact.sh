@@ -235,7 +235,454 @@ else
   die "${EXIT_INFRA}" 'repository/workflow/run response was malformed'
 fi
 
-IFS=
+IFS="${work_root}/artifact-pages"
+mkdir -p "${artifact_pages_dir}"
+first_artifact_page="${artifact_pages_dir}/page-1.json"
+api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100&page=1" "${first_artifact_page}" || die "${EXIT_INFRA}" 'failed to query triggering run artifacts'
+
+page_count_file="${work_root}/artifact-page-count.txt"
+if python3 - "${first_artifact_page}" >"${page_count_file}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        payload = json.load(handle)
+except (OSError, json.JSONDecodeError) as error:
+    print(f"malformed artifacts response: {error}", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(payload, dict):
+    print("artifacts response must be an object", file=sys.stderr)
+    raise SystemExit(1)
+total_count = payload.get("total_count")
+artifacts = payload.get("artifacts")
+if type(total_count) is not int or total_count < 0:
+    print("artifacts response total_count must be a non-negative integer", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(artifacts, list):
+    print("artifacts response artifacts must be a list", file=sys.stderr)
+    raise SystemExit(1)
+print(max(1, (total_count + 99) // 100))
+PY
+then
+  :
+else
+  die "${EXIT_INFRA}" 'artifacts response was malformed'
+fi
+
+read -r artifact_page_count <"${page_count_file}"
+for ((page = 2; page <= artifact_page_count; page++)); do
+  page_path="${artifact_pages_dir}/page-${page}.json"
+  api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100&page=${page}" "${page_path}" || die "${EXIT_INFRA}" 'failed to query triggering run artifact page'
+done
+
+artifacts_json="${work_root}/artifacts.json"
+if python3 - "${artifact_pages_dir}" "${artifact_page_count}" "${artifacts_json}" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+pages_dir = Path(sys.argv[1])
+page_count = int(sys.argv[2])
+output_path = Path(sys.argv[3])
+expected_total_count = None
+combined = []
+
+for page in range(1, page_count + 1):
+    page_path = pages_dir / f"page-{page}.json"
+    try:
+        with page_path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"malformed artifacts page {page}: {error}", file=sys.stderr)
+        raise SystemExit(1)
+    if not isinstance(payload, dict):
+        print(f"artifacts page {page} must be an object", file=sys.stderr)
+        raise SystemExit(1)
+    total_count = payload.get("total_count")
+    artifacts = payload.get("artifacts")
+    if type(total_count) is not int or total_count < 0:
+        print(f"artifacts page {page} total_count must be a non-negative integer", file=sys.stderr)
+        raise SystemExit(1)
+    if not isinstance(artifacts, list):
+        print(f"artifacts page {page} artifacts must be a list", file=sys.stderr)
+        raise SystemExit(1)
+    if expected_total_count is None:
+        expected_total_count = total_count
+    elif total_count != expected_total_count:
+        print("artifact total_count changed while paginating", file=sys.stderr)
+        raise SystemExit(1)
+    combined.extend(artifacts)
+
+with output_path.open("w", encoding="utf-8") as handle:
+    json.dump(
+        {"total_count": expected_total_count, "artifacts": combined},
+        handle,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    handle.write("\n")
+PY
+then
+  :
+else
+  die "${EXIT_INFRA}" 'artifact pages were malformed or inconsistent'
+fi
+
+artifact_file="${work_root}/artifact.tsv"
+if python3 - "${artifacts_json}" "${artifact_name}" "${run_id}" "${source_sha}" >"${artifact_file}" <<'PY'
+import json
+import re
+import sys
+
+path, expected_name, run_id_text, source_sha = sys.argv[1:]
+expected_run_id = int(run_id_text)
+try:
+    with open(path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    artifacts = payload["artifacts"]
+    if not isinstance(artifacts, list):
+        raise TypeError("artifacts must be a list")
+except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+    print(f"malformed artifacts response: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+named = [item for item in artifacts if isinstance(item, dict) and item.get("name") == expected_name]
+active = [item for item in named if item.get("expired") is False]
+if len(active) > 1:
+    print("multiple non-expired artifacts have the exact expected name", file=sys.stderr)
+    raise SystemExit(1)
+if not active:
+    print("exact non-expired release artifact was not found", file=sys.stderr)
+    raise SystemExit(2)
+artifact = active[0]
+artifact_id = artifact.get("id")
+digest = artifact.get("digest")
+workflow_run = artifact.get("workflow_run")
+if type(artifact_id) is not int or artifact_id <= 0:
+    print("artifact id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+    print("artifact digest is missing or invalid", file=sys.stderr)
+    raise SystemExit(3)
+if not isinstance(workflow_run, dict):
+    print("artifact workflow_run metadata is missing", file=sys.stderr)
+    raise SystemExit(2)
+workflow_run_id = workflow_run.get("id")
+if type(workflow_run_id) is not int or workflow_run_id <= 0:
+    print("artifact workflow_run id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if workflow_run_id != expected_run_id or workflow_run.get("head_sha") != source_sha:
+    print("artifact is not bound to the exact triggering run/SHA", file=sys.stderr)
+    raise SystemExit(2)
+print(f"{artifact_id}\t{digest}")
+PY
+then
+  :
+else
+  artifact_status=$?
+  case "${artifact_status}" in
+    2) die "${EXIT_REJECTED}" 'release artifact failed trust validation' ;;
+    3) die "${EXIT_INTEGRITY}" 'release artifact digest metadata is invalid' ;;
+    *) die "${EXIT_INFRA}" 'artifacts response was malformed or ambiguous' ;;
+  esac
+fi
+
+IFS=$'\t' read -r artifact_id artifact_digest <"${artifact_file}"
+archive_path="${work_root}/artifact.zip"
+api_to_file "repos/${repository}/actions/artifacts/${artifact_id}/zip" "${archive_path}" || die "${EXIT_INFRA}" 'failed to download exact release artifact'
+
+actual_digest="$(
+  python3 - "${archive_path}" <<'PY'
+import hashlib
+import sys
+hasher = hashlib.sha256()
+with open(sys.argv[1], "rb") as handle:
+    for block in iter(lambda: handle.read(1024 * 1024), b""):
+        hasher.update(block)
+print("sha256:" + hasher.hexdigest())
+PY
+)"
+[[ "${actual_digest}" == "${artifact_digest}" ]] || die "${EXIT_INTEGRITY}" "artifact digest mismatch: expected ${artifact_digest}, got ${actual_digest}"
+
+stage_dir="${work_root}/stage"
+if python3 "$(dirname "${BASH_SOURCE[0]}")/validate-actions-artifact.py" --archive "${archive_path}" --output "${stage_dir}"; then
+  :
+else
+  die "${EXIT_UNSAFE_ARCHIVE}" 'release artifact ZIP failed confinement validation'
+fi
+
+python3 - \
+  "${stage_dir}/source-artifact-metadata.json" \
+  "${repository}" \
+  "${workflow_id}" \
+  "${workflow_path}" \
+  "${run_id}" \
+  "${run_attempt}" \
+  "${source_sha}" \
+  "${source_tag}" \
+  "${artifact_id}" \
+  "${artifact_name}" \
+  "${artifact_digest}" <<'PY'
+import json
+import sys
+(
+    output,
+    repository,
+    workflow_id,
+    workflow_path,
+    run_id,
+    run_attempt,
+    source_sha,
+    source_tag,
+    artifact_id,
+    artifact_name,
+    artifact_digest,
+) = sys.argv[1:]
+payload = {
+    "schemaVersion": 1,
+    "repository": repository,
+    "workflowId": int(workflow_id),
+    "workflowPath": workflow_path,
+    "runId": int(run_id),
+    "runAttempt": int(run_attempt),
+    "sourceSHA": source_sha,
+    "sourceTag": source_tag,
+    "artifactId": int(artifact_id),
+    "artifactName": artifact_name,
+    "artifactDigest": artifact_digest,
+}
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+    handle.write("\n")
+PY
+
+mv "${stage_dir}" "${output_dir}"
+printf 'resolved release artifact run=%s attempt=%s artifact=%s\n' "${run_id}" "${run_attempt}" "${artifact_id}"
+\t' read -r workflow_id source_sha source_tag <"${identity_file}"
+
+artifact_pages_dir="${work_root}/artifact-pages"
+mkdir -p "${artifact_pages_dir}"
+first_artifact_page="${artifact_pages_dir}/page-1.json"
+api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100&page=1" "${first_artifact_page}" || die "${EXIT_INFRA}" 'failed to query triggering run artifacts'
+
+page_count_file="${work_root}/artifact-page-count.txt"
+if python3 - "${first_artifact_page}" >"${page_count_file}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        payload = json.load(handle)
+except (OSError, json.JSONDecodeError) as error:
+    print(f"malformed artifacts response: {error}", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(payload, dict):
+    print("artifacts response must be an object", file=sys.stderr)
+    raise SystemExit(1)
+total_count = payload.get("total_count")
+artifacts = payload.get("artifacts")
+if type(total_count) is not int or total_count < 0:
+    print("artifacts response total_count must be a non-negative integer", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(artifacts, list):
+    print("artifacts response artifacts must be a list", file=sys.stderr)
+    raise SystemExit(1)
+print(max(1, (total_count + 99) // 100))
+PY
+then
+  :
+else
+  die "${EXIT_INFRA}" 'artifacts response was malformed'
+fi
+
+read -r artifact_page_count <"${page_count_file}"
+for ((page = 2; page <= artifact_page_count; page++)); do
+  page_path="${artifact_pages_dir}/page-${page}.json"
+  api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100&page=${page}" "${page_path}" || die "${EXIT_INFRA}" 'failed to query triggering run artifact page'
+done
+
+artifacts_json="${work_root}/artifacts.json"
+if python3 - "${artifact_pages_dir}" "${artifact_page_count}" "${artifacts_json}" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+pages_dir = Path(sys.argv[1])
+page_count = int(sys.argv[2])
+output_path = Path(sys.argv[3])
+expected_total_count = None
+combined = []
+
+for page in range(1, page_count + 1):
+    page_path = pages_dir / f"page-{page}.json"
+    try:
+        with page_path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"malformed artifacts page {page}: {error}", file=sys.stderr)
+        raise SystemExit(1)
+    if not isinstance(payload, dict):
+        print(f"artifacts page {page} must be an object", file=sys.stderr)
+        raise SystemExit(1)
+    total_count = payload.get("total_count")
+    artifacts = payload.get("artifacts")
+    if type(total_count) is not int or total_count < 0:
+        print(f"artifacts page {page} total_count must be a non-negative integer", file=sys.stderr)
+        raise SystemExit(1)
+    if not isinstance(artifacts, list):
+        print(f"artifacts page {page} artifacts must be a list", file=sys.stderr)
+        raise SystemExit(1)
+    if expected_total_count is None:
+        expected_total_count = total_count
+    elif total_count != expected_total_count:
+        print("artifact total_count changed while paginating", file=sys.stderr)
+        raise SystemExit(1)
+    combined.extend(artifacts)
+
+with output_path.open("w", encoding="utf-8") as handle:
+    json.dump(
+        {"total_count": expected_total_count, "artifacts": combined},
+        handle,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    handle.write("\n")
+PY
+then
+  :
+else
+  die "${EXIT_INFRA}" 'artifact pages were malformed or inconsistent'
+fi
+
+artifact_file="${work_root}/artifact.tsv"
+if python3 - "${artifacts_json}" "${artifact_name}" "${run_id}" "${source_sha}" >"${artifact_file}" <<'PY'
+import json
+import re
+import sys
+
+path, expected_name, run_id_text, source_sha = sys.argv[1:]
+expected_run_id = int(run_id_text)
+try:
+    with open(path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    artifacts = payload["artifacts"]
+    if not isinstance(artifacts, list):
+        raise TypeError("artifacts must be a list")
+except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+    print(f"malformed artifacts response: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+named = [item for item in artifacts if isinstance(item, dict) and item.get("name") == expected_name]
+active = [item for item in named if item.get("expired") is False]
+if len(active) > 1:
+    print("multiple non-expired artifacts have the exact expected name", file=sys.stderr)
+    raise SystemExit(1)
+if not active:
+    print("exact non-expired release artifact was not found", file=sys.stderr)
+    raise SystemExit(2)
+artifact = active[0]
+artifact_id = artifact.get("id")
+digest = artifact.get("digest")
+workflow_run = artifact.get("workflow_run")
+if type(artifact_id) is not int or artifact_id <= 0:
+    print("artifact id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+    print("artifact digest is missing or invalid", file=sys.stderr)
+    raise SystemExit(3)
+if not isinstance(workflow_run, dict):
+    print("artifact workflow_run metadata is missing", file=sys.stderr)
+    raise SystemExit(2)
+workflow_run_id = workflow_run.get("id")
+if type(workflow_run_id) is not int or workflow_run_id <= 0:
+    print("artifact workflow_run id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if workflow_run_id != expected_run_id or workflow_run.get("head_sha") != source_sha:
+    print("artifact is not bound to the exact triggering run/SHA", file=sys.stderr)
+    raise SystemExit(2)
+print(f"{artifact_id}\t{digest}")
+PY
+then
+  :
+else
+  artifact_status=$?
+  case "${artifact_status}" in
+    2) die "${EXIT_REJECTED}" 'release artifact failed trust validation' ;;
+    3) die "${EXIT_INTEGRITY}" 'release artifact digest metadata is invalid' ;;
+    *) die "${EXIT_INFRA}" 'artifacts response was malformed or ambiguous' ;;
+  esac
+fi
+
+IFS=$'\t' read -r artifact_id artifact_digest <"${artifact_file}"
+archive_path="${work_root}/artifact.zip"
+api_to_file "repos/${repository}/actions/artifacts/${artifact_id}/zip" "${archive_path}" || die "${EXIT_INFRA}" 'failed to download exact release artifact'
+
+actual_digest="$(
+  python3 - "${archive_path}" <<'PY'
+import hashlib
+import sys
+hasher = hashlib.sha256()
+with open(sys.argv[1], "rb") as handle:
+    for block in iter(lambda: handle.read(1024 * 1024), b""):
+        hasher.update(block)
+print("sha256:" + hasher.hexdigest())
+PY
+)"
+[[ "${actual_digest}" == "${artifact_digest}" ]] || die "${EXIT_INTEGRITY}" "artifact digest mismatch: expected ${artifact_digest}, got ${actual_digest}"
+
+stage_dir="${work_root}/stage"
+if python3 "$(dirname "${BASH_SOURCE[0]}")/validate-actions-artifact.py" --archive "${archive_path}" --output "${stage_dir}"; then
+  :
+else
+  die "${EXIT_UNSAFE_ARCHIVE}" 'release artifact ZIP failed confinement validation'
+fi
+
+python3 - \
+  "${stage_dir}/source-artifact-metadata.json" \
+  "${repository}" \
+  "${workflow_id}" \
+  "${workflow_path}" \
+  "${run_id}" \
+  "${run_attempt}" \
+  "${source_sha}" \
+  "${artifact_id}" \
+  "${artifact_name}" \
+  "${artifact_digest}" <<'PY'
+import json
+import sys
+(
+    output,
+    repository,
+    workflow_id,
+    workflow_path,
+    run_id,
+    run_attempt,
+    source_sha,
+    artifact_id,
+    artifact_name,
+    artifact_digest,
+) = sys.argv[1:]
+payload = {
+    "schemaVersion": 1,
+    "repository": repository,
+    "workflowId": int(workflow_id),
+    "workflowPath": workflow_path,
+    "runId": int(run_id),
+    "runAttempt": int(run_attempt),
+    "sourceSHA": source_sha,
+    "artifactId": int(artifact_id),
+    "artifactName": artifact_name,
+    "artifactDigest": artifact_digest,
+}
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+    handle.write("\n")
+PY
+
+mv "${stage_dir}" "${output_dir}"
+printf 'resolved release artifact run=%s attempt=%s artifact=%s\n' "${run_id}" "${run_attempt}" "${artifact_id}"
+\t' read -r workflow_id source_sha source_tag <"${identity_file}"
 
 artifact_pages_dir="${work_root}/artifact-pages"
 mkdir -p "${artifact_pages_dir}"
