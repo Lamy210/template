@@ -122,6 +122,26 @@ class ActionsArtifactValidationTests(unittest.TestCase):
         )
         self.assertTrue(any("missing files" in error for error in errors))
 
+    def test_rejects_member_count_above_limit(self) -> None:
+        temporary_directory, archive_path = self.create_zip(sorted(EXPECTED_FILES))
+        self.addCleanup(temporary_directory.cleanup)
+        errors = validate_and_extract_release_artifact(
+            archive_path,
+            Path(temporary_directory.name) / "out",
+            max_members=1,
+        )
+        self.assertTrue(any("member count" in error for error in errors))
+
+    def test_rejects_total_uncompressed_size_above_limit(self) -> None:
+        temporary_directory, archive_path = self.create_zip(sorted(EXPECTED_FILES))
+        self.addCleanup(temporary_directory.cleanup)
+        errors = validate_and_extract_release_artifact(
+            archive_path,
+            Path(temporary_directory.name) / "out",
+            max_total_uncompressed_bytes=1,
+        )
+        self.assertTrue(any("uncompressed size" in error for error in errors))
+
     def test_rejects_bad_zip(self) -> None:
         temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(temporary_directory.cleanup)
