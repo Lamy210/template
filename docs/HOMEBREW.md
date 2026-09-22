@@ -118,6 +118,21 @@ Temporary fallback:
 
 Do not reuse Apple signing/notarization credentials for this job. Do not use `secrets: inherit`; pass only the narrow named `tap_token` interface.
 
+## Automation branch trust model
+
+The predictable `automation/<cask>-v<version>` branch name is an output location, not trusted input.
+
+On every run, the updater:
+
+1. fetches the tap repository and records the current remote automation-branch SHA if that branch already exists;
+2. rebuilds the local automation branch from the trusted tap default branch, never from the existing automation branch;
+3. renders only the intended Cask change;
+4. updates an existing automation branch with an exact-SHA `--force-with-lease`, so a concurrent or unexpected remote rewrite causes the run to fail instead of being overwritten.
+
+If the existing automation branch contains stale or unrelated commits, those commits are not carried forward. If the desired Cask is already identical, an existing remote automation branch is still reset to the trusted default-branch state using the same lease check.
+
+This limited history rewrite applies only to the dedicated automation branch. Do not use this behavior for the tap default branch or a human-owned feature branch.
+
 ## Tap CI
 
 The tap repository should independently validate generated Casks before merge. At minimum test:
