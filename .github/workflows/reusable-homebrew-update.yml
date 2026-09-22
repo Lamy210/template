@@ -183,6 +183,7 @@ jobs:
           GITHUB_REPO="${SOURCE_REPOSITORY#*/}"
           export VERSION GITHUB_OWNER GITHUB_REPO
           bash source/scripts/homebrew/render-cask.sh
+          ruby -c "${OUTPUT_CASK}"
 
       - name: Commit and push Cask branch
         id: push
