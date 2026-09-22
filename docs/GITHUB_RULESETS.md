@@ -259,9 +259,10 @@ The doctor is read-only. It lists tag-targeting Rulesets and deliberately requir
 - update protection is enabled with `update_allows_fetch_and_merge=false`;
 - deletion protection is enabled;
 - no creation or other unexpected tag rule is present;
-- bypass actors are empty when GitHub exposes that field to the caller.
+- bypass actors are empty when GitHub exposes that field to the caller;
+- when GitHub reports `current_user_can_bypass`, it must equal `never` for the audit caller.
 
-GitHub documents that `bypass_actors` is returned by the Ruleset API only when the caller has write access to the Ruleset. The read-only doctor therefore validates an empty bypass list when the field is visible, but it does **not** treat an omitted field as proof that bypass actors do not exist. Verify bypass actors in the administrator Ruleset UI/import review as part of rollout.
+GitHub documents that `bypass_actors` is returned by the Ruleset API only when the caller has write access to the Ruleset. The read-only doctor therefore validates an empty bypass list when the field is visible, but it does **not** treat an omitted field as proof that bypass actors do not exist. Separately, when GitHub returns `current_user_can_bypass`, the doctor requires `never`; this prevents a green audit from silently accepting that the audit actor itself has a bypass path. Verify bypass actors in the administrator Ruleset UI/import review as part of rollout.
 
 The repository Ruleset API can list/filter tag-targeting Rulesets and fetch individual Rulesets, but GitHub's effective-rules endpoint is branch-oriented. For that reason release-tag assurance deliberately uses three complementary checks rather than claiming one read-only query proves everything:
 
