@@ -6,6 +6,7 @@ readonly EXIT_INFRA=3
 readonly EXIT_REJECTED=4
 readonly EXIT_UNSAFE_ARCHIVE=5
 readonly EXIT_INTEGRITY=6
+readonly MAX_RELEASE_BUILD_ARTIFACTS=1000
 
 usage() {
   cat >&2 <<'EOF'
@@ -249,12 +250,15 @@ first_artifact_page="${artifact_pages_dir}/page-1.json"
 api_to_file "repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100&page=1" "${first_artifact_page}" || die "${EXIT_INFRA}" 'failed to query triggering run artifacts'
 
 page_count_file="${work_root}/artifact-page-count.txt"
-if python3 - "${first_artifact_page}" >"${page_count_file}" <<'PY'
+if python3 - "${first_artifact_page}" "${MAX_RELEASE_BUILD_ARTIFACTS}" >"${page_count_file}" <<'PY'
 import json
 import sys
 
+artifact_page_path, max_artifacts_text = sys.argv[1:]
+max_artifacts = int(max_artifacts_text)
+
 try:
-    with open(sys.argv[1], encoding="utf-8") as handle:
+    with open(artifact_page_path, encoding="utf-8") as handle:
         payload = json.load(handle)
 except (OSError, json.JSONDecodeError) as error:
     print(f"malformed artifacts response: {error}", file=sys.stderr)
@@ -266,6 +270,13 @@ total_count = payload.get("total_count")
 artifacts = payload.get("artifacts")
 if type(total_count) is not int or total_count < 0:
     print("artifacts response total_count must be a non-negative integer", file=sys.stderr)
+    raise SystemExit(1)
+if total_count > max_artifacts:
+    print(
+        "artifact total_count exceeds configured limit: "
+        f"{total_count} > {max_artifacts}",
+        file=sys.stderr,
+    )
     raise SystemExit(1)
 if not isinstance(artifacts, list):
     print("artifacts response artifacts must be a list", file=sys.stderr)
