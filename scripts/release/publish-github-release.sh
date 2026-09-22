@@ -3,16 +3,18 @@ set -euo pipefail
 
 : "${TAG_NAME:?TAG_NAME is required}"
 : "${DMG_PATH:?DMG_PATH is required}"
+: "${RELEASE_PROVENANCE_PATH:?RELEASE_PROVENANCE_PATH is required}"
 
 checksum_path="${DMG_PATH}.sha256"
-assets=("${DMG_PATH}" "${checksum_path}")
-if [[ -n "${RELEASE_PROVENANCE_PATH:-}" ]]; then
-  assets+=("${RELEASE_PROVENANCE_PATH}")
+if [[ "$(basename "${RELEASE_PROVENANCE_PATH}")" != "release-provenance.json" ]]; then
+  echo "Final release provenance must be named release-provenance.json." >&2
+  exit 1
 fi
 
+assets=("${DMG_PATH}" "${checksum_path}" "${RELEASE_PROVENANCE_PATH}")
 for file_path in "${assets[@]}"; do
-  if [[ ! -f "${file_path}" ]]; then
-    echo "Release asset not found: ${file_path}" >&2
+  if [[ ! -f "${file_path}" || -L "${file_path}" ]]; then
+    echo "Release asset must be a regular non-symlink file: ${file_path}" >&2
     exit 1
   fi
 done
