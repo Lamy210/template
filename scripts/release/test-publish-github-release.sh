@@ -41,12 +41,19 @@ case "$2" in
       : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
       python3 - "${GH_FAKE_REMOTE_DIR}" <<'PY'
 import json
+import os
 from pathlib import Path
 import sys
 
 remote_dir = Path(sys.argv[1])
 assets = [{"name": path.name} for path in sorted(remote_dir.iterdir()) if path.is_file()]
-print(json.dumps({"assets": assets}, separators=(",", ":")))
+payload = {
+    "assets": assets,
+    "isDraft": os.environ.get("GH_FAKE_IS_DRAFT", "false") == "true",
+    "isPrerelease": os.environ.get("GH_FAKE_IS_PRERELEASE", "false") == "true",
+    "tagName": os.environ.get("GH_FAKE_TAG_NAME", "v1.2.3"),
+}
+print(json.dumps(payload, separators=(",", ":")))
 PY
     fi
     ;;
@@ -123,6 +130,32 @@ if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
 fi
 if grep -F -- "--clobber" "${LOG_PATH}" >/dev/null; then
   echo "Publisher must never use --clobber." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true GH_FAKE_IS_DRAFT=true run_publisher; then
+  echo "Draft existing release was incorrectly accepted as an immutable no-op." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Draft existing release was mutated instead of rejected." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true GH_FAKE_IS_PRERELEASE=true run_publisher; then
+  echo "Prerelease existing release was incorrectly accepted as a stable no-op." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Prerelease existing release was mutated instead of rejected." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true GH_FAKE_TAG_NAME=v1.2.4 run_publisher; then
+  echo "Existing release with mismatched tag identity was incorrectly accepted." >&2
   exit 1
 fi
 
