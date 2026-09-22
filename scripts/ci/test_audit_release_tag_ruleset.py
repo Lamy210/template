@@ -164,6 +164,58 @@ class LiveReleaseTagRulesetAuditTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("matches the immutable release-tag contract", result.stdout)
 
+    def test_live_wrapper_rejects_additional_active_tag_ruleset(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            fake_gh.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/usr/bin/env python3
+                    import json
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if "rulesets?targets=tag&includes_parents=true&per_page=100" in endpoint:
+                        expected = {
+                            "id": 42,
+                            "name": "Immutable release tags",
+                            "target": "tag",
+                            "source_type": "Repository",
+                            "source": "example/repo",
+                            "enforcement": "active",
+                        }
+                        extra = {
+                            "id": 99,
+                            "name": "Legacy tag policy",
+                            "target": "tag",
+                            "source_type": "Organization",
+                            "source": "example",
+                            "enforcement": "active",
+                        }
+                        print(json.dumps([[expected, extra]]))
+                        raise SystemExit(0)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            result = subprocess.run(
+                ["bash", str(LIVE_AUDIT), "example/repo"],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Expected exactly one active tag Ruleset overall", result.stderr)
+
     def test_live_wrapper_rejects_duplicate_active_named_rulesets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
