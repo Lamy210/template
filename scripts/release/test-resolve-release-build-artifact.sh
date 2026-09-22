@@ -133,6 +133,14 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
     fi
     exit 0
   fi
+  if [[ "${scenario}" == "incomplete-pagination" ]]; then
+    if [[ "${args}" == *"page=2"* ]]; then
+      printf '{"total_count":101,"artifacts":[]}'
+    else
+      printf '{"total_count":101,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+    fi
+    exit 0
+  fi
   case "${scenario}" in
     boolean-run-attempt)
       printf '{"total_count":1,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-1","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
@@ -145,6 +153,12 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
       ;;
     duplicate)
       printf '{"total_count":2,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}},{"id":7002,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}" "${digest}" "${sha}"
+      ;;
+    duplicate-artifact-id)
+      printf '{"total_count":2,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}},{"id":7001,"name":"decoy","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}" "${digest}" "${sha}"
+      ;;
+    malformed-artifact-entry)
+      printf '{"total_count":2,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}},"bad-entry"]}' "${digest}" "${sha}"
       ;;
     wrong-artifact)
       printf '{"total_count":1,"artifacts":[{"id":7001,"name":"other","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
@@ -264,6 +278,9 @@ assert_status boolean-artifact-run-id 3 2 1
 assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
+assert_status incomplete-pagination 3
+assert_status duplicate-artifact-id 3
+assert_status malformed-artifact-entry 3
 assert_status malformed-workflow 3
 assert_status missing-digest 6
 assert_status malformed-digest 6
