@@ -250,7 +250,7 @@ After importing the reviewed immutable-tag profile, audit the live repository Ru
 bash scripts/ci/audit-live-release-tag-ruleset.sh owner/repo
 ```
 
-The doctor is read-only. It lists tag-targeting Rulesets, requires exactly one active Ruleset named `Immutable release tags`, fetches that Ruleset by ID, and verifies the repository-owned live configuration against the checked-in contract:
+The doctor is read-only. It lists tag-targeting Rulesets and deliberately requires **exactly one active tag Ruleset overall**, which must be the repository-owned Ruleset named `Immutable release tags`. This conservative rule prevents an additional repository- or organization-level tag Ruleset from being silently ignored when GitHub cannot provide a branch-style effective-rules view for tags. The doctor then fetches that Ruleset by ID and verifies the live configuration against the checked-in contract:
 
 - target is `tag`;
 - enforcement is `active`;
