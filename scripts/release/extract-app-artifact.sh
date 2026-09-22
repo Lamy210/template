@@ -5,6 +5,9 @@ set -euo pipefail
 : "${OUTPUT_DIR:?OUTPUT_DIR is required}"
 : "${APP_BASENAME:?APP_BASENAME is required}"
 
+MAX_APP_ARCHIVE_MEMBERS="${MAX_APP_ARCHIVE_MEMBERS:-100000}"
+MAX_APP_EXTRACTED_BYTES="${MAX_APP_EXTRACTED_BYTES:-8589934592}"
+
 if [[ ! -f "${ARCHIVE_PATH}" ]]; then
   echo "Application archive not found: ${ARCHIVE_PATH}" >&2
   exit 1
@@ -15,41 +18,24 @@ if [[ "${APP_BASENAME}" != *.app || "${APP_BASENAME}" == */* || "${APP_BASENAME}
   exit 1
 fi
 
-members_file="$(mktemp "${TMPDIR:-/tmp}/app-artifact-members.XXXXXX")"
-trap 'rm -f "${members_file}"' EXIT
-
-tar -tzf "${ARCHIVE_PATH}" >"${members_file}"
-if [[ ! -s "${members_file}" ]]; then
-  echo "Application archive is empty." >&2
+if [[ ! "${MAX_APP_ARCHIVE_MEMBERS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "MAX_APP_ARCHIVE_MEMBERS must be a positive integer." >&2
+  exit 1
+fi
+if [[ ! "${MAX_APP_EXTRACTED_BYTES}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "MAX_APP_EXTRACTED_BYTES must be a positive integer." >&2
   exit 1
 fi
 
-while IFS= read -r member; do
-  if [[ -z "${member}" || "${member}" == /* ]]; then
-    echo "Unsafe archive member path: ${member}" >&2
-    exit 1
-  fi
-
-  IFS='/' read -r -a components <<<"${member}"
-  if [[ "${components[0]}" != "${APP_BASENAME}" ]]; then
-    echo "Archive member is outside expected app bundle: ${member}" >&2
-    exit 1
-  fi
-  for component in "${components[@]}"; do
-    if [[ "${component}" == ".." ]]; then
-      echo "Archive member contains path traversal: ${member}" >&2
-      exit 1
-    fi
-  done
-done <"${members_file}"
-
-python3 - "${ARCHIVE_PATH}" "${APP_BASENAME}" <<'PY'
+python3 - "${ARCHIVE_PATH}" "${APP_BASENAME}" "${MAX_APP_ARCHIVE_MEMBERS}" "${MAX_APP_EXTRACTED_BYTES}" <<'PY'
 import posixpath
 import sys
 import tarfile
 
-archive_path, app_basename = sys.argv[1:]
+archive_path, app_basename, max_members_text, max_bytes_text = sys.argv[1:]
 app_prefix = f"{app_basename}/"
+max_members = int(max_members_text)
+max_bytes = int(max_bytes_text)
 
 
 def is_inside_app(path: str) -> bool:
@@ -58,15 +44,46 @@ def is_inside_app(path: str) -> bool:
 
 with tarfile.open(archive_path, "r:gz") as archive:
     seen_paths: set[str] = set()
+    member_count = 0
+    total_file_bytes = 0
 
-    for member in archive.getmembers():
+    for member in archive:
+        member_count += 1
+        if member_count > max_members:
+            raise SystemExit(
+                "Application archive member count exceeds configured limit: "
+                f"{member_count} > {max_members}"
+            )
+
+        if not member.name or member.name.startswith("/"):
+            raise SystemExit(f"Unsafe archive member path: {member.name}")
+
+        components = member.name.split("/")
+        if any(component == ".." for component in components):
+            raise SystemExit(f"Archive member contains path traversal: {member.name}")
+
         canonical_name = posixpath.normpath(member.name)
+        if not is_inside_app(canonical_name):
+            raise SystemExit(
+                f"Archive member is outside expected app bundle: {member.name}"
+            )
+
         if canonical_name in seen_paths:
             raise SystemExit(f"Duplicate archive member path: {canonical_name}")
         seen_paths.add(canonical_name)
 
         if not (member.isfile() or member.isdir() or member.issym() or member.islnk()):
             raise SystemExit(f"Unsupported archive member type: {member.name}")
+
+        if member.isfile():
+            if member.size < 0:
+                raise SystemExit(f"Archive member has invalid size: {member.name}")
+            total_file_bytes += member.size
+            if total_file_bytes > max_bytes:
+                raise SystemExit(
+                    "Application archive extracted file size exceeds configured limit: "
+                    f"{total_file_bytes} > {max_bytes}"
+                )
 
         if member.issym():
             target = member.linkname
