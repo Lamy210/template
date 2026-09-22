@@ -62,6 +62,10 @@ jobs:
         shell: bash
         run: bash scripts/release/test-app-artifact-handoff.sh
 
+      - name: Immutable GitHub Release publication contract
+        shell: bash
+        run: bash scripts/release/test-publish-github-release.sh
+
   artifact-layout:
     name: Release artifact layout contract
     runs-on: ubuntu-latest
