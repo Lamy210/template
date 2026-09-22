@@ -121,12 +121,14 @@ print(sha)
 
 gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${workflow_name}?ref=${default_branch}" >/dev/null
 
+temp_root="$(mktemp -d "${TMPDIR:-/tmp}/release-environment-proof.XXXXXX")"
 branch_name="environment-proof/${nonce}"
 tag_name="environment-proof-${nonce}"
 branch_created=false
 tag_created=false
 
 cleanup() {
+  rm -rf "${temp_root}"
   if [[ "${branch_created}" == true ]]; then
     gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/heads/${branch_name}" >/dev/null 2>&1 || true
   fi
