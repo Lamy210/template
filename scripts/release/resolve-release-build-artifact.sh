@@ -211,7 +211,21 @@ if not isinstance(source_sha, str) or re.fullmatch(r"[0-9a-f]{40}", source_sha) 
     print("triggering run head SHA is invalid", file=sys.stderr)
     raise SystemExit(2)
 
-print(f"{workflow_id}\t{source_sha}")
+source_tag = run.get("head_branch")
+if (
+    not isinstance(source_tag, str)
+    or re.fullmatch(
+        r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)",
+        source_tag,
+    )
+    is None
+):
+    print("triggering run head ref must be a canonical stable release tag", file=sys.stderr)
+    raise SystemExit(2)
+
+print(workflow_id)
+print(source_sha)
+print(source_tag)
 PY
 then
   :
@@ -223,7 +237,11 @@ else
   die "${EXIT_INFRA}" 'repository/workflow/run response was malformed'
 fi
 
-IFS=$'\t' read -r workflow_id source_sha <"${identity_file}"
+mapfile -t identity_values <"${identity_file}"
+(("${#identity_values[@]}" == 3)) || die "${EXIT_INFRA}" 'trusted release identity tuple was malformed'
+workflow_id="${identity_values[0]}"
+source_sha="${identity_values[1]}"
+source_tag="${identity_values[2]}"
 
 artifact_pages_dir="${work_root}/artifact-pages"
 mkdir -p "${artifact_pages_dir}"
@@ -410,6 +428,7 @@ python3 - \
   "${run_id}" \
   "${run_attempt}" \
   "${source_sha}" \
+  "${source_tag}" \
   "${artifact_id}" \
   "${artifact_name}" \
   "${artifact_digest}" <<'PY'
@@ -423,6 +442,7 @@ import sys
     run_id,
     run_attempt,
     source_sha,
+    source_tag,
     artifact_id,
     artifact_name,
     artifact_digest,
@@ -435,6 +455,7 @@ payload = {
     "runId": int(run_id),
     "runAttempt": int(run_attempt),
     "sourceSHA": source_sha,
+    "sourceTag": source_tag,
     "artifactId": int(artifact_id),
     "artifactName": artifact_name,
     "artifactDigest": artifact_digest,
