@@ -125,6 +125,14 @@ fi
 
 if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
   digest="$(emit_digest)"
+  if [[ "${scenario}" == "too-many-artifacts" ]]; then
+    if [[ "${args}" == *"page=1"* ]]; then
+      printf '{"total_count":1001,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
+      exit 0
+    fi
+    echo "unexpected pagination after artifact count limit" >&2
+    exit 99
+  fi
   if [[ "${scenario}" == "paginated" ]]; then
     if [[ "${args}" == *"page=2"* ]]; then
       printf '{"total_count":101,"artifacts":[{"id":7001,"name":"unsigned-macos-release-9001-2","expired":false,"digest":"%s","workflow_run":{"id":9001,"head_sha":"%s"}}]}' "${digest}" "${sha}"
@@ -295,6 +303,12 @@ assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
 assert_status incomplete-pagination 3
+assert_status too-many-artifacts 3
+if ! grep -F "artifact total_count exceeds configured limit" "${TEMP_ROOT}/too-many-artifacts.stderr" >/dev/null; then
+  echo "Excessive artifact count did not fail before pagination." >&2
+  cat "${TEMP_ROOT}/too-many-artifacts.stderr" >&2 || true
+  exit 1
+fi
 assert_status duplicate-artifact-id 3
 assert_status malformed-artifact-entry 3
 assert_status malformed-workflow 3
