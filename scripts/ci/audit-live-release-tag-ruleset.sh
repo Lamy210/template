@@ -52,22 +52,33 @@ if not isinstance(pages, list) or any(not isinstance(page, list) for page in pag
     raise SystemExit("Ruleset list response must be an array of page arrays")
 
 rulesets = [ruleset for page in pages for ruleset in page]
-candidates = [
+active_tag_rulesets = [
     ruleset
     for ruleset in rulesets
     if isinstance(ruleset, dict)
-    and ruleset.get("name") == "Immutable release tags"
     and ruleset.get("target") == "tag"
     and ruleset.get("enforcement") == "active"
 ]
 
-if len(candidates) != 1:
+if len(active_tag_rulesets) != 1:
+    names = sorted(
+        str(ruleset.get("name"))
+        for ruleset in active_tag_rulesets
+        if isinstance(ruleset.get("name"), str)
+    )
     raise SystemExit(
-        "Expected exactly one active tag Ruleset named 'Immutable release tags'; "
-        f"found {len(candidates)}"
+        "Expected exactly one active tag Ruleset overall; "
+        f"found {len(active_tag_rulesets)}: {names!r}"
     )
 
-ruleset_id = candidates[0].get("id")
+candidate = active_tag_rulesets[0]
+if candidate.get("name") != "Immutable release tags":
+    raise SystemExit(
+        "The only active tag Ruleset must be named 'Immutable release tags'; "
+        f"got {candidate.get('name')!r}"
+    )
+
+ruleset_id = candidate.get("id")
 if type(ruleset_id) is not int or ruleset_id <= 0:
     raise SystemExit("Live release-tag Ruleset id must be a positive integer")
 print(ruleset_id)
