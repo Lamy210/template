@@ -98,6 +98,7 @@ def load_environment() -> dict[str, Any]:
         "visualBootstrap": visual_bootstrap,
     }
 
+
 def bool_field(payload: dict[str, Any], field: str) -> bool:
     value = payload[field]
     if not isinstance(value, bool):
