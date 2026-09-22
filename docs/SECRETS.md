@@ -40,15 +40,26 @@ It has no Environment and no secrets. It resolves one exact upstream workflow ru
 
 ### 3. Privileged signing/publication
 
-Only the called `reusable-macos-release.yml` job declares:
+Inside the called `reusable-macos-release.yml`, signing and repository publication are separate jobs.
+
+The signing/notarization job declares:
 
 ```yaml
 environment: release
 permissions:
-  contents: write
+  actions: read
+  contents: read
 ```
 
-It revalidates the validator-owned metadata and archive before importing a certificate. Apple credentials are read directly from the fixed protected Environment.
+It revalidates the validator-owned metadata and archive before importing a certificate. Apple credentials are read directly from the fixed protected Environment. After verification it uploads a current-run/current-attempt verified release Artifact.
+
+A later publication job declares no Environment, receives no Apple secrets, independently verifies the exact signer-produced Artifact identity/digest, and alone receives:
+
+```yaml
+permissions:
+  actions: read
+  contents: write
+```
 
 The publisher caller deliberately does **not** use `secrets: inherit` and does not map Apple secrets through `workflow_call`.
 
@@ -126,10 +137,11 @@ Expected release permissions are:
 
 - Release Build: `contents: read`
 - Publisher validation: `actions: read`, `contents: read`
-- Privileged signing/publication: `contents: write`
+- Signing/notarization: `actions: read`, `contents: read`, protected `release` Environment
+- GitHub Release publication: `actions: read`, `contents: write`, no Apple Environment/secrets
 - Homebrew updater: source repository read access plus one narrow named tap credential
 
-Do not grant release write permission to the tag build or validation job.
+Do not grant release write permission to the tag build, validation job, or Apple-signing job.
 
 ## Fork pull requests
 
