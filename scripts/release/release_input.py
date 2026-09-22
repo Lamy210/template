@@ -20,6 +20,7 @@ SOURCE_METADATA_FIELDS = {
     "runId",
     "runAttempt",
     "sourceSHA",
+    "sourceTag",
     "artifactId",
     "artifactName",
     "artifactDigest",
@@ -72,6 +73,10 @@ def _validate_source_metadata(
     source_sha = metadata.get("sourceSHA")
     if not isinstance(source_sha, str) or SHA_RE.fullmatch(source_sha) is None:
         errors.append("source metadata sourceSHA must be 40 lowercase hexadecimal characters")
+
+    source_tag = metadata.get("sourceTag")
+    if not isinstance(source_tag, str) or TAG_RE.fullmatch(source_tag) is None:
+        errors.append("source metadata sourceTag must match stable SemVer form vX.Y.Z")
 
     digest = metadata.get("artifactDigest")
     if not isinstance(digest, str) or DIGEST_RE.fullmatch(digest) is None:
@@ -142,7 +147,7 @@ def validate_release_input(
         if resolved_tag_sha != source_sha:
             errors.append("resolved tag SHA does not match source SHA")
 
-    tag = provenance_document.get("tag") if isinstance(provenance_document, dict) else None
+    tag = metadata.get("sourceTag")
     version = tag[1:] if isinstance(tag, str) and TAG_RE.fullmatch(tag) else ""
     run_id = metadata.get("runId")
     run_attempt = metadata.get("runAttempt")
