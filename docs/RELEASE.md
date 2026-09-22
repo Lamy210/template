@@ -195,6 +195,8 @@ The publisher does not trust only `github.event.workflow_run` display data or an
 - malformed artifact digest;
 - downloaded ZIP digest mismatch;
 - ZIP traversal/symlink/duplicate/unexpected-file attacks;
+- incomplete, malformed, or duplicate-ID artifact pagination;
+- workflow runs advertising more than 1,000 artifacts before pagination;
 - excessive source-artifact member count or declared uncompressed size.
 
 The resolver writes source-artifact metadata itself; it does not accept source-owned claims for GitHub artifact ID/digest as authoritative.
