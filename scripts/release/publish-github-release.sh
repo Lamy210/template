@@ -5,7 +5,12 @@ set -euo pipefail
 : "${DMG_PATH:?DMG_PATH is required}"
 
 checksum_path="${DMG_PATH}.sha256"
-for file_path in "${DMG_PATH}" "${checksum_path}"; do
+assets=("${DMG_PATH}" "${checksum_path}")
+if [[ -n "${RELEASE_PROVENANCE_PATH:-}" ]]; then
+  assets+=("${RELEASE_PROVENANCE_PATH}")
+fi
+
+for file_path in "${assets[@]}"; do
   if [[ ! -f "${file_path}" ]]; then
     echo "Release asset not found: ${file_path}" >&2
     exit 1
@@ -14,8 +19,7 @@ done
 
 if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
   gh release create "${TAG_NAME}" \
-    "${DMG_PATH}" \
-    "${checksum_path}" \
+    "${assets[@]}" \
     --verify-tag \
     --generate-notes \
     --title "${TAG_NAME}"
@@ -40,7 +44,12 @@ if ! gh release view "${TAG_NAME}" --json assets >"${release_json}"; then
   exit 1
 fi
 
-python3 - "${release_json}" "$(basename "${DMG_PATH}")" "$(basename "${checksum_path}")" <<'PY'
+expected_asset_names=()
+for local_path in "${assets[@]}"; do
+  expected_asset_names+=("$(basename "${local_path}")")
+done
+
+python3 - "${release_json}" "${expected_asset_names[@]}" <<'PY'
 import json
 from collections import Counter
 import sys
@@ -83,7 +92,7 @@ if actual != expected:
     )
 PY
 
-for local_path in "${DMG_PATH}" "${checksum_path}"; do
+for local_path in "${assets[@]}"; do
   asset_name="$(basename "${local_path}")"
   if ! gh release download "${TAG_NAME}" \
     --pattern "${asset_name}" \

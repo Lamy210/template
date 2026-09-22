@@ -1,0 +1,81 @@
+# Copy/adapt this file to .github/workflows/release-build.yml in an application repository.
+# Keep the workflow name and path stable because the default-branch publisher validates both.
+# Replace MyApp values and the build command/path with application-specific values.
+
+name: Release Build
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions: {}
+
+jobs:
+  build:
+    name: Secret-free release build
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Validate canonical release tag
+        shell: bash
+        env:
+          SOURCE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" != "push" || "${GITHUB_REF_TYPE}" != "tag" || ! "${SOURCE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release Build requires a push to a canonical stable SemVer tag (vX.Y.Z without leading zeroes): ${SOURCE_TAG}" >&2
+            exit 1
+          fi
+
+      - name: Checkout release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and test unsigned application
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Replace this with the application's deterministic build/test entrypoint.
+          ./scripts/ci/build-release-artifact.sh
+
+      - name: Package unsigned application
+        shell: bash
+        env:
+          APP_PATH: build/MyApp.app
+          OUTPUT_ARCHIVE: artifact-payload/release-input/unsigned-macos-app.tar.gz
+        run: |
+          set -euo pipefail
+          mkdir -p artifact-payload/release-input
+          bash scripts/release/package-app-artifact.sh
+
+      - name: Write build provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release/write-build-provenance.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow-name "Release Build" \
+            --workflow-path ".github/workflows/release-build.yml" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --source-event "${GITHUB_EVENT_NAME}" \
+            --source-sha "${GITHUB_SHA}" \
+            --source-ref "${GITHUB_REF}" \
+            --tag "${GITHUB_REF_NAME}" \
+            --archive-path artifact-payload/release-input/unsigned-macos-app.tar.gz \
+            --app-basename MyApp.app \
+            --bundle-id com.example.MyApp \
+            --output artifact-payload/release-input/build-provenance.json
+
+      - name: Upload exact release build input
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned-macos-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifact-payload/
+          if-no-files-found: error
+          retention-days: 1
