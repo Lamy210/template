@@ -24,6 +24,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Audit live Solo default-branch Ruleset
+        shell: bash
+        run: bash scripts/ci/audit-live-main-ruleset.sh "${{ github.repository }}"
+
       - name: Audit effective default-branch rules
         shell: bash
         run: bash scripts/ci/audit-live-main-rules.sh "${{ github.repository }}"
