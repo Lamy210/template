@@ -106,6 +106,15 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         plist_read = text.index("PlistBuddy -c 'Print :CFBundleIdentifier'")
         self.assertLess(plist_guard, plist_read)
 
+    def test_dmg_name_is_validated_before_certificate_import(self) -> None:
+        text = self.release_text()
+        validation = text.index("- name: Validate trusted release output name before secrets")
+        certificate = text.index("scripts/release/import-certificate.sh")
+        self.assertLess(validation, certificate)
+        self.assertIn("scripts/release/validate-release-output-name.py", text)
+        self.assertIn("DMG_NAME: ${{ inputs.dmg_name }}", text)
+        self.assertIn('--dmg-name "${DMG_NAME}"', text)
+
     def test_validated_metadata_is_rebound_to_current_publisher_attempt(self) -> None:
         text = self.release_text()
         self.assertIn('--publisher-run-id "${GITHUB_RUN_ID}"', text)
