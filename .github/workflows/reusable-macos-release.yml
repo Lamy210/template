@@ -411,6 +411,16 @@ jobs:
           python3 scripts/release/validate-release-output-name.py \
             --dmg-name "${DMG_NAME}"
 
+      - name: Require exact verified release payload
+        shell: bash
+        env:
+          DMG_NAME: ${{ inputs.dmg_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/validate-verified-release-payload.py \
+            --root release-output \
+            --dmg-name "${DMG_NAME}"
+
       - name: Reverify final release provenance before publication
         shell: bash
         env:

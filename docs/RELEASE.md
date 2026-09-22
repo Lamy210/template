@@ -296,7 +296,9 @@ Its closed schema records:
 
 The attestation intentionally omits a wall-clock timestamp and `publisherRunAttempt`. A full publisher rerun keeps the same workflow run ID but increments `github.run_attempt`; excluding attempt-local data keeps the attestation deterministic when all release facts and final DMG bytes are identical, preserving immutable/idempotent release retry behavior.
 
-The verified Actions Artifact contains the DMG, checksum, and `release-provenance.json`. Before any GitHub Release mutation, the separate no-Apple-secrets publication job independently revalidates the final attestation against the expected source run/artifact/tag, current publisher run/SHA, and SHA-256 recomputed from the exact downloaded DMG. The attestation is therefore a checked handoff across the repository-write boundary rather than merely signer-authored metadata.
+The verified Actions Artifact contains exactly the DMG, its checksum, and `release-provenance.json`. After exact-ID download, the separate no-Apple-secrets publication job rejects missing entries, unexpected extra entries, directories, and symlinked expected entries before interpreting provenance or mutating GitHub Release state.
+
+Before any GitHub Release mutation, the publication job independently revalidates the final attestation against the expected source run/artifact/tag, current publisher run/SHA, and SHA-256 recomputed from the exact downloaded DMG. The attestation is therefore a checked handoff across the repository-write boundary rather than merely signer-authored metadata.
 
 When GitHub Release publication is enabled, the DMG, checksum, and verified `release-provenance.json` are published as immutable release assets.
 
