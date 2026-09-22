@@ -303,7 +303,7 @@ assert_status expired 4
 assert_status wrong-artifact 4
 assert_status duplicate 3
 assert_status incomplete-pagination 3
-assert_status too-many-artifacts 3
+assert_status too-many-artifacts 4
 if ! grep -F "artifact total_count exceeds configured limit" "${TEMP_ROOT}/too-many-artifacts.stderr" >/dev/null; then
   echo "Excessive artifact count did not fail before pagination." >&2
   cat "${TEMP_ROOT}/too-many-artifacts.stderr" >&2 || true
