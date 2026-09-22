@@ -181,6 +181,26 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             text,
         )
 
+    def test_final_release_attestation_is_reverified_before_publication(self) -> None:
+        text = self.release_text()
+        verifier = text.index("scripts/release/verify-release-provenance.py")
+        publication = text.index("scripts/release/publish-github-release.sh")
+        self.assertLess(verifier, publication)
+        for token in (
+            "SOURCE_RUN_ID: ${{ inputs.source_run_id }}",
+            "SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}",
+            "SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}",
+            "SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}",
+            "SOURCE_SHA: ${{ inputs.source_sha }}",
+            "SOURCE_TAG: ${{ inputs.source_tag }}",
+            "ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}",
+            "PUBLISHER_RUN_ID: ${{ github.run_id }}",
+            "PUBLISHER_SHA: ${{ github.sha }}",
+            "RELEASE_PROVENANCE_PATH: release-output/release-provenance.json",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, text)
+
     def test_github_release_uses_validated_source_tag(self) -> None:
         text = self.release_text()
         self.assertIn("TAG_NAME: ${{ inputs.source_tag }}", text)

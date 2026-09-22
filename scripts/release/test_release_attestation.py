@@ -12,10 +12,12 @@ from scripts.release.release_attestation import (
     ExpectedRelease,
     build_release_attestation,
     validate_release_attestation,
+    verify_release_attestation,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+VERIFY_CLI = REPO_ROOT / "scripts/release/verify-release-provenance.py"
 SOURCE_SHA = "0123456789abcdef0123456789abcdef01234567"
 PUBLISHER_SHA = "1123456789abcdef0123456789abcdef01234567"
 SOURCE_ARTIFACT_DIGEST = "sha256:" + "a" * 64
@@ -110,6 +112,75 @@ class ReleaseAttestationTests(unittest.TestCase):
         for document in mutations:
             with self.subTest(document=document):
                 self.assertTrue(validate_release_attestation(document))
+
+    def test_verifier_binds_release_identity_and_exact_dmg(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            dmg = Path(temporary_directory) / "MyApp-v1.2.3.dmg"
+            dmg.write_bytes(b"signed-notarized-dmg-fixture\n")
+            expected = expected_release(dmg)
+            document = build_release_attestation(expected)
+
+            self.assertEqual([], verify_release_attestation(document, expected))
+
+            drifted = dict(document)
+            drifted["sourceRunAttempt"] = 3
+            identity_errors = verify_release_attestation(drifted, expected)
+            self.assertTrue(any("sourceRunAttempt" in error for error in identity_errors))
+
+            dmg.write_bytes(b"tampered-final-dmg\n")
+            digest_errors = verify_release_attestation(document, expected)
+            self.assertTrue(any("exact release DMG" in error for error in digest_errors))
+
+    def test_verifier_cli_rejects_tampered_final_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            dmg = root / "MyApp-v1.2.3.dmg"
+            metadata = root / "release-provenance.json"
+            dmg.write_bytes(b"stable-final-dmg\n")
+            document = build_release_attestation(expected_release(dmg))
+            document["publisherSHA"] = "2" * 40
+            metadata.write_text(
+                json.dumps(document, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(VERIFY_CLI),
+                    "--metadata",
+                    str(metadata),
+                    "--dmg",
+                    str(dmg),
+                    "--repository",
+                    "example/MyApp",
+                    "--source-run-id",
+                    "123456789",
+                    "--source-run-attempt",
+                    "2",
+                    "--source-sha",
+                    SOURCE_SHA,
+                    "--source-tag",
+                    "v1.2.3",
+                    "--source-artifact-id",
+                    "7001",
+                    "--source-artifact-digest",
+                    SOURCE_ARTIFACT_DIGEST,
+                    "--archive-sha256",
+                    ARCHIVE_SHA256,
+                    "--publisher-run-id",
+                    "99887766",
+                    "--publisher-sha",
+                    PUBLISHER_SHA,
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("publisherSHA", result.stdout)
 
     def test_writer_is_deterministic_for_same_release_facts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
