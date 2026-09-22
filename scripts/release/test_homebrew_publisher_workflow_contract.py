@@ -68,6 +68,11 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("ref: ${{ github.sha }}", text)
         self.assertIn("persist-credentials: false", text)
 
+    def test_rendered_cask_is_syntax_checked_before_tap_write(self) -> None:
+        block = step_block(self.homebrew_text(), "Render Cask")
+        self.assertTrue(block)
+        self.assertIn('ruby -c "${OUTPUT_CASK}"', block)
+
     def test_tap_token_is_available_only_to_steps_that_need_tap_network_access(self) -> None:
         text = self.homebrew_text()
         for step_name in (
