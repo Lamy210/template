@@ -85,6 +85,20 @@ The updater downloads `${dmg_name}.sha256` from the immutable GitHub Release for
 
 This prevents the default-branch publisher's own ref context from being mistaken for the released application tag.
 
+## Published checksum contract
+
+The Homebrew updater treats the published `.sha256` asset as structured release metadata, not as an arbitrary text file.
+
+The release producer writes the checksum with `shasum -a 256 <DMG basename>`. The consumer requires exactly one canonical line:
+
+```text
+<64 lowercase hexadecimal characters><two spaces><exact DMG basename>
+```
+
+with one trailing newline and no additional content. The filename embedded in the checksum must exactly equal the validated `dmg_name`. Uppercase digests, alternate prefixes such as `sha256:`, additional lines, missing trailing newline, unexpected spacing, and a checksum for a different asset are rejected before the tap write credential is used.
+
+The parser lives at `scripts/homebrew/parse_release_checksum.py` and is covered independently from the workflow contract.
+
 ## Trusted automation checkout
 
 The updater checks out release automation at the publisher workflow SHA with persisted credentials disabled. The release tag artifact does not provide Homebrew scripts or templates to the privileged update path.
