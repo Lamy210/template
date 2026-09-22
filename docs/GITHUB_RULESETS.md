@@ -215,6 +215,28 @@ Verify no organization-level or repository-level overlapping Ruleset reintroduce
 
 Only after these governance checks are effective should PR #6 be restacked from trusted `main` and the privileged two-stage release rollout continue.
 
+## Read-only live main Ruleset doctor
+
+After importing the reviewed Solo profile, audit the repository-owned Ruleset configuration itself:
+
+```bash
+bash scripts/ci/audit-live-main-ruleset.sh owner/repo
+```
+
+This doctor is read-only and complements, rather than replaces, the effective-rules doctor below. It requires exactly one active repository-owned branch Ruleset named `Solo default branch` and validates that Ruleset against the checked-in Solo contract, including:
+
+- target is `branch`;
+- source is the expected repository;
+- target scope is exactly `~DEFAULT_BRANCH` with no broad `release**` patterns;
+- approval count is zero;
+- required checks and merge method match the canonical profile;
+- bypass actors are empty when GitHub exposes that field;
+- when GitHub reports `current_user_can_bypass`, it must equal `never`.
+
+The Ruleset configuration API and effective-rules API answer different questions. Configuration audit catches broad targeting and bypass metadata that are not represented in branch effective-rule entries; effective audit catches additional repository/organization Rulesets that also apply to the actual default branch. Require both to pass after rollout.
+
+As with the tag doctor, GitHub may omit `bypass_actors` for a caller that cannot write the Ruleset. An omitted field is not proof that bypass actors do not exist; administrator UI/import review remains part of rollout.
+
 ## Read-only effective-main doctor
 
 After importing/replacing the reviewed branch Ruleset, audit the rules that GitHub is **actually enforcing** on the repository default branch:
@@ -276,7 +298,7 @@ Do not replace the disposable runtime proof with this configuration audit.
 
 After `.github/workflows/governance-audit.yml` has landed on the repository default branch, operators can run **Governance Audit** manually from the Actions tab.
 
-The workflow is intentionally `workflow_dispatch`-only. It does not run on pull requests, pushes, or schedules, and it grants only `contents: read`. Checkout credentials are not persisted. The audit uses the ephemeral `github.token` only for read-only GitHub API calls made by `audit-live-main-rules.sh`.
+The workflow is intentionally `workflow_dispatch`-only. It does not run on pull requests, pushes, or schedules, and it grants only `contents: read`. Checkout credentials are not persisted. The audit uses the ephemeral `github.token` only for read-only GitHub API calls made by the main-Ruleset, effective-main, and release-tag doctors.
 
 A failed manual run is actionable evidence of live-policy drift. For example, if a legacy overlapping Ruleset still requires one approval, the workflow should fail until that Ruleset is disabled/replaced. Do not weaken the checked-in Solo profile or the auditor merely to make this workflow green.
 
@@ -311,6 +333,7 @@ python3 scripts/ci/validate_rulesets.py
 After live import, additionally run:
 
 ```bash
+bash scripts/ci/audit-live-main-ruleset.sh owner/repo
 bash scripts/ci/audit-live-main-rules.sh owner/repo
 bash scripts/ci/audit-live-release-tag-ruleset.sh owner/repo
 ```
