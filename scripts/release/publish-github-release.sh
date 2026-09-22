@@ -39,8 +39,8 @@ cleanup() {
 trap cleanup EXIT
 
 release_json="${download_dir}/release.json"
-if ! gh release view "${TAG_NAME}" --json assets >"${release_json}"; then
-  echo "Failed to inspect existing release assets for ${TAG_NAME}." >&2
+if ! gh release view "${TAG_NAME}" --json assets,isDraft,isPrerelease,tagName >"${release_json}"; then
+  echo "Failed to inspect existing release metadata for ${TAG_NAME}." >&2
   exit 1
 fi
 
@@ -49,12 +49,12 @@ for local_path in "${assets[@]}"; do
   expected_asset_names+=("$(basename "${local_path}")")
 done
 
-python3 - "${release_json}" "${expected_asset_names[@]}" <<'PY'
+python3 - "${release_json}" "${TAG_NAME}" "${expected_asset_names[@]}" <<'PY'
 import json
 from collections import Counter
 import sys
 
-release_path, *expected_names = sys.argv[1:]
+release_path, expected_tag, *expected_names = sys.argv[1:]
 try:
     with open(release_path, encoding="utf-8") as handle:
         release = json.load(handle)
@@ -63,6 +63,17 @@ except (OSError, json.JSONDecodeError) as error:
 
 if not isinstance(release, dict):
     raise SystemExit("Existing release metadata must be a JSON object")
+
+tag_name = release.get("tagName")
+if not isinstance(tag_name, str) or tag_name != expected_tag:
+    raise SystemExit(
+        f"Existing release tag identity mismatch: expected {expected_tag!r}, got {tag_name!r}"
+    )
+if release.get("isDraft") is not False:
+    raise SystemExit("Existing release must be published, not draft")
+if release.get("isPrerelease") is not False:
+    raise SystemExit("Existing release must be a stable release, not prerelease")
+
 assets = release.get("assets")
 if not isinstance(assets, list):
     raise SystemExit("Existing release assets metadata must be an array")
