@@ -306,6 +306,8 @@ Stable releases are append-never/replace-never.
 
 `publish-github-release.sh`:
 
+- requires the canonical `release-provenance.json` asset; omission or renaming fails before any GitHub call;
+- requires the DMG, checksum, and provenance inputs to be regular non-symlink files;
 - creates a missing release using the already-validated tag;
 - treats an existing release as a no-op only when the expected DMG, checksum, and final release-attestation assets are byte-identical by SHA-256;
 - fails when an expected asset is missing or differs;

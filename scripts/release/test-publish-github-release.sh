@@ -104,6 +104,56 @@ run_publisher() {
     bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
 }
 
+run_publisher_without_provenance() {
+  GH_FAKE_LOG="${LOG_PATH}" \
+    GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    TAG_NAME="${TAG_NAME}" \
+    DMG_PATH="${DMG_PATH}" \
+    bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
+}
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false run_publisher_without_provenance; then
+  echo "Publisher accepted a release without final provenance." >&2
+  exit 1
+fi
+if [[ -s "${LOG_PATH}" ]]; then
+  echo "Publisher contacted GitHub before rejecting missing final provenance." >&2
+  exit 1
+fi
+
+original_provenance_path="${RELEASE_PROVENANCE_PATH}"
+wrong_provenance_path="${LOCAL_DIR}/provenance.json"
+cp "${original_provenance_path}" "${wrong_provenance_path}"
+RELEASE_PROVENANCE_PATH="${wrong_provenance_path}"
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted a non-canonical provenance asset name." >&2
+  exit 1
+fi
+if [[ -s "${LOG_PATH}" ]]; then
+  echo "Publisher contacted GitHub before rejecting a non-canonical provenance asset name." >&2
+  exit 1
+fi
+RELEASE_PROVENANCE_PATH="${original_provenance_path}"
+rm -f "${wrong_provenance_path}"
+
+real_provenance_path="${LOCAL_DIR}/release-provenance.real.json"
+mv "${RELEASE_PROVENANCE_PATH}" "${real_provenance_path}"
+ln -s "$(basename "${real_provenance_path}")" "${RELEASE_PROVENANCE_PATH}"
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted a symlinked final provenance asset." >&2
+  exit 1
+fi
+if [[ -s "${LOG_PATH}" ]]; then
+  echo "Publisher contacted GitHub before rejecting a symlinked provenance asset." >&2
+  exit 1
+fi
+rm -f "${RELEASE_PROVENANCE_PATH}"
+mv "${real_provenance_path}" "${RELEASE_PROVENANCE_PATH}"
+
 : >"${LOG_PATH}"
 GH_FAKE_RELEASE_EXISTS=false run_publisher
 if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
