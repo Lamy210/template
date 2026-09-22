@@ -71,7 +71,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
     def test_published_checksum_uses_strict_trusted_parser(self) -> None:
         block = step_block(self.homebrew_text(), "Download published checksum")
         self.assertTrue(block)
-        self.assertIn("source/scripts/homebrew/parse_release_checksum.py", block)
+        self.assertIn("source/scripts/release/release_checksum.py", block)
         self.assertIn('"${checksum_file}"', block)
         self.assertIn('"${DMG_NAME}"', block)
         self.assertNotIn("awk 'NR == 1", block)

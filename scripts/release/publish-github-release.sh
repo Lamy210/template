@@ -17,6 +17,26 @@ for file_path in "${assets[@]}"; do
   fi
 done
 
+command -v python3 >/dev/null 2>&1 || {
+  echo "python3 is required to validate the release checksum." >&2
+  exit 1
+}
+
+if ! checksum_digest="$(
+  python3 "$(dirname "${BASH_SOURCE[0]}")/release_checksum.py" \
+    "${checksum_path}" \
+    "$(basename "${DMG_PATH}")"
+)"; then
+  echo "Release checksum asset failed canonical validation." >&2
+  exit 1
+fi
+
+dmg_digest="$(shasum -a 256 "${DMG_PATH}" | awk '{print $1}')"
+if [[ "${checksum_digest}" != "${dmg_digest}" ]]; then
+  echo "Release checksum does not match DMG payload: ${DMG_PATH}" >&2
+  exit 1
+fi
+
 if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
   gh release create "${TAG_NAME}" \
     "${assets[@]}" \
@@ -25,11 +45,6 @@ if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
     --title "${TAG_NAME}"
   exit 0
 fi
-
-command -v python3 >/dev/null 2>&1 || {
-  echo "python3 is required to verify immutable release asset membership." >&2
-  exit 1
-}
 
 TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 download_dir="$(mktemp -d "${TEMP_ROOT%/}/existing-release.XXXXXX")"
