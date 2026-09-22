@@ -24,6 +24,11 @@ class GovernanceAuditWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("pull-requests: write", text)
         self.assertNotIn("administration: write", text)
 
+    def test_workflow_runs_live_main_ruleset_doctor_for_current_repository(self) -> None:
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("bash scripts/ci/audit-live-main-ruleset.sh", text)
+        self.assertIn("${{ github.repository }}", text)
+
     def test_workflow_runs_effective_rules_doctor_for_current_repository(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("bash scripts/ci/audit-live-main-rules.sh", text)
