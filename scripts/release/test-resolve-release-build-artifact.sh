@@ -75,7 +75,7 @@ if [[ ( "${scenario}" == "boolean-run-id" || "${scenario}" == "boolean-artifact-
   if [[ "${scenario}" == "boolean-run-id" ]]; then
     run_response_id=true
   fi
-  printf '{"id":%s,"run_attempt":2,"event":"push","conclusion":"success","head_sha":"%s","workflow_id":4242,"path":".github/workflows/release-build.yml","head_repository":{"id":%s,"full_name":"Lamy210/template"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
+  printf '{"id":%s,"run_attempt":2,"event":"push","conclusion":"success","head_branch":"v1.2.3","head_sha":"%s","workflow_id":4242,"path":".github/workflows/release-build.yml","head_repository":{"id":%s,"full_name":"Lamy210/template"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
     "${run_response_id}" "${sha}" "${repository_id}" "${repository_id}"
   exit 0
 fi
@@ -86,6 +86,7 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
   attempt=2
   event='push'
   conclusion='success'
+  head_branch='v1.2.3'
   repo='Lamy210/template'
   head_repository_id="${repository_id}"
   run_repository_id="${repository_id}"
@@ -100,12 +101,14 @@ if [[ "${args}" == *"/actions/runs/9001"* && "${args}" != *"/artifacts"* ]]; the
     wrong-attempt) attempt=3 ;;
     wrong-event) event='workflow_dispatch' ;;
     failed-run) conclusion='failure' ;;
+    wrong-head-branch) head_branch='main' ;;
+    leading-zero-head-tag) head_branch='v01.2.3' ;;
     wrong-repo) repo='attacker/template' ;;
     wrong-head-repo-id) head_repository_id=9999 ;;
     wrong-run-repo-id) run_repository_id=9999 ;;
   esac
-  printf '{"id":9001,"run_attempt":%s,"event":"%s","conclusion":"%s","head_sha":"%s","workflow_id":%s,"path":"%s","head_repository":{"id":%s,"full_name":"%s"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
-    "${attempt}" "${event}" "${conclusion}" "${sha}" "${workflow_id}" "${path}" \
+  printf '{"id":9001,"run_attempt":%s,"event":"%s","conclusion":"%s","head_branch":"%s","head_sha":"%s","workflow_id":%s,"path":"%s","head_repository":{"id":%s,"full_name":"%s"},"repository":{"id":%s,"full_name":"Lamy210/template"}}' \
+    "${attempt}" "${event}" "${conclusion}" "${head_branch}" "${sha}" "${workflow_id}" "${path}" \
     "${head_repository_id}" "${repo}" "${run_repository_id}"
   exit 0
 fi
@@ -228,6 +231,7 @@ assert metadata["workflowPath"] == ".github/workflows/release-build.yml"
 assert metadata["runId"] == 9001
 assert metadata["runAttempt"] == 2
 assert metadata["sourceSHA"] == "0123456789abcdef0123456789abcdef01234567"
+assert metadata["sourceTag"] == "v1.2.3"
 assert metadata["artifactId"] == 7001
 assert metadata["artifactName"] == "unsigned-macos-release-9001-2"
 assert re.fullmatch(r"sha256:[0-9a-f]{64}", metadata["artifactDigest"])
@@ -243,6 +247,8 @@ assert_status wrong-path 4
 assert_status wrong-attempt 4
 assert_status wrong-event 4
 assert_status failed-run 4
+assert_status wrong-head-branch 4
+assert_status leading-zero-head-tag 4
 assert_status wrong-repo 4
 assert_status wrong-head-repo-id 4
 assert_status wrong-run-repo-id 4
