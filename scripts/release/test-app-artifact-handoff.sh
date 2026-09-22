@@ -274,4 +274,20 @@ if [[ "${size_limit_output}" != *"extracted file size exceeds configured limit"*
   exit 1
 fi
 
+if invalid_limit_output="$(
+  MAX_APP_ARCHIVE_MEMBERS=0 \
+    ARCHIVE_PATH="${RESOURCE_ARCHIVE}" \
+    OUTPUT_DIR="${TMP_ROOT}/invalid-limit-downloaded" \
+    APP_BASENAME="TestApp.app" \
+    bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh" 2>&1
+)"; then
+  echo "Invalid archive member limit was incorrectly accepted." >&2
+  exit 1
+fi
+if [[ "${invalid_limit_output}" != *"MAX_APP_ARCHIVE_MEMBERS must be a positive integer"* ]]; then
+  echo "Invalid archive member limit did not fail closed." >&2
+  printf '%s\n' "${invalid_limit_output}" >&2
+  exit 1
+fi
+
 printf 'App artifact handoff preserved and verified executable permissions.\n'
