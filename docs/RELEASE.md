@@ -57,9 +57,12 @@ as a new artifact inside the publisher workflow run. That handoff separates untr
 
 ### Zone C: privileged signing and publication
 
-Only the reusable macOS release job declares `environment: release` and `contents: write`.
+The reusable macOS release workflow contains two separate privileged boundaries:
 
-Before importing the Developer ID certificate, the job:
+1. the **signing/notarization job** declares `environment: release`, receives Apple credentials, and is explicitly limited to `actions: read` + `contents: read`;
+2. the later **GitHub publication job** does not declare the `release` Environment, receives no Apple credentials, and alone receives `contents: write`.
+
+Before importing the Developer ID certificate, the signing job:
 
 1. checks out trusted publisher control code at the publisher workflow SHA;
 2. downloads the validator-owned artifact from the current publisher run;
@@ -68,9 +71,11 @@ Before importing the Developer ID certificate, the job:
 5. repeats archive preflight/extraction;
 6. repeats bundle ID/version/executable validation.
 
-Only then does it import Apple credentials and perform signing/notarization/publication.
+Only then does it import Apple credentials and perform signing/notarization. After final verification it uploads the signed DMG, checksum, and publisher-owned release provenance as an exact current-run/current-attempt Actions Artifact.
 
-The privileged job must never execute scripts or hooks from the downloaded application archive. Release scripts and optional entitlements come from the trusted publisher/default-branch checkout.
+The publication job independently verifies that signer-produced artifact's ID, canonical name, GitHub digest, repository identity, publisher run, publisher attempt, and publisher SHA before downloading it. It then revalidates the trusted DMG basename, rebinds the immutable release tag, and performs GitHub Release publication.
+
+The signing job must never execute scripts or hooks from the downloaded application archive. Release scripts and optional entitlements come from the trusted publisher/default-branch checkout. The publication job must never receive Apple signing/notarization credentials.
 
 ## Why the old monolithic workflow is retired
 
@@ -124,11 +129,17 @@ Release Publisher / validate (current default-branch control code)
   |   - unsigned-macos-app.tar.gz
   |   - validated-release-metadata.json
   v
-Reusable macOS Release (environment: release)
+Reusable macOS Release / sign (environment: release, contents: read)
   |
   | metadata/digest/archive revalidation
   | Apple signing -> DMG -> notarization -> verification
   | publisher-owned release-provenance.json
+  | exact verified-macos-release-<publisher-run-id>-<publisher-run-attempt> artifact
+  v
+Reusable macOS Release / publish (no Apple secrets, contents: write)
+  |
+  | exact artifact identity + digest revalidation
+  | release-tag rebinding
   v
 Immutable GitHub Release
   |
@@ -252,6 +263,9 @@ validated archive
   -> verify Gatekeeper/signature/executable
   -> generate SHA-256
   -> write publisher-owned release-provenance.json
+  -> upload exact verified release artifact for this publisher run/attempt
+  -> separate no-Apple-secrets publication job verifies artifact identity/digest
+  -> rebind release tag
   -> publish immutable GitHub Release
 ```
 
@@ -459,7 +473,7 @@ For an adopter moving from the old monolithic example:
 4. keep Apple credentials only in the protected `release` Environment;
 5. keep the tag-build workflow secret-free/read-only;
 6. ensure the publisher validation job has only `actions: read` + `contents: read`;
-7. verify only the privileged reusable macOS release job declares `environment: release`;
+7. verify only the signing/notarization job declares `environment: release`, that it has `contents: read` rather than write, and that the separate publication job has `contents: write` without Apple secrets;
 8. run `bash scripts/release/audit-release-environment.sh owner/repo` and confirm the read-only doctor accepts the default-branch-only `release` Environment configuration;
 9. in a disposable repository, run `prove-release-environment-policy.sh` and require the default branch to enter the `release` Environment while both an unauthorized branch and arbitrary tag are denied;
 10. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
