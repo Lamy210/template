@@ -148,16 +148,20 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin
 
-          if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
-            git fetch origin "${branch}"
-            git switch -C "${branch}" "origin/${branch}"
-          else
-            git switch "${TAP_DEFAULT_BRANCH}"
-            git pull --ff-only origin "${TAP_DEFAULT_BRANCH}"
-            git switch -c "${branch}"
+          remote_branch_sha=""
+          if remote_line="$(git ls-remote --exit-code --heads origin "refs/heads/${branch}")"; then
+            remote_branch_sha="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $1 }')"
+            if [[ ! "${remote_branch_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Existing automation branch returned an invalid SHA." >&2
+              exit 1
+            fi
           fi
 
+          git rev-parse --verify "refs/remotes/origin/${TAP_DEFAULT_BRANCH}^{commit}" >/dev/null
+          git switch -C "${branch}" "origin/${TAP_DEFAULT_BRANCH}"
+
           echo "branch=${branch}" >>"${GITHUB_OUTPUT}"
+          echo "remote_branch_sha=${remote_branch_sha}" >>"${GITHUB_OUTPUT}"
 
       - name: Render Cask
         shell: bash
@@ -188,17 +192,34 @@ jobs:
           SOURCE_TAG: ${{ inputs.source_tag }}
           CASK_TOKEN: ${{ inputs.cask_token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
+          REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}
         run: |
           set -euo pipefail
           version="${SOURCE_TAG#v}"
           cd tap
           git add "Casks/${CASK_TOKEN}.rb"
 
+          push_automation_branch() {
+            if [[ -n "${REMOTE_BRANCH_SHA}" ]]; then
+              if [[ ! "${REMOTE_BRANCH_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "REMOTE_BRANCH_SHA must be a canonical commit SHA when present." >&2
+                return 1
+              fi
+              git push --set-upstream origin "HEAD:${BRANCH}" \
+                --force-with-lease="refs/heads/${BRANCH}:${REMOTE_BRANCH_SHA}"
+            else
+              git push --set-upstream origin "HEAD:${BRANCH}"
+            fi
+          }
+
           if git diff --cached --quiet; then
+            if [[ -n "${REMOTE_BRANCH_SHA}" ]]; then
+              push_automation_branch
+            fi
             echo "changed=false" >>"${GITHUB_OUTPUT}"
           else
             git commit -m "chore(cask): update ${CASK_TOKEN} to ${version}"
-            git push --set-upstream origin "${BRANCH}"
+            push_automation_branch
             echo "changed=true" >>"${GITHUB_OUTPUT}"
           fi
 
