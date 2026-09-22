@@ -82,13 +82,17 @@ permissions: {}
 
 jobs:
   release:
-    name: Sign, notarize, and publish
+    name: Sign and notarize validated release
     runs-on: macos-latest
     timeout-minutes: 30
     environment: release
     permissions:
       actions: read
-      contents: write
+      contents: read
+    outputs:
+      verified_artifact_name: verified-macos-release-${{ github.run_id }}-${{ github.run_attempt }}
+      verified_artifact_id: ${{ steps.verified_identity.outputs.id }}
+      verified_artifact_digest: ${{ steps.verified_identity.outputs.digest }}
 
     steps:
       - name: Checkout trusted publisher control code
@@ -314,6 +318,7 @@ jobs:
             --output release-output/release-provenance.json
 
       - name: Upload verified release artifacts
+        id: verified_upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-macos-release-${{ github.run_id }}-${{ github.run_attempt }}
@@ -324,25 +329,18 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Rebind release tag before publication
-        if: ${{ inputs.publish_github_release }}
+      - name: Normalize verified release artifact identity
+        id: verified_identity
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCE_TAG: ${{ inputs.source_tag }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
-          PUBLISHER_SHA: ${{ github.sha }}
-        run: bash scripts/release/verify-release-source.sh >/dev/null
-
-      - name: Publish immutable GitHub Release
-        if: ${{ inputs.publish_github_release }}
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ inputs.source_tag }}
-          DMG_PATH: release-output/${{ inputs.dmg_name }}
-          RELEASE_PROVENANCE_PATH: release-output/release-provenance.json
-        run: bash scripts/release/publish-github-release.sh
+          RAW_ARTIFACT_ID: ${{ steps.verified_upload.outputs.artifact-id }}
+          RAW_ARTIFACT_DIGEST: ${{ steps.verified_upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/normalize-artifact-identity.py \
+            --artifact-id "${RAW_ARTIFACT_ID}" \
+            --artifact-digest "${RAW_ARTIFACT_DIGEST}" \
+            >>"${GITHUB_OUTPUT}"
 
       - name: Delete temporary signing keychain
         if: ${{ always() }}
@@ -353,3 +351,81 @@ jobs:
           if [[ -n "${KEYCHAIN_PATH}" ]]; then
             security delete-keychain "${KEYCHAIN_PATH}" || true
           fi
+
+  publish:
+    name: Publish verified release
+    needs: release
+    if: ${{ inputs.publish_github_release && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Checkout trusted publisher control code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact signer-produced artifact identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED_ARTIFACT_ID: ${{ needs.release.outputs.verified_artifact_id }}
+          VERIFIED_ARTIFACT_NAME: ${{ needs.release.outputs.verified_artifact_name }}
+          VERIFIED_ARTIFACT_DIGEST: ${{ needs.release.outputs.verified_artifact_digest }}
+          PUBLISHER_RUN_ID: ${{ github.run_id }}
+          PUBLISHER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PUBLISHER_SHA: ${{ github.sha }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${VERIFIED_ARTIFACT_ID}" \
+            >verified-release-artifact-metadata.json
+          python3 scripts/release/verify-verified-release-artifact.py \
+            --metadata verified-release-artifact-metadata.json \
+            --artifact-id "${VERIFIED_ARTIFACT_ID}" \
+            --artifact-name "${VERIFIED_ARTIFACT_NAME}" \
+            --artifact-digest "${VERIFIED_ARTIFACT_DIGEST}" \
+            --publisher-run-id "${PUBLISHER_RUN_ID}" \
+            --publisher-run-attempt "${PUBLISHER_RUN_ATTEMPT}" \
+            --publisher-sha "${PUBLISHER_SHA}" \
+            --repository-id "${REPOSITORY_ID}"
+
+      - name: Download exact verified release artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.release.outputs.verified_artifact_id }}
+          path: release-output
+          merge-multiple: true
+
+      - name: Validate trusted release output name before publication
+        shell: bash
+        env:
+          DMG_NAME: ${{ inputs.dmg_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/validate-release-output-name.py \
+            --dmg-name "${DMG_NAME}"
+
+      - name: Rebind release tag before publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: bash scripts/release/verify-release-source.sh >/dev/null
+
+      - name: Publish immutable GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.source_tag }}
+          DMG_PATH: release-output/${{ inputs.dmg_name }}
+          RELEASE_PROVENANCE_PATH: release-output/release-provenance.json
+        run: bash scripts/release/publish-github-release.sh
+

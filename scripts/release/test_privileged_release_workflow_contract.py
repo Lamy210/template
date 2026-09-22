@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -9,6 +10,18 @@ REUSABLE_RELEASE = REPO_ROOT / ".github/workflows/reusable-macos-release.yml"
 PUBLISHER_EXAMPLE = REPO_ROOT / "examples/app-release-publisher.yml"
 RELEASE_DOC = REPO_ROOT / "docs/RELEASE.md"
 SETUP_DOC = REPO_ROOT / "docs/SETUP.md"
+
+
+def job_block(text: str, job_id: str) -> str:
+    marker = f"  {job_id}:\n"
+    start = text.find(marker)
+    if start < 0:
+        return ""
+    match = re.search(r"(?m)^  [A-Za-z0-9_-]+:\n", text[start + len(marker) :])
+    if match is None:
+        return text[start:]
+    end = start + len(marker) + match.start()
+    return text[start:end]
 
 
 class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
@@ -176,6 +189,63 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         text = self.release_text()
         self.assertEqual(1, text.count("environment: release"))
         self.assertIn("contents: write", text)
+
+    def test_signing_job_has_apple_secrets_but_no_repository_write_token(self) -> None:
+        block = job_block(self.release_text(), "release")
+        self.assertTrue(block, "release signing job is required")
+        self.assertIn("environment: release", block)
+        self.assertIn("actions: read", block)
+        self.assertIn("contents: read", block)
+        self.assertNotIn("contents: write", block)
+        for token in (
+            "MACOS_CERTIFICATE_P12_BASE64",
+            "MACOS_CERTIFICATE_PASSWORD",
+            "APP_STORE_CONNECT_API_KEY_P8",
+            "APP_STORE_CONNECT_KEY_ID",
+            "APP_STORE_CONNECT_ISSUER_ID",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, block)
+        self.assertNotIn("Publish immutable GitHub Release", block)
+
+    def test_publication_job_is_separate_write_boundary_without_apple_secrets(self) -> None:
+        block = job_block(self.release_text(), "publish")
+        self.assertTrue(block, "separate publish job is required")
+        self.assertIn("needs: release", block)
+        self.assertIn("actions: read", block)
+        self.assertIn("contents: write", block)
+        self.assertNotIn("environment: release", block)
+        for token in (
+            "MACOS_CERTIFICATE_P12_BASE64",
+            "MACOS_CERTIFICATE_PASSWORD",
+            "APP_STORE_CONNECT_API_KEY_P8",
+            "APP_STORE_CONNECT_KEY_ID",
+            "APP_STORE_CONNECT_ISSUER_ID",
+        ):
+            with self.subTest(token=token):
+                self.assertNotIn(token, block)
+        self.assertIn("scripts/release/verify-verified-release-artifact.py", block)
+        self.assertIn("artifact-ids: ${{ needs.release.outputs.verified_artifact_id }}", block)
+        self.assertIn("Rebind release tag before publication", block)
+        self.assertIn("Publish immutable GitHub Release", block)
+
+    def test_verified_release_handoff_exports_exact_artifact_identity(self) -> None:
+        block = job_block(self.release_text(), "release")
+        self.assertIn("id: verified_upload", block)
+        self.assertIn("id: verified_identity", block)
+        self.assertIn("scripts/release/normalize-artifact-identity.py", block)
+        self.assertIn(
+            "verified_artifact_id: ${{ steps.verified_identity.outputs.id }}",
+            block,
+        )
+        self.assertIn(
+            "verified_artifact_digest: ${{ steps.verified_identity.outputs.digest }}",
+            block,
+        )
+        self.assertIn(
+            "verified_artifact_name: verified-macos-release-${{ github.run_id }}-${{ github.run_attempt }}",
+            block,
+        )
 
     def test_publisher_privileged_job_depends_on_validation_and_calls_trusted_reusable(self) -> None:
         text = self.publisher_text()
