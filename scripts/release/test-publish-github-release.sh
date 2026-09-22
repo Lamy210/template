@@ -129,6 +129,17 @@ if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
   echo "Publisher reached GitHub mutation with a mismatched local checksum." >&2
   exit 1
 fi
+printf 'not-a-canonical-checksum\n' >"${CHECKSUM_PATH}"
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Malformed local checksum was incorrectly accepted for publication." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Publisher reached GitHub mutation with a malformed local checksum." >&2
+  exit 1
+fi
+
 (
   cd "${LOCAL_DIR}"
   shasum -a 256 "$(basename "${DMG_PATH}")" >"$(basename "${CHECKSUM_PATH}")"
