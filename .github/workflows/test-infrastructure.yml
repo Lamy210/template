@@ -76,6 +76,9 @@ jobs:
       - name: Test subsystem classifier tests
         run: python3 -m unittest scripts/test/test-classify-test-policy.py -v
 
+      - name: Workflow concurrency policy tests
+        run: python3 scripts/test/test-workflow-concurrency.py -v
+
       - name: macOS E2E tooling tests
         run: python3 -m unittest scripts/test/test-macos-e2e.py -v
 
