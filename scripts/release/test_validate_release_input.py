@@ -98,6 +98,7 @@ def source_metadata() -> dict:
         "runId": 123456789,
         "runAttempt": 2,
         "sourceSHA": SHA,
+        "sourceTag": "v1.2.3",
         "artifactId": 7001,
         "artifactName": "unsigned-macos-release-123456789-2",
         "artifactDigest": "sha256:" + "b" * 64,
@@ -196,6 +197,18 @@ class ReleaseInputValidationTests(unittest.TestCase):
             provenance_mutator=lambda document: document.__setitem__("sourceRunAttempt", 3)
         )
         self.assertTrue(any("sourceRunAttempt" in error for error in errors))
+
+    def test_rejects_provenance_release_identity_drift_from_trusted_source_tag(self) -> None:
+        def mutate(document: dict) -> None:
+            document["tag"] = "v1.2.4"
+            document["sourceRef"] = "refs/tags/v1.2.4"
+            document["version"] = "1.2.4"
+
+        errors, _ = self.validate_fixture(provenance_mutator=mutate)
+
+        self.assertTrue(
+            any("tag" in error or "sourceRef" in error or "version" in error for error in errors)
+        )
 
     def test_rejects_resolved_tag_sha_mismatch(self) -> None:
         errors, _ = self.validate_fixture(resolved_tag_sha="2" * 40)
