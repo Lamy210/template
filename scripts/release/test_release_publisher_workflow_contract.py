@@ -92,6 +92,8 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
 
     def test_candidate_tag_parser_requires_canonical_stable_semver(self) -> None:
         block = job_block(self.workflow_text(), "validate")
+        self.assertIn('tag = metadata.get("sourceTag")', block)
+        self.assertNotIn('tag = provenance.get("tag")', block)
         self.assertIn(
             r're.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", tag)',
             block,
