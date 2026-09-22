@@ -217,4 +217,77 @@ if [[ "${duplicate_output}" != *"Duplicate archive member path"* ]]; then
   exit 1
 fi
 
+RESOURCE_ARCHIVE="${TMP_ROOT}/artifact/resource-limit.tar.gz"
+python3 - "${RESOURCE_ARCHIVE}" <<'PY'
+import io
+import sys
+import tarfile
+
+archive_path = sys.argv[1]
+with tarfile.open(archive_path, "w:gz") as archive:
+    for name in (
+        "TestApp.app",
+        "TestApp.app/Contents",
+        "TestApp.app/Contents/Resources",
+    ):
+        entry = tarfile.TarInfo(name)
+        entry.type = tarfile.DIRTYPE
+        entry.mode = 0o755
+        archive.addfile(entry)
+
+    payload = b"x" * 64
+    file_entry = tarfile.TarInfo("TestApp.app/Contents/Resources/payload.bin")
+    file_entry.size = len(payload)
+    file_entry.mode = 0o644
+    archive.addfile(file_entry, io.BytesIO(payload))
+PY
+
+if member_limit_output="$(
+  MAX_APP_ARCHIVE_MEMBERS=3 \
+    ARCHIVE_PATH="${RESOURCE_ARCHIVE}" \
+    OUTPUT_DIR="${TMP_ROOT}/member-limit-downloaded" \
+    APP_BASENAME="TestApp.app" \
+    bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh" 2>&1
+)"; then
+  echo "Archive above configured member limit was incorrectly accepted." >&2
+  exit 1
+fi
+if [[ "${member_limit_output}" != *"member count exceeds configured limit"* ]]; then
+  echo "Archive member limit did not fail closed." >&2
+  printf '%s\n' "${member_limit_output}" >&2
+  exit 1
+fi
+
+if size_limit_output="$(
+  MAX_APP_EXTRACTED_BYTES=32 \
+    ARCHIVE_PATH="${RESOURCE_ARCHIVE}" \
+    OUTPUT_DIR="${TMP_ROOT}/size-limit-downloaded" \
+    APP_BASENAME="TestApp.app" \
+    bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh" 2>&1
+)"; then
+  echo "Archive above configured extracted-size limit was incorrectly accepted." >&2
+  exit 1
+fi
+if [[ "${size_limit_output}" != *"extracted file size exceeds configured limit"* ]]; then
+  echo "Archive extracted-size limit did not fail closed." >&2
+  printf '%s\n' "${size_limit_output}" >&2
+  exit 1
+fi
+
+if invalid_limit_output="$(
+  MAX_APP_ARCHIVE_MEMBERS=0 \
+    ARCHIVE_PATH="${RESOURCE_ARCHIVE}" \
+    OUTPUT_DIR="${TMP_ROOT}/invalid-limit-downloaded" \
+    APP_BASENAME="TestApp.app" \
+    bash "${ROOT_DIR}/scripts/release/extract-app-artifact.sh" 2>&1
+)"; then
+  echo "Invalid archive member limit was incorrectly accepted." >&2
+  exit 1
+fi
+if [[ "${invalid_limit_output}" != *"MAX_APP_ARCHIVE_MEMBERS must be a positive integer"* ]]; then
+  echo "Invalid archive member limit did not fail closed." >&2
+  printf '%s\n' "${invalid_limit_output}" >&2
+  exit 1
+fi
+
 printf 'App artifact handoff preserved and verified executable permissions.\n'

@@ -15,6 +15,10 @@ EXPECTED_RELEASE_FILES = frozenset(
     }
 )
 DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:[/\\]")
+DEFAULT_MAX_MEMBERS = 16
+DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024 + 1024 * 1024
+MAX_APP_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
+MAX_BUILD_PROVENANCE_BYTES = 1024 * 1024
 
 
 def _unix_file_type(info: zipfile.ZipInfo) -> int:
@@ -52,8 +56,16 @@ def _validate_member_name(name: str) -> tuple[str | None, str | None]:
 def validate_and_extract_release_artifact(
     archive_path: Path,
     output_dir: Path,
+    *,
+    max_members: int = DEFAULT_MAX_MEMBERS,
+    max_total_uncompressed_bytes: int = DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES,
 ) -> list[str]:
     errors: list[str] = []
+    if type(max_members) is not int or max_members <= 0:
+        return ["max member count must be a positive integer"]
+    if type(max_total_uncompressed_bytes) is not int or max_total_uncompressed_bytes <= 0:
+        return ["max uncompressed size must be a positive integer"]
+
     if not archive_path.is_file():
         return [f"artifact ZIP not found: {archive_path}"]
     if output_dir.exists():
@@ -64,6 +76,20 @@ def validate_and_extract_release_artifact(
             infos = archive.infolist()
             if not infos:
                 return ["artifact ZIP is empty"]
+            if len(infos) > max_members:
+                return [
+                    "artifact ZIP member count exceeds configured limit: "
+                    f"{len(infos)} > {max_members}"
+                ]
+
+            total_uncompressed_bytes = sum(
+                info.file_size for info in infos if not info.is_dir()
+            )
+            if total_uncompressed_bytes > max_total_uncompressed_bytes:
+                return [
+                    "artifact ZIP uncompressed size exceeds configured limit: "
+                    f"{total_uncompressed_bytes} > {max_total_uncompressed_bytes}"
+                ]
 
             seen: set[str] = set()
             file_infos: dict[str, zipfile.ZipInfo] = {}
@@ -91,6 +117,19 @@ def validate_and_extract_release_artifact(
                 if info.is_dir():
                     continue
                 file_infos[canonical] = info
+
+            app_archive = file_infos.get("release-input/unsigned-macos-app.tar.gz")
+            if app_archive is not None and app_archive.file_size > MAX_APP_ARCHIVE_BYTES:
+                errors.append(
+                    "unsigned app archive exceeds configured source-artifact limit: "
+                    f"{app_archive.file_size} > {MAX_APP_ARCHIVE_BYTES}"
+                )
+            provenance = file_infos.get("release-input/build-provenance.json")
+            if provenance is not None and provenance.file_size > MAX_BUILD_PROVENANCE_BYTES:
+                errors.append(
+                    "build provenance exceeds configured source-artifact limit: "
+                    f"{provenance.file_size} > {MAX_BUILD_PROVENANCE_BYTES}"
+                )
 
             file_paths = set(file_infos)
             missing = sorted(EXPECTED_RELEASE_FILES - file_paths)
