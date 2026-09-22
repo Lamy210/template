@@ -105,7 +105,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
 
         self.assertIn("REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}", push)
         self.assertIn(
-            '--force-with-lease=refs/heads/${BRANCH}:${REMOTE_BRANCH_SHA}',
+            '--force-with-lease="refs/heads/${BRANCH}:${REMOTE_BRANCH_SHA}"',
             push,
         )
 
