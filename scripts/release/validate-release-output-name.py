@@ -2,17 +2,14 @@
 from __future__ import annotations
 
 import argparse
-import re
+from pathlib import Path
 import sys
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-DMG_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*\.dmg$")
-
-
-def validate_dmg_name(value: object) -> list[str]:
-    if not isinstance(value, str) or DMG_NAME_RE.fullmatch(value) is None:
-        return ["DMG name must be a safe literal .dmg basename"]
-    return []
+from scripts.release.release_output_name import validate_dmg_name
 
 
 def main() -> int:
