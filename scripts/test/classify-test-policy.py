@@ -55,32 +55,47 @@ def load_input(path: Path) -> dict[str, Any]:
     return payload
 
 
-def env_enabled(name: str) -> bool:
-    return os.environ.get(name, "") == "true"
+def optional_env_bool(name: str) -> bool | None:
+    value = os.environ.get(name, "")
+    if value == "":
+        return None
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise InputError(f"{name} must be true, false, or empty")
 
 
 def load_environment() -> dict[str, Any]:
-    coverage_enabled = env_enabled("MACOS_COVERAGE_ENABLED")
-    coverage_required_value = os.environ.get("MACOS_COVERAGE_REQUIRED", "")
-    visual_enabled = env_enabled("MACOS_VISUAL_ENABLED")
-    visual_required_value = os.environ.get("MACOS_VISUAL_REQUIRED", "")
+    integration_enabled = optional_env_bool("MACOS_INTEGRATION_ENABLED") is True
+    integration_required = optional_env_bool("MACOS_INTEGRATION_REQUIRED") is True
+    coverage_enabled = optional_env_bool("MACOS_COVERAGE_ENABLED") is True
+    coverage_required_value = optional_env_bool("MACOS_COVERAGE_REQUIRED")
+    e2e_enabled = optional_env_bool("MACOS_E2E_ENABLED") is True
+    e2e_required = optional_env_bool("MACOS_E2E_REQUIRED") is True
+    visual_enabled = optional_env_bool("MACOS_VISUAL_ENABLED") is True
+    visual_required_value = optional_env_bool("MACOS_VISUAL_REQUIRED")
+    visual_bootstrap = optional_env_bool("MACOS_VISUAL_BOOTSTRAP") is True
+
     return {
         "adapter": os.environ.get("MACOS_TEST_ADAPTER", ""),
-        "integrationEnabled": env_enabled("MACOS_INTEGRATION_ENABLED"),
-        "integrationRequired": env_enabled("MACOS_INTEGRATION_REQUIRED"),
+        "integrationEnabled": integration_enabled,
+        "integrationRequired": integration_required,
         "coverageEnabled": coverage_enabled,
         "coverageRequired": (
-            coverage_required_value == "true"
-            or (coverage_enabled and coverage_required_value != "false")
+            coverage_enabled
+            if coverage_required_value is None
+            else coverage_required_value
         ),
-        "e2eEnabled": env_enabled("MACOS_E2E_ENABLED"),
-        "e2eRequired": env_enabled("MACOS_E2E_REQUIRED"),
+        "e2eEnabled": e2e_enabled,
+        "e2eRequired": e2e_required,
         "visualEnabled": visual_enabled,
         "visualRequired": (
-            visual_required_value == "true"
-            or (visual_enabled and visual_required_value != "false")
+            visual_enabled
+            if visual_required_value is None
+            else visual_required_value
         ),
-        "visualBootstrap": env_enabled("MACOS_VISUAL_BOOTSTRAP"),
+        "visualBootstrap": visual_bootstrap,
     }
 
 
