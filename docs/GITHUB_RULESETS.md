@@ -93,7 +93,9 @@ With the correct immutable-tag Ruleset, the test tag cannot be cleaned up. That 
 
 ## Safe rollout
 
-The order below is required. Do not import the desired branch Ruleset in one step over the current repository configuration. The current repository rollout is deliberately staged as **PR #2 → PR #3 → PR #4 → PR #6**; this governance guide must not skip the consolidated test foundation in PR #2.
+The repository has already consolidated the former governance and privileged-release branches into PR #3. The remaining landing sequence is therefore deliberately **PR #2 -> integrated PR #3 -> live policy rollout**.
+
+PR #18 is only an integration preview of PR #2 plus the integrated PR #3 tree. It must not be merged.
 
 ### 1. Minimal administrative unblock
 
@@ -103,94 +105,102 @@ Open the currently active `main` repository Ruleset in GitHub Settings and chang
 Required approving reviews: 1 -> 0
 ```
 
-Do **not** add `Required gate` in this emergency edit.
+Do **not** add required status checks or a bypass actor in this emergency edit.
 
-Why: PR #3 contains the workflow that creates the stable repository-level `Required gate`. Requiring that check before PR #3 has landed on `main` can lock the repository.
+Why: PR #3 contains the stable `Required gate`, governance validation, and release-isolation checks that must exist successfully on `main` before they can safely become required live policy.
 
-After saving, confirm PR #2 is no longer blocked by the one-approval rule.
+After saving, re-read the live Ruleset and confirm PR #2 is no longer blocked by the one-approval rule.
 
 ### 2. Merge PR #2 first
 
-PR #2 is the consolidated macOS test/E2E/coverage/visual foundation and is the first landing PR against `main`.
+PR #2 is the consolidated macOS test/E2E/coverage/visual foundation and remains the first landing PR against `main`.
 
-Squash-merge PR #2 only after rechecking its exact head, review threads, and all exact-head workflows. After merge, wait for the resulting `main` workflows to finish successfully before touching PR #3.
+Before merging:
 
-### 3. Merge PR #3
+1. re-read the PR and require the exact expected head;
+2. require every exact-head workflow to be successful;
+3. require zero unresolved review threads;
+4. squash-merge only.
 
-Refresh/rebuild PR #3 from the post-PR-#2 `main` state, verify that its diff remains release-hardening-only, and rerun fresh CI.
+After merge, wait for the resulting `main` workflows to complete successfully before touching PR #3.
 
-PR #3 contains the P0 release-artifact handoff fix and stable repository-level required CI gate. Merge it only after the post-#2 restack is verified.
+### 3. Restack the integrated PR #3 from post-#2 main
 
-After merge, wait for the default-branch workflows to complete successfully.
+PR #3 now contains all of the previously staged work:
 
-### 4. Observe the actual main-branch check names
+- P0 release artifact handoff and the stable `Required gate`;
+- source-controlled Ruleset governance and live-policy doctors;
+- immutable release-tag rollout/proof tooling;
+- privileged two-stage release isolation;
+- protected `release` Environment audit/proof tooling;
+- trusted release-run/tag/artifact identity binding;
+- immutable GitHub Release publication;
+- deterministic Homebrew automation-branch handling and strict checksum/Cask validation.
 
-Do not infer check contexts from YAML display names.
+The old PR #4 and PR #6 branches were merged into PR #3 and must not be landed separately.
 
-Confirm GitHub actually emitted these successful Check Runs on the merged `main` commit:
+After PR #2 reaches `main`:
+
+1. refresh/rebase PR #3 onto the resulting `main`;
+2. stop on conflicts instead of silently preferring either side;
+3. verify that the combined `.github/workflows/quality.yml` still contains both Ruleset-governance and release-isolation validation;
+4. run fresh exact-head Quality, Swift Quality, and Release Isolation TDD;
+5. require zero unresolved review threads.
+
+### 4. Merge integrated PR #3
+
+Squash-merge PR #3 only after the post-#2 restack is clean and the fresh exact-head CI is successful.
+
+After merge, wait for all default-branch workflows to complete successfully.
+
+### 5. Observe actual main-branch check names
+
+Do not infer required-check contexts from YAML display names.
+
+Confirm GitHub actually emitted successful Check Runs on the merged `main` commit for:
 
 ```text
 Required gate
 swift-quality / Swift quality
 ```
 
-If either context is different, stop. Update the desired-state JSON only after observing the real successful name.
+If either context differs, stop. Update the desired-state JSON in a reviewed change before changing live Rulesets.
 
-### 5. Refresh the governance branch from current main
+### 6. Import the Solo default-branch Ruleset
 
-Update `feat/ruleset-governance` from the post-PR-#3 `main` state before making PR #4 review-ready.
+Import `rulesets/main-solo.json` only after the successful main-branch check names above have been observed.
 
-Both PRs modify `.github/workflows/quality.yml`. Resolve that integration by preserving:
+Before enabling it, verify:
 
-- PR #3's release-artifact package/round-trip jobs and final `Required gate`;
-- PR #4's `Ruleset governance validation` step inside `Repository hygiene`.
+- target is only `~DEFAULT_BRANCH`;
+- required approvals are `0`;
+- no path-specific required reviewers exist;
+- stale approvals are dismissed on push;
+- conversation resolution is enabled;
+- linear history is enabled;
+- only squash is allowed by the Ruleset contract;
+- `Required gate` is required;
+- `swift-quality / Swift quality` is required;
+- required checks are enforced on ref creation;
+- no broad `release**` branch patterns exist;
+- no bypass actors were introduced.
 
-Do not replace one side with the other wholesale. Re-run the combined Quality workflow after reconciliation.
+### 7. Disable or replace the legacy broad branch Ruleset
 
-### 6. Merge the governance implementation
+GitHub combines overlapping Rulesets. The existing legacy Ruleset currently targets the default branch and broad `release**` patterns and requires one approval.
 
-The governance PR adds:
+A newly imported approval=0 Ruleset does **not** override that policy. After verifying the new Solo profile, deliberately disable/delete or replace the legacy Ruleset so only the intended effective policy remains.
 
-- the two desired-state JSON files;
-- offline semantic validation;
-- Quality integration;
-- this operator guide.
+Run both live main doctors afterward:
 
-Merging this PR still does **not** synchronize live Rulesets automatically.
+```bash
+bash scripts/ci/audit-live-main-ruleset.sh owner/repo
+bash scripts/ci/audit-live-main-rules.sh owner/repo
+```
 
-### 7. Import the Solo default-branch Ruleset
+Both must pass.
 
-In GitHub:
-
-1. Open the repository.
-2. Open **Settings**.
-3. Under **Code and automation**, open **Rulesets** -> **Rulesets**.
-4. Choose the Ruleset import action.
-5. Import `rulesets/main-solo.json`.
-6. Before creating/enabling it, verify:
-   - target is the default branch only;
-   - approval count is `0`;
-   - no path-specific required reviewers were introduced;
-   - stale approvals are dismissed when new commits are pushed;
-   - conversation resolution is enabled;
-   - linear history is enabled;
-   - `Required gate` is required;
-   - `swift-quality / Swift quality` is required;
-   - status checks are not skipped on ref creation (`do_not_enforce_on_create` is absent or `false`);
-   - no repository-specific status-check integration IDs were introduced;
-   - no `release*` branch patterns are present;
-   - no unexpected ref-mutation rules were introduced;
-   - no bypass actors were introduced.
-
-### 8. Disable or replace the overlapping legacy branch Ruleset
-
-GitHub combines overlapping Rulesets. A newly imported approval=0 Ruleset does **not** override an older approval=1 Ruleset; the effective result remains the more restrictive policy.
-
-Therefore disable/delete or deliberately replace the obsolete legacy `main` Ruleset after confirming the imported Solo profile is correct.
-
-Do not leave both active unintentionally.
-
-### 9. Import the release-tag Ruleset
+### 8. Import and prove the immutable release-tag Ruleset
 
 Import `rulesets/release-tags.json` and verify it targets only:
 
@@ -198,22 +208,48 @@ Import `rulesets/release-tags.json` and verify it targets only:
 refs/tags/v*
 ```
 
-Confirm the effective rule restricts update and deletion while still allowing creation of a new version tag through the authorized release flow. A `creation` restriction is not part of the portable Solo tag profile.
+Then require all three assurance layers:
 
-After visual/effective-rule inspection, run the disposable runtime proof above and require it to pass before treating tag immutability as verified.
+1. offline canonical validation;
+2. `audit-live-release-tag-ruleset.sh`;
+3. the disposable-repository creation/update/deletion runtime proof.
 
-### 10. Inspect effective rules
+Do not run the destructive tag proof against the production/template repository.
 
-Use GitHub Rulesets/Rule Insights to inspect the effective rules on the default branch and matching tags.
+### 9. Configure and prove the protected release Environment
 
-Verify no organization-level or repository-level overlapping Ruleset reintroduces:
+Before enabling the privileged publisher:
 
-- approval=1 for Solo mode;
-- broad `release**` branch targeting;
-- missing required CI;
-- a bypass path not represented by the intended policy.
+1. configure the protected `release` Environment exactly as documented in `docs/RELEASE.md` and `docs/SECRETS.md`;
+2. keep Apple signing/notarization credentials in Environment secrets, not broad repository secrets;
+3. run the read-only Environment doctor;
+4. run the disposable negative runtime proof and require:
+   - the authorized default-branch control can enter the Environment;
+   - unauthorized branch/tag refs cannot enter it.
 
-Only after these governance checks are effective should PR #6 be restacked from trusted `main` and the privileged two-stage release rollout continue.
+A failed API call or permission error is not proof of policy enforcement.
+
+### 10. Prove the post-split publisher boundary
+
+Run the documented disposable/adopter post-split runtime proof.
+
+Require evidence that a release tag pointing at a post-split trusted ancestor still uses the **current default-branch publisher control code**, rather than privileged code selected from the tag commit.
+
+Do not enable production signing/publication until this proof succeeds.
+
+### 11. Final smoke verification
+
+Open a harmless pull request and verify:
+
+1. `Required gate` is created;
+2. `swift-quality / Swift quality` is created;
+3. failing required checks block merge;
+4. green required checks allow the Solo maintainer to merge without an external approval;
+5. unresolved review conversations block merge;
+6. squash is the supported merge path;
+7. direct/force updates to the default branch remain restricted.
+
+Also run the manual **Governance Audit** workflow and require it to pass.
 
 ## Read-only live main Ruleset doctor
 
