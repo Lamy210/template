@@ -6,11 +6,11 @@ import sys
 import tempfile
 import unittest
 
-from scripts.homebrew.parse_release_checksum import parse_release_checksum
+from scripts.release.release_checksum import parse_release_checksum
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PARSER = REPO_ROOT / "scripts/homebrew/parse_release_checksum.py"
+PARSER = REPO_ROOT / "scripts/release/release_checksum.py"
 DIGEST = "0123456789abcdef" * 4
 
 

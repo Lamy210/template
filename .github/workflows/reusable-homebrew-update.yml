@@ -114,7 +114,7 @@ jobs:
           fi
 
           sha256="$(
-            python3 source/scripts/homebrew/parse_release_checksum.py \
+            python3 source/scripts/release/release_checksum.py \
               "${checksum_file}" \
               "${DMG_NAME}"
           )"

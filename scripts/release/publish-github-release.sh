@@ -23,7 +23,7 @@ command -v python3 >/dev/null 2>&1 || {
 }
 
 if ! checksum_digest="$(
-  python3 "$(dirname "${BASH_SOURCE[0]}")/../homebrew/parse_release_checksum.py" \
+  python3 "$(dirname "${BASH_SOURCE[0]}")/release_checksum.py" \
     "${checksum_path}" \
     "$(basename "${DMG_PATH}")"
 )"; then
