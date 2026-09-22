@@ -142,6 +142,25 @@ class ActionsArtifactValidationTests(unittest.TestCase):
         )
         self.assertTrue(any("uncompressed size" in error for error in errors))
 
+    def test_rejects_invalid_resource_limits(self) -> None:
+        temporary_directory, archive_path = self.create_zip(sorted(EXPECTED_FILES))
+        self.addCleanup(temporary_directory.cleanup)
+        output = Path(temporary_directory.name) / "out"
+
+        member_errors = validate_and_extract_release_artifact(
+            archive_path,
+            output,
+            max_members=0,
+        )
+        self.assertTrue(any("positive integer" in error for error in member_errors))
+
+        size_errors = validate_and_extract_release_artifact(
+            archive_path,
+            output,
+            max_total_uncompressed_bytes=True,
+        )
+        self.assertTrue(any("positive integer" in error for error in size_errors))
+
     def test_rejects_bad_zip(self) -> None:
         temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(temporary_directory.cleanup)
