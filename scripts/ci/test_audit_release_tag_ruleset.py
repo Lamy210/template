@@ -78,6 +78,17 @@ class LiveReleaseTagRulesetAuditTests(unittest.TestCase):
 
         self.assertTrue(any("source_type must equal 'Repository'" in error for error in errors))
 
+    def test_rejects_current_user_bypass_capability_when_reported(self) -> None:
+        document = valid_live_ruleset()
+        document["current_user_can_bypass"] = "always"
+
+        errors = validate_live_release_tag_ruleset(
+            document,
+            expected_repository="example/repo",
+        )
+
+        self.assertTrue(any("current_user_can_bypass must equal 'never'" in error for error in errors))
+
     def test_rejects_bypass_actor_or_creation_rule(self) -> None:
         document = valid_live_ruleset()
         document["bypass_actors"] = [
