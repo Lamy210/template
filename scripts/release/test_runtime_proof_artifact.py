@@ -51,6 +51,58 @@ class RuntimeProofArtifactTests(unittest.TestCase):
         )
         self.assertEqual(b'{"schemaVersion":1}\n', output.read_bytes())
 
+    def test_writes_actual_unsigned_archive_digest(self) -> None:
+        root, archive, output = self.fixture()
+        digest_output = root / "unsigned-archive-digest.txt"
+        metadata = zipfile.ZipInfo("validated-release-metadata.json")
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        app_payload = b"trusted-unsigned-archive"
+        write_zip(
+            archive,
+            [
+                (metadata, b'{"schemaVersion":1}\n'),
+                (app_archive, app_payload),
+            ],
+        )
+
+        self.assertEqual(
+            [],
+            extract_runtime_proof_metadata(
+                archive,
+                output,
+                expected_digest=digest(archive),
+                app_archive_digest_output_path=digest_output,
+            ),
+        )
+
+        expected = "sha256:" + hashlib.sha256(app_payload).hexdigest()
+        self.assertEqual(expected + "\n", digest_output.read_text(encoding="utf-8"))
+
+    def test_rejects_unsigned_archive_over_size_limit(self) -> None:
+        root, archive, output = self.fixture()
+        digest_output = root / "unsigned-archive-digest.txt"
+        metadata = zipfile.ZipInfo("validated-release-metadata.json")
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        write_zip(
+            archive,
+            [
+                (metadata, b'{"schemaVersion":1}\n'),
+                (app_archive, b"12345"),
+            ],
+        )
+
+        errors = extract_runtime_proof_metadata(
+            archive,
+            output,
+            expected_digest=digest(archive),
+            app_archive_digest_output_path=digest_output,
+            max_app_archive_bytes=4,
+        )
+
+        self.assertTrue(any("unsigned app archive exceeds" in error for error in errors))
+        self.assertFalse(output.exists())
+        self.assertFalse(digest_output.exists())
+
     def test_rejects_digest_mismatch(self) -> None:
         _, archive, output = self.fixture()
         metadata = zipfile.ZipInfo("validated-release-metadata.json")
