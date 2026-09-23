@@ -4,6 +4,18 @@ set -euo pipefail
 : "${TAG_NAME:?TAG_NAME is required}"
 : "${DMG_PATH:?DMG_PATH is required}"
 : "${RELEASE_PROVENANCE_PATH:?RELEASE_PROVENANCE_PATH is required}"
+: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+
+if [[ ! "${GITHUB_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  echo "GITHUB_REPOSITORY must be in owner/repo form." >&2
+  exit 1
+fi
+repository_owner="${GITHUB_REPOSITORY%%/*}"
+repository_name="${GITHUB_REPOSITORY#*/}"
+if [[ "${repository_owner}" == "." || "${repository_owner}" == ".." || "${repository_name}" == "." || "${repository_name}" == ".." ]]; then
+  echo "GITHUB_REPOSITORY contains an invalid owner or repository component." >&2
+  exit 1
+fi
 
 checksum_path="${DMG_PATH}.sha256"
 if [[ "$(basename "${RELEASE_PROVENANCE_PATH}")" != "release-provenance.json" ]]; then
@@ -40,9 +52,10 @@ if [[ "${checksum_digest}" != "${dmg_digest}" ]]; then
 fi
 
 release_created=false
-if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+if ! gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
   gh release create "${TAG_NAME}" \
     "${assets[@]}" \
+    --repo "${GITHUB_REPOSITORY}" \
     --verify-tag \
     --generate-notes \
     --title "${TAG_NAME}"
@@ -57,7 +70,9 @@ cleanup() {
 trap cleanup EXIT
 
 release_json="${download_dir}/release.json"
-if ! gh release view "${TAG_NAME}" --json assets,isDraft,isPrerelease,tagName >"${release_json}"; then
+if ! gh release view "${TAG_NAME}" \
+  --repo "${GITHUB_REPOSITORY}" \
+  --json assets,isDraft,isPrerelease,tagName >"${release_json}"; then
   echo "Failed to inspect existing release metadata for ${TAG_NAME}." >&2
   exit 1
 fi
@@ -76,6 +91,7 @@ python3 "$(dirname "${BASH_SOURCE[0]}")/verify-release-state.py" "${release_stat
 for local_path in "${assets[@]}"; do
   asset_name="$(basename "${local_path}")"
   if ! gh release download "${TAG_NAME}" \
+    --repo "${GITHUB_REPOSITORY}" \
     --pattern "${asset_name}" \
     --dir "${download_dir}"; then
     echo "Existing release ${TAG_NAME} is missing required asset: ${asset_name}" >&2

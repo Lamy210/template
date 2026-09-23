@@ -308,6 +308,7 @@ Stable releases are append-never/replace-never.
 
 `publish-github-release.sh`:
 
+- requires and validates explicit `GITHUB_REPOSITORY=owner/repo` identity, and passes it to every GitHub Release read/write/download operation instead of relying on ambient Git remote state;
 - requires the canonical `release-provenance.json` asset; omission or renaming fails before any GitHub call;
 - requires the DMG, checksum, and provenance inputs to be regular non-symlink files;
 - creates a missing release using the already-validated tag, then re-reads remote release state and re-downloads all three assets before reporting success;
