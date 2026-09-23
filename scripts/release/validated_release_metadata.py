@@ -77,11 +77,7 @@ def _safe_app_basename(value: object) -> bool:
     )
 
 
-def verify_validated_release_metadata(
-    document: object,
-    archive_path: Path,
-    expected: ExpectedValidatedRelease,
-) -> list[str]:
+def validate_validated_release_metadata_document(document: object) -> list[str]:
     if not isinstance(document, dict):
         return ["validated release metadata must be a JSON object"]
 
@@ -137,6 +133,18 @@ def verify_validated_release_metadata(
     source_repository = document.get("sourceRepository")
     if not isinstance(source_repository, str) or "/" not in source_repository:
         errors.append("sourceRepository must be in owner/repo form")
+
+    return errors
+
+
+def verify_validated_release_metadata(
+    document: object,
+    archive_path: Path,
+    expected: ExpectedValidatedRelease,
+) -> list[str]:
+    errors = validate_validated_release_metadata_document(document)
+    if not isinstance(document, dict):
+        return errors
 
     expected_values = {
         "sourceRepository": expected.source_repository,
