@@ -22,6 +22,7 @@ def main() -> int:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--head", required=True)
     parser.add_argument("--base", required=True)
+    parser.add_argument("--head-sha", required=True)
     args = parser.parse_args()
 
     try:
@@ -35,6 +36,7 @@ def main() -> int:
         expected_repository=args.repository,
         expected_head=args.head,
         expected_base=args.base,
+        expected_head_sha=args.head_sha,
     )
     for error in errors:
         print(error, file=sys.stderr)

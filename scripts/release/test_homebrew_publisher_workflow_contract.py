@@ -187,6 +187,8 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             '--force-with-lease="refs/heads/${BRANCH}:"',
             push,
         )
+        self.assertIn('pushed_sha="$(git rev-parse HEAD)"', push)
+        self.assertIn('echo "pushed_sha=${pushed_sha}" >>"${GITHUB_OUTPUT}"', push)
 
     def test_tap_pull_request_lookup_fails_closed_before_create(self) -> None:
         block = step_block(self.homebrew_text(), "Open or reuse tap pull request")
@@ -198,7 +200,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--base "${TAP_DEFAULT_BRANCH}"', block)
         self.assertIn("--limit 100", block)
         self.assertIn(
-            "--json number,headRefName,baseRefName,headRepository,headRepositoryOwner,isCrossRepository",
+            "--json number,headRefName,baseRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository",
             block,
         )
         self.assertIn("Failed to query existing tap pull requests.", block)
@@ -206,9 +208,17 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--repository "${TAP_REPOSITORY}"', block)
         self.assertIn('--head "${BRANCH}"', block)
         self.assertIn('--base "${TAP_DEFAULT_BRANCH}"', block)
+        self.assertIn('--head-sha "${PUSHED_SHA}"', block)
+        self.assertIn("PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}", block)
         self.assertIn("Tap pull request query result failed identity validation.", block)
         self.assertNotIn('if gh pr view "${BRANCH}"', block)
         self.assertIn('gh pr view "${open_pr_number}"', block)
+        self.assertGreaterEqual(block.count('open_pr_number="$(query_open_pr_number)"'), 2)
+        self.assertLess(
+            block.index("gh pr create"),
+            block.rindex('open_pr_number="$(query_open_pr_number)"'),
+        )
+        self.assertIn("Tap pull request post-create identity validation failed.", block)
 
     def test_publisher_runs_homebrew_only_after_sign_and_publish(self) -> None:
         text = self.publisher_text()
