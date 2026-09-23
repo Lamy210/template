@@ -86,6 +86,7 @@ jobs:
             scripts.release.test_release_environment_policy \
             scripts.release.test_release_environment_runtime_proof \
             scripts.release.test_post_split_runtime_proof \
+            scripts.release.test_runtime_proof_artifact \
             scripts.release.test_validate_actions_artifact \
             scripts.release.test_validate_release_input \
             scripts.release.test_validate_release_output_name \
