@@ -57,10 +57,8 @@ class ReleaseStateTests(unittest.TestCase):
             [
                 sys.executable,
                 str(EXPECTATIONS_CLI),
-                "--tag",
-                "--help",
-                "--asset",
-                "unsafe[asset].dmg",
+                "--tag=--help",
+                "--asset=unsafe[asset].dmg",
             ],
             cwd=REPO_ROOT,
             text=True,

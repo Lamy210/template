@@ -38,7 +38,7 @@ command -v python3 >/dev/null 2>&1 || {
 
 dmg_name="$(basename "${DMG_PATH}")"
 if ! python3 "$(dirname "${BASH_SOURCE[0]}")/validate-release-output-name.py" \
-  --dmg-name "${dmg_name}"; then
+  --dmg-name="${dmg_name}"; then
   echo "Release DMG asset name failed pre-publication validation." >&2
   exit 1
 fi
@@ -48,9 +48,9 @@ expected_asset_names=(
   "${dmg_name}.sha256"
   "release-provenance.json"
 )
-release_expectation_args=(--tag "${TAG_NAME}")
+release_expectation_args=(--tag="${TAG_NAME}")
 for asset_name in "${expected_asset_names[@]}"; do
-  release_expectation_args+=(--asset "${asset_name}")
+  release_expectation_args+=(--asset="${asset_name}")
 done
 if ! python3 "$(dirname "${BASH_SOURCE[0]}")/validate-release-expectations.py" \
   "${release_expectation_args[@]}"; then
