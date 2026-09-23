@@ -212,7 +212,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}", block)
         self.assertIn("Tap pull request query result failed identity validation.", block)
         self.assertNotIn('if gh pr view "${BRANCH}"', block)
-        self.assertIn('gh pr view "${open_pr_number}"', block)
+        self.assertNotIn('gh pr view "${open_pr_number}"', block)
         self.assertGreaterEqual(block.count('open_pr_number="$(query_open_pr_number)"'), 2)
         self.assertLess(
             block.index("gh pr create"),
