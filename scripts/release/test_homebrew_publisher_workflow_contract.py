@@ -66,6 +66,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
     def test_homebrew_checks_out_trusted_publisher_sha(self) -> None:
         text = self.homebrew_text()
         self.assertIn("ref: ${{ github.sha }}", text)
+        self.assertIn("fetch-depth: 0", text)
         self.assertIn("persist-credentials: false", text)
 
     def test_published_assets_are_rebound_before_cask_render(self) -> None:
@@ -84,13 +85,38 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--checksum "release-assets/${DMG_NAME}.sha256"', block)
         self.assertIn("--provenance release-assets/release-provenance.json", block)
         self.assertIn('--tag "${SOURCE_TAG}"', block)
+        self.assertIn('--repository "${EXPECTED_REPOSITORY}"', block)
+        self.assertIn('--publisher-sha "${EXPECTED_PUBLISHER_SHA}"', block)
+        self.assertIn("--source-sha-output release-assets/source-sha.txt", block)
         self.assertIn('echo "SHA256=${sha256}" >>"${GITHUB_ENV}"', block)
+        self.assertIn('echo "source_sha=${source_sha}" >>"${GITHUB_OUTPUT}"', block)
         self.assertNotIn("source/scripts/release/release_checksum.py", block)
 
         self.assertLess(
             self.homebrew_text().index("Download and verify published release assets"),
             self.homebrew_text().index("Render Cask"),
         )
+
+    def test_homebrew_rebinds_provenance_source_to_live_tag_and_trusted_history(self) -> None:
+        text = self.homebrew_text()
+        assets = text.index("Download and verify published release assets")
+        rebind = text.index("Rebind published provenance to live release source")
+        tap = text.index("Clone tap repository")
+        self.assertLess(assets, rebind)
+        self.assertLess(rebind, tap)
+
+        block = step_block(text, "Rebind published provenance to live release source")
+        self.assertTrue(block)
+        self.assertIn("working-directory: source", block)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", block)
+        self.assertIn("SOURCE_TAG: ${{ inputs.source_tag }}", block)
+        self.assertIn(
+            "SOURCE_SHA: ${{ steps.published_assets.outputs.source_sha }}",
+            block,
+        )
+        self.assertIn("PUBLISHER_SHA: ${{ github.sha }}", block)
+        self.assertIn("scripts/release/verify-release-source.sh", block)
+        self.assertNotIn("secrets.tap_token", block)
 
     def test_rendered_cask_is_syntax_checked_before_tap_write(self) -> None:
         block = step_block(self.homebrew_text(), "Render Cask")
@@ -114,6 +140,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             "Validate release identity and inputs",
             "Checkout trusted publisher automation",
             "Download and verify published release assets",
+            "Rebind published provenance to live release source",
             "Render Cask",
         ):
             with self.subTest(step_name=step_name):

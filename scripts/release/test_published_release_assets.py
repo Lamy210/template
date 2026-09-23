@@ -15,6 +15,7 @@ from scripts.release.release_attestation import ExpectedRelease, build_release_a
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/release/verify-published-release-assets.py"
 TAG = "v1.2.3"
+REPOSITORY = "example/MyApp"
 SOURCE_SHA = "1" * 40
 PUBLISHER_SHA = "2" * 40
 SOURCE_ARTIFACT_DIGEST = "sha256:" + "a" * 64
@@ -35,7 +36,7 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         checksum.write_text(f"{digest}  {dmg.name}\n", encoding="utf-8")
         document = build_release_attestation(
             ExpectedRelease(
-                source_repository="example/MyApp",
+                source_repository=REPOSITORY,
                 source_run_id=100,
                 source_run_attempt=1,
                 source_sha=SOURCE_SHA,
@@ -54,32 +55,80 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         )
         return temporary_directory, dmg, checksum, provenance
 
-    def test_accepts_three_mutually_bound_published_assets(self) -> None:
-        _, dmg, checksum, provenance = self.fixture()
-        errors, digest = verify_published_release_assets(
+    def verify(
+        self,
+        dmg: Path,
+        checksum: Path,
+        provenance: Path,
+        *,
+        repository: str = REPOSITORY,
+        publisher_sha: str = PUBLISHER_SHA,
+    ) -> tuple[list[str], str | None, str | None]:
+        return verify_published_release_assets(
             dmg_path=dmg,
             checksum_path=checksum,
             provenance_path=provenance,
             expected_tag=TAG,
+            expected_repository=repository,
+            expected_publisher_sha=publisher_sha,
         )
+
+    def test_accepts_three_mutually_bound_published_assets(self) -> None:
+        _, dmg, checksum, provenance = self.fixture()
+        errors, digest, source_sha = self.verify(dmg, checksum, provenance)
         self.assertEqual([], errors)
         self.assertIsNotNone(digest)
         self.assertEqual(64, len(digest or ""))
+        self.assertEqual(SOURCE_SHA, source_sha)
 
     def test_rejects_downloaded_dmg_that_no_longer_matches_checksum_or_provenance(self) -> None:
         _, dmg, checksum, provenance = self.fixture()
         dmg.write_bytes(b"replaced-after-publication\n")
 
-        errors, digest = verify_published_release_assets(
-            dmg_path=dmg,
-            checksum_path=checksum,
-            provenance_path=provenance,
-            expected_tag=TAG,
+        errors, digest, source_sha = self.verify(dmg, checksum, provenance)
+
+        self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
+        self.assertTrue(any("checksum" in error for error in errors))
+        self.assertTrue(any("provenance DMG digest" in error for error in errors))
+
+    def test_rejects_provenance_repository_and_publisher_drift(self) -> None:
+        _, dmg, checksum, provenance = self.fixture()
+
+        errors, digest, source_sha = self.verify(
+            dmg,
+            checksum,
+            provenance,
+            repository="attacker/fork",
+        )
+        self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
+        self.assertTrue(any("repository" in error for error in errors))
+
+        errors, digest, source_sha = self.verify(
+            dmg,
+            checksum,
+            provenance,
+            publisher_sha="3" * 40,
+        )
+        self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
+        self.assertTrue(any("publisher SHA" in error for error in errors))
+
+    def test_rejects_malformed_expected_trust_identity(self) -> None:
+        _, dmg, checksum, provenance = self.fixture()
+        errors, digest, source_sha = self.verify(
+            dmg,
+            checksum,
+            provenance,
+            repository="../escape",
+            publisher_sha="ABC",
         )
 
         self.assertIsNone(digest)
-        self.assertTrue(any("checksum" in error for error in errors))
-        self.assertTrue(any("provenance DMG digest" in error for error in errors))
+        self.assertIsNone(source_sha)
+        self.assertTrue(any("owner/repo" in error for error in errors))
+        self.assertTrue(any("40 lowercase" in error for error in errors))
 
     def test_rejects_provenance_tag_drift(self) -> None:
         _, dmg, checksum, provenance = self.fixture()
@@ -87,14 +136,10 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         document["tag"] = "v1.2.4"
         provenance.write_text(json.dumps(document) + "\n", encoding="utf-8")
 
-        errors, digest = verify_published_release_assets(
-            dmg_path=dmg,
-            checksum_path=checksum,
-            provenance_path=provenance,
-            expected_tag=TAG,
-        )
+        errors, digest, source_sha = self.verify(dmg, checksum, provenance)
 
         self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
         self.assertTrue(any("tag" in error for error in errors))
 
     def test_rejects_symlinked_published_asset(self) -> None:
@@ -103,18 +148,15 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         provenance.rename(target)
         provenance.symlink_to(target.name)
 
-        errors, digest = verify_published_release_assets(
-            dmg_path=dmg,
-            checksum_path=checksum,
-            provenance_path=provenance,
-            expected_tag=TAG,
-        )
+        errors, digest, source_sha = self.verify(dmg, checksum, provenance)
 
         self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
         self.assertTrue(any("non-symlink" in error for error in errors))
 
-    def test_cli_prints_digest_only_for_bound_assets(self) -> None:
-        _, dmg, checksum, provenance = self.fixture()
+    def test_cli_prints_digest_and_exports_verified_source_sha(self) -> None:
+        temporary_directory, dmg, checksum, provenance = self.fixture()
+        source_sha_output = Path(temporary_directory.name) / "source-sha.txt"
         result = subprocess.run(
             [
                 sys.executable,
@@ -127,6 +169,12 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
                 str(provenance),
                 "--tag",
                 TAG,
+                "--repository",
+                REPOSITORY,
+                "--publisher-sha",
+                PUBLISHER_SHA,
+                "--source-sha-output",
+                str(source_sha_output),
             ],
             cwd=REPO_ROOT,
             text=True,
@@ -136,6 +184,42 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertRegex(result.stdout, r"^[0-9a-f]{64}\n$")
+        self.assertEqual(
+            SOURCE_SHA + "\n",
+            source_sha_output.read_text(encoding="utf-8"),
+        )
+
+    def test_cli_refuses_to_overwrite_source_sha_output(self) -> None:
+        temporary_directory, dmg, checksum, provenance = self.fixture()
+        source_sha_output = Path(temporary_directory.name) / "source-sha.txt"
+        source_sha_output.write_text("stale\n", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(CLI),
+                "--dmg",
+                str(dmg),
+                "--checksum",
+                str(checksum),
+                "--provenance",
+                str(provenance),
+                "--tag",
+                TAG,
+                "--repository",
+                REPOSITORY,
+                "--publisher-sha",
+                PUBLISHER_SHA,
+                "--source-sha-output",
+                str(source_sha_output),
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual("stale\n", source_sha_output.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
