@@ -94,6 +94,7 @@ jobs:
             scripts.release.test_verified_release_artifact \
             scripts.release.test_verified_release_payload \
             scripts.release.test_published_release_assets \
+            scripts.release.test_release_state \
             scripts.release.test_release_workflow_contract \
             scripts.release.test_release_publisher_workflow_contract \
             scripts.release.test_privileged_release_workflow_contract \

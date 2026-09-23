@@ -102,6 +102,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
+          gh release view "${SOURCE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json assets,isDraft,isPrerelease,tagName \
+            >release-assets/release.json
+          python3 source/scripts/release/verify-release-state.py \
+            --metadata release-assets/release.json \
+            --tag "${SOURCE_TAG}" \
+            --asset "${DMG_NAME}" \
+            --asset "${DMG_NAME}.sha256" \
+            --asset release-provenance.json
+
           for asset_name in "${DMG_NAME}" "${DMG_NAME}.sha256" release-provenance.json; do
             gh release download "${SOURCE_TAG}" \
               --repo "${GITHUB_REPOSITORY}" \
