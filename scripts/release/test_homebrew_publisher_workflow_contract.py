@@ -156,14 +156,46 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
 
         self.assertIn('git switch -C "${branch}" "origin/${TAP_DEFAULT_BRANCH}"', prepare)
         self.assertNotIn('git switch -C "${branch}" "origin/${branch}"', prepare)
+        self.assertIn('git ls-remote --exit-code --branches origin "refs/heads/${branch}"', prepare)
+        self.assertIn("ls_remote_status=$?", prepare)
+        self.assertIn('case "${ls_remote_status}" in', prepare)
+        self.assertIn("    2)", prepare)
+        self.assertIn("Failed to query existing automation branch from tap remote.", prepare)
         self.assertIn('remote_branch_sha=', prepare)
         self.assertIn('remote_branch_sha=${remote_branch_sha}', prepare)
+        self.assertIn('remote_branch_ref', prepare)
 
         self.assertIn("REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}", push)
         self.assertIn(
             '--force-with-lease="refs/heads/${BRANCH}:${REMOTE_BRANCH_SHA}"',
             push,
         )
+        self.assertIn(
+            '--force-with-lease="refs/heads/${BRANCH}:"',
+            push,
+        )
+
+    def test_tap_pull_request_lookup_fails_closed_before_create(self) -> None:
+        block = step_block(self.homebrew_text(), "Open or reuse tap pull request")
+        self.assertTrue(block)
+        self.assertIn("gh pr list", block)
+        self.assertIn('--repo "${TAP_REPOSITORY}"', block)
+        self.assertIn("--state open", block)
+        self.assertIn('--head "${BRANCH}"', block)
+        self.assertIn('--base "${TAP_DEFAULT_BRANCH}"', block)
+        self.assertIn("--limit 100", block)
+        self.assertIn(
+            "--json number,headRefName,baseRefName,headRepository,headRepositoryOwner,isCrossRepository",
+            block,
+        )
+        self.assertIn("Failed to query existing tap pull requests.", block)
+        self.assertIn("source/scripts/homebrew/select-tap-pull-request.py", block)
+        self.assertIn('--repository "${TAP_REPOSITORY}"', block)
+        self.assertIn('--head "${BRANCH}"', block)
+        self.assertIn('--base "${TAP_DEFAULT_BRANCH}"', block)
+        self.assertIn("Tap pull request query result failed identity validation.", block)
+        self.assertNotIn('if gh pr view "${BRANCH}"', block)
+        self.assertIn('gh pr view "${open_pr_number}"', block)
 
     def test_publisher_runs_homebrew_only_after_sign_and_publish(self) -> None:
         text = self.publisher_text()
