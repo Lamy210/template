@@ -32,14 +32,36 @@ for file_path in "${assets[@]}"; do
 done
 
 command -v python3 >/dev/null 2>&1 || {
-  echo "python3 is required to validate the release checksum." >&2
+  echo "python3 is required to validate release publication inputs." >&2
   exit 1
 }
+
+dmg_name="$(basename "${DMG_PATH}")"
+if ! python3 "$(dirname "${BASH_SOURCE[0]}")/validate-release-output-name.py" \
+  --dmg-name="${dmg_name}"; then
+  echo "Release DMG asset name failed pre-publication validation." >&2
+  exit 1
+fi
+
+expected_asset_names=(
+  "${dmg_name}"
+  "${dmg_name}.sha256"
+  "release-provenance.json"
+)
+release_expectation_args=(--tag="${TAG_NAME}")
+for asset_name in "${expected_asset_names[@]}"; do
+  release_expectation_args+=(--asset="${asset_name}")
+done
+if ! python3 "$(dirname "${BASH_SOURCE[0]}")/validate-release-expectations.py" \
+  "${release_expectation_args[@]}"; then
+  echo "Release tag or immutable asset identity failed pre-publication validation." >&2
+  exit 1
+fi
 
 if ! checksum_digest="$(
   python3 "$(dirname "${BASH_SOURCE[0]}")/release_checksum.py" \
     "${checksum_path}" \
-    "$(basename "${DMG_PATH}")"
+    "${dmg_name}"
 )"; then
   echo "Release checksum asset failed canonical validation." >&2
   exit 1
@@ -115,11 +137,6 @@ if ! gh release view "${TAG_NAME}" \
   echo "Failed to inspect existing release metadata for ${TAG_NAME}." >&2
   exit 1
 fi
-
-expected_asset_names=()
-for local_path in "${assets[@]}"; do
-  expected_asset_names+=("$(basename "${local_path}")")
-done
 
 release_state_args=(--metadata "${release_json}" --tag "${TAG_NAME}")
 for asset_name in "${expected_asset_names[@]}"; do
