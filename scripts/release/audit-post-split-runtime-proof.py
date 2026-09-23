@@ -6,7 +6,11 @@ import json
 from pathlib import Path
 import sys
 
-from post_split_runtime_proof import validate_post_split_runtime_proof
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.release.post_split_runtime_proof import validate_post_split_runtime_proof
 
 
 def _load_json(path: Path) -> object:

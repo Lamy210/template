@@ -271,6 +271,34 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 )
                 self.assertTrue(any(field in error for error in errors))
 
+    def test_rejects_noncanonical_validator_metadata_schema(self) -> None:
+        mutations = (
+            ("unexpected field", lambda document: document.__setitem__("unexpected", True)),
+            ("missing field", lambda document: document.pop("bundleId")),
+            ("tag/version mismatch", lambda document: document.__setitem__("version", "9.9.9")),
+            ("bad artifact digest", lambda document: document.__setitem__("sourceArtifactDigest", "bad")),
+            ("bad archive digest", lambda document: document.__setitem__("archiveSha256", "sha256:" + "A" * 64)),
+            ("bad timestamp", lambda document: document.__setitem__("validatedAt", "2026-09-19T00:00:00+00:00")),
+            ("unsafe app basename", lambda document: document.__setitem__("appBasename", "../MyApp.app")),
+        )
+        for label, mutate in mutations:
+            with self.subTest(label=label):
+                document = metadata()
+                mutate(document)
+                errors = validate_post_split_runtime_proof(
+                    repository(),
+                    default_commit(),
+                    source_run(),
+                    publisher_run(),
+                    artifacts(),
+                    document,
+                    compare(),
+                )
+                self.assertTrue(
+                    any("validator metadata:" in error for error in errors),
+                    errors,
+                )
+
     def test_rejects_malformed_integer_identity_instead_of_bool_equality(self) -> None:
         run = source_run()
         run["id"] = True
