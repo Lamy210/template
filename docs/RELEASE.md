@@ -327,7 +327,7 @@ A changed build needs a new version/tag.
 
 It:
 
-1. validates the stable source tag and Cask/tap inputs;
+1. validates the stable source tag and Cask/tap inputs, including rejecting dot/dot-dot tap repository identity components before the tap token is exposed;
 2. checks out trusted publisher automation at the publisher SHA;
 3. revalidates the GitHub Release as published, non-prerelease, exact-tag, and exact-three-asset state;
 4. downloads the published DMG, checksum, and `release-provenance.json` for `source_tag`;

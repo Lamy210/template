@@ -77,6 +77,12 @@ jobs:
             echo "tap_repository must use owner/repo form." >&2
             exit 1
           fi
+          tap_owner="${TAP_REPOSITORY%%/*}"
+          tap_name="${TAP_REPOSITORY#*/}"
+          if [[ "${tap_owner}" == "." || "${tap_owner}" == ".." || "${tap_name}" == "." || "${tap_name}" == ".." ]]; then
+            echo "tap_repository contains an invalid owner or repository component." >&2
+            exit 1
+          fi
           if ! git check-ref-format --branch "${TAP_DEFAULT_BRANCH}" >/dev/null 2>&1; then
             echo "tap_default_branch must be a valid Git branch name." >&2
             exit 1
