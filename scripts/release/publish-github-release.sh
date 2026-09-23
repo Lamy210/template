@@ -51,23 +51,55 @@ if [[ "${checksum_digest}" != "${dmg_digest}" ]]; then
   exit 1
 fi
 
-release_created=false
-if ! gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-  if gh release create "${TAG_NAME}" \
-    "${assets[@]}" \
-    --repo "${GITHUB_REPOSITORY}" \
-    --verify-tag \
-    --generate-notes \
-    --title "${TAG_NAME}"; then
-    release_created=true
-  else
-    echo "GitHub Release creation did not succeed; checking for a concurrent immutable publication." >&2
-    if ! gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-      echo "GitHub Release creation failed and no concurrent release is available for verification: ${TAG_NAME}" >&2
-      exit 1
-    fi
+release_exists() {
+  local release_tags
+  if ! release_tags="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name')"; then
+    echo "Failed to enumerate GitHub Releases for ${GITHUB_REPOSITORY}." >&2
+    return 2
   fi
-fi
+  if grep -Fxq -- "${TAG_NAME}" <<<"${release_tags}"; then
+    return 0
+  fi
+  return 1
+}
+
+release_created=false
+release_lookup_status=0
+release_exists || release_lookup_status=$?
+case "${release_lookup_status}" in
+  0)
+    ;;
+  1)
+    if gh release create "${TAG_NAME}" \
+      "${assets[@]}" \
+      --repo "${GITHUB_REPOSITORY}" \
+      --verify-tag \
+      --generate-notes \
+      --title "${TAG_NAME}"; then
+      release_created=true
+    else
+      echo "GitHub Release creation did not succeed; checking for a concurrent immutable publication." >&2
+      concurrent_lookup_status=0
+      release_exists || concurrent_lookup_status=$?
+      case "${concurrent_lookup_status}" in
+        0)
+          ;;
+        1)
+          echo "GitHub Release creation failed and no concurrent release is available for verification: ${TAG_NAME}" >&2
+          exit 1
+          ;;
+        *)
+          echo "GitHub Release creation failed and concurrent release state could not be verified: ${TAG_NAME}" >&2
+          exit 1
+          ;;
+      esac
+    fi
+    ;;
+  *)
+    echo "Refusing to create a release because existing release state could not be verified." >&2
+    exit 1
+    ;;
+esac
 
 TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 download_dir="$(mktemp -d "${TEMP_ROOT%/}/existing-release.XXXXXX")"
