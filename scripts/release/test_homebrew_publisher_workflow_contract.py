@@ -220,6 +220,31 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("Tap pull request post-create identity validation failed.", block)
 
+    def test_tap_pull_request_is_rebound_to_remote_branch_before_success(self) -> None:
+        text = self.homebrew_text()
+        open_step = step_block(text, "Open or reuse tap pull request")
+        final_step = step_block(text, "Reverify tap branch and pull request identity")
+        self.assertTrue(open_step)
+        self.assertTrue(final_step)
+        self.assertIn("id: pull_request", open_step)
+        self.assertIn('echo "number=${open_pr_number}" >>"${GITHUB_OUTPUT}"', open_step)
+        self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", final_step)
+        self.assertIn("PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}", final_step)
+        self.assertIn("PR_NUMBER: ${{ steps.pull_request.outputs.number }}", final_step)
+        self.assertIn('git ls-remote --exit-code --branches origin "refs/heads/${BRANCH}"', final_step)
+        self.assertIn('if [[ "${remote_sha}" != "${PUSHED_SHA}" ]]', final_step)
+        self.assertIn("Automation branch moved after the trusted push.", final_step)
+        self.assertIn("source/scripts/homebrew/select-tap-pull-request.py", final_step)
+        self.assertIn('--head-sha "${PUSHED_SHA}"', final_step)
+        self.assertIn('if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]', final_step)
+        self.assertIn("Selected tap pull request changed before final verification.", final_step)
+        self.assertEqual(2, final_step.count("verify_remote_branch"))
+        self.assertIn('gh pr view "${PR_NUMBER}"', final_step)
+        self.assertLess(
+            text.index("Open or reuse tap pull request"),
+            text.index("Reverify tap branch and pull request identity"),
+        )
+
     def test_publisher_runs_homebrew_only_after_sign_and_publish(self) -> None:
         text = self.publisher_text()
         self.assertIn("  homebrew:", text)

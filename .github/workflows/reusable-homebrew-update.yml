@@ -295,6 +295,7 @@ jobs:
           fi
 
       - name: Open or reuse tap pull request
+        id: pull_request
         if: ${{ steps.push.outputs.changed == 'true' }}
         shell: bash
         env:
@@ -364,4 +365,94 @@ jobs:
             fi
           fi
 
-          gh pr view "${open_pr_number}" --repo "${TAP_REPOSITORY}" --web=false
+          echo "number=${open_pr_number}" >>"${GITHUB_OUTPUT}"
+
+      - name: Reverify tap branch and pull request identity
+        if: ${{ steps.push.outputs.changed == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}
+          PR_NUMBER: ${{ steps.pull_request.outputs.number }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${PUSHED_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "PUSHED_SHA must be the exact pushed automation commit." >&2
+            exit 1
+          fi
+          if [[ ! "${PR_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "PR_NUMBER must be a positive pull request number." >&2
+            exit 1
+          fi
+
+          verify_remote_branch() {
+            local remote_line
+            local remote_status
+            local remote_count
+            local remote_sha
+            local remote_ref
+
+            set +e
+            remote_line="$(cd tap && git ls-remote --exit-code --branches origin "refs/heads/${BRANCH}")"
+            remote_status=$?
+            set -e
+
+            if ((remote_status != 0)); then
+              echo "Failed to re-query the pushed automation branch." >&2
+              return 1
+            fi
+
+            remote_count="$(printf '%s\n' "${remote_line}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+            if [[ "${remote_count}" != "1" ]]; then
+              echo "Final automation branch lookup must return exactly one ref." >&2
+              return 1
+            fi
+
+            remote_sha="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $1 }')"
+            remote_ref="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $2 }')"
+            if [[ "${remote_ref}" != "refs/heads/${BRANCH}" ]]; then
+              echo "Final automation branch lookup returned an unexpected ref." >&2
+              return 1
+            fi
+            if [[ "${remote_sha}" != "${PUSHED_SHA}" ]]; then
+              echo "Automation branch moved after the trusted push." >&2
+              return 1
+            fi
+          }
+
+          query_final_pr_number() {
+            local pr_metadata="${RUNNER_TEMP}/tap-final-open-prs.json"
+            if ! gh pr list \
+              --repo "${TAP_REPOSITORY}" \
+              --state open \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --limit 100 \
+              --json number,headRefName,baseRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository \
+              >"${pr_metadata}"; then
+              echo "Failed to re-query the selected tap pull request." >&2
+              return 1
+            fi
+
+            python3 source/scripts/homebrew/select-tap-pull-request.py \
+              --metadata "${pr_metadata}" \
+              --repository "${TAP_REPOSITORY}" \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --head-sha "${PUSHED_SHA}"
+          }
+
+          verify_remote_branch
+          if ! final_pr_number="$(query_final_pr_number)"; then
+            echo "Final tap pull request identity validation failed." >&2
+            exit 1
+          fi
+          if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]; then
+            echo "Selected tap pull request changed before final verification." >&2
+            exit 1
+          fi
+          verify_remote_branch
+          gh pr view "${PR_NUMBER}" --repo "${TAP_REPOSITORY}" --web=false
