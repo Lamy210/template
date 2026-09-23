@@ -48,6 +48,7 @@ def _metadata_binding_errors(
     source_run_id: int,
     source_run_attempt: int,
     source_sha: str,
+    source_tag: str,
     publisher_run_id: int,
     publisher_run_attempt: int,
     publisher_sha: str,
@@ -60,6 +61,7 @@ def _metadata_binding_errors(
         "sourceRunId": source_run_id,
         "sourceRunAttempt": source_run_attempt,
         "sourceSHA": source_sha,
+        "tag": source_tag,
         "publisherRunId": publisher_run_id,
         "publisherRunAttempt": publisher_run_attempt,
         "publisherSHA": publisher_sha,
@@ -205,6 +207,9 @@ def validate_post_split_runtime_proof(
         errors.append(f"source workflow path must equal {SOURCE_WORKFLOW_PATH!r}")
     if source_run.get("event") != "push":
         errors.append("source event must equal 'push'")
+    source_tag = source_run.get("head_branch")
+    if not isinstance(source_tag, str) or TAG_RE.fullmatch(source_tag) is None:
+        errors.append("source head_branch must match stable SemVer form vX.Y.Z")
     if source_run.get("status") != "completed" or source_run.get("conclusion") != "success":
         errors.append("source run must be completed successfully")
 
@@ -278,6 +283,8 @@ def validate_post_split_runtime_proof(
         and _positive_int(publisher_run_id)
         and _positive_int(publisher_run_attempt)
         and _sha(source_sha)
+        and isinstance(source_tag, str)
+        and TAG_RE.fullmatch(source_tag) is not None
         and _sha(publisher_sha)
     ):
         errors.extend(
@@ -287,6 +294,7 @@ def validate_post_split_runtime_proof(
                 source_run_id=source_run_id,
                 source_run_attempt=source_run_attempt,
                 source_sha=source_sha,
+                source_tag=source_tag,
                 publisher_run_id=publisher_run_id,
                 publisher_run_attempt=publisher_run_attempt,
                 publisher_sha=publisher_sha,
