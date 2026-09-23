@@ -93,7 +93,7 @@ jobs:
           persist-credentials: false
           path: source
 
-      - name: Download published checksum
+      - name: Download and verify published release assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -102,21 +102,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          gh release download "${SOURCE_TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern "${DMG_NAME}.sha256" \
-            --dir release-assets
-
-          checksum_file="release-assets/${DMG_NAME}.sha256"
-          if [[ ! -f "${checksum_file}" ]]; then
-            echo "Checksum asset not found: ${checksum_file}" >&2
-            exit 1
-          fi
+          for asset_name in "${DMG_NAME}" "${DMG_NAME}.sha256" release-provenance.json; do
+            gh release download "${SOURCE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --pattern "${asset_name}" \
+              --dir release-assets
+          done
 
           sha256="$(
-            python3 source/scripts/release/release_checksum.py \
-              "${checksum_file}" \
-              "${DMG_NAME}"
+            python3 source/scripts/release/verify-published-release-assets.py \
+              --dmg "release-assets/${DMG_NAME}" \
+              --checksum "release-assets/${DMG_NAME}.sha256" \
+              --provenance release-assets/release-provenance.json \
+              --tag "${SOURCE_TAG}"
           )"
           echo "SHA256=${sha256}" >>"${GITHUB_ENV}"
 
