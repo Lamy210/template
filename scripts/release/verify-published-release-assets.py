@@ -15,23 +15,35 @@ from scripts.release.published_release_assets import verify_published_release_as
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Verify published DMG, checksum, and final provenance as one release identity."
+        description="Verify published release assets and trusted provenance identity."
     )
     parser.add_argument("--dmg", required=True, type=Path)
     parser.add_argument("--checksum", required=True, type=Path)
     parser.add_argument("--provenance", required=True, type=Path)
     parser.add_argument("--tag", required=True)
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--publisher-sha", required=True)
+    parser.add_argument("--source-sha-output", required=True, type=Path)
     args = parser.parse_args()
 
-    errors, digest = verify_published_release_assets(
+    errors, digest, source_sha = verify_published_release_assets(
         dmg_path=args.dmg,
         checksum_path=args.checksum,
         provenance_path=args.provenance,
         expected_tag=args.tag,
+        expected_repository=args.repository,
+        expected_publisher_sha=args.publisher_sha,
     )
     for error in errors:
         print(error, file=sys.stderr)
-    if errors or digest is None:
+    if errors or digest is None or source_sha is None:
+        return 1
+
+    try:
+        with args.source_sha_output.open("x", encoding="utf-8") as handle:
+            handle.write(source_sha + "\n")
+    except OSError as error:
+        print(f"failed to write verified source SHA: {error}", file=sys.stderr)
         return 1
 
     print(digest)
