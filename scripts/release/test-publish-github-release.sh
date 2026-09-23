@@ -14,6 +14,7 @@ DMG_PATH="${LOCAL_DIR}/ExampleApp-v1.2.3.dmg"
 CHECKSUM_PATH="${DMG_PATH}.sha256"
 RELEASE_PROVENANCE_PATH="${LOCAL_DIR}/release-provenance.json"
 TAG_NAME="v1.2.3"
+GITHUB_REPOSITORY="example/release-repo"
 
 mkdir -p "${LOCAL_DIR}" "${REMOTE_DIR}" "${FAKE_BIN}"
 printf 'stable-release-payload\n' >"${DMG_PATH}"
@@ -120,9 +121,21 @@ run_publisher() {
     GH_FAKE_CORRUPT_AFTER_CREATE="${GH_FAKE_CORRUPT_AFTER_CREATE:-false}" \
     PATH="${FAKE_BIN}:${PATH}" \
     TAG_NAME="${TAG_NAME}" \
+    GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
     DMG_PATH="${DMG_PATH}" \
     RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
     bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
+}
+
+run_publisher_without_repository() {
+  GH_FAKE_LOG="${LOG_PATH}" \
+    GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
+    GH_FAKE_STATE_FILE="${STATE_FILE}" \
+    PATH="${FAKE_BIN}:${PATH}" \
+    TAG_NAME="${TAG_NAME}" \
+    DMG_PATH="${DMG_PATH}" \
+    RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
+    env -u GITHUB_REPOSITORY bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
 }
 
 run_publisher_without_provenance() {
@@ -130,9 +143,33 @@ run_publisher_without_provenance() {
     GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
     PATH="${FAKE_BIN}:${PATH}" \
     TAG_NAME="${TAG_NAME}" \
+    GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
     DMG_PATH="${DMG_PATH}" \
     bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
 }
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false run_publisher_without_repository; then
+  echo "Publisher accepted a release without explicit repository identity." >&2
+  exit 1
+fi
+if [[ -s "${LOG_PATH}" ]]; then
+  echo "Publisher contacted GitHub before rejecting missing repository identity." >&2
+  exit 1
+fi
+
+original_repository="${GITHUB_REPOSITORY}"
+GITHUB_REPOSITORY="../escape"
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted an unsafe repository identity." >&2
+  exit 1
+fi
+if [[ -s "${LOG_PATH}" ]]; then
+  echo "Publisher contacted GitHub before rejecting unsafe repository identity." >&2
+  exit 1
+fi
+GITHUB_REPOSITORY="${original_repository}"
 
 : >"${LOG_PATH}"
 if GH_FAKE_RELEASE_EXISTS=false run_publisher_without_provenance; then
@@ -183,12 +220,16 @@ if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
   echo "New release was not created." >&2
   exit 1
 fi
-if ! grep -F "release view ${TAG_NAME} --json assets,isDraft,isPrerelease,tagName" "${LOG_PATH}" >/dev/null; then
+if ! grep -F -- "--repo ${GITHUB_REPOSITORY}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher did not bind GitHub Release operations to the explicit repository." >&2
+  exit 1
+fi
+if ! grep -F "release view ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --json assets,isDraft,isPrerelease,tagName" "${LOG_PATH}" >/dev/null; then
   echo "New release was not re-read for post-create state verification." >&2
   exit 1
 fi
 for asset_name in "$(basename "${DMG_PATH}")" "$(basename "${CHECKSUM_PATH}")" "$(basename "${RELEASE_PROVENANCE_PATH}")"; do
-  if ! grep -F "release download ${TAG_NAME} --pattern ${asset_name}" "${LOG_PATH}" >/dev/null; then
+  if ! grep -F "release download ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --pattern ${asset_name}" "${LOG_PATH}" >/dev/null; then
     echo "New release asset was not re-downloaded for post-create verification: ${asset_name}" >&2
     exit 1
   fi
@@ -213,7 +254,7 @@ if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
   echo "Post-create corruption probe did not create a release first." >&2
   exit 1
 fi
-if ! grep -F "release download ${TAG_NAME} --pattern $(basename "${DMG_PATH}")" "${LOG_PATH}" >/dev/null; then
+if ! grep -F "release download ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --pattern $(basename "${DMG_PATH}")" "${LOG_PATH}" >/dev/null; then
   echo "Post-create corruption probe did not re-download the created DMG." >&2
   exit 1
 fi
