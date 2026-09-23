@@ -130,6 +130,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 publisher_run(),
                 artifacts(),
                 metadata(),
+                "sha256:" + "b" * 64,
                 compare(),
             ),
         )
@@ -163,7 +164,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         head = default_commit()
         head["sha"] = "2" * 40
         errors = validate_post_split_runtime_proof(
-            repository(), head, source_run(), publisher_run(), artifacts(), metadata(), compare()
+            repository(), head, source_run(), publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("current default-branch head" in error for error in errors))
 
@@ -171,14 +172,14 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         bad_source = source_run()
         bad_source["path"] = ".github/workflows/other.yml"
         errors = validate_post_split_runtime_proof(
-            repository(), default_commit(), bad_source, publisher_run(), artifacts(), metadata(), compare()
+            repository(), default_commit(), bad_source, publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("source workflow path" in error for error in errors))
 
         bad_publisher = publisher_run()
         bad_publisher["event"] = "push"
         errors = validate_post_split_runtime_proof(
-            repository(), default_commit(), source_run(), bad_publisher, artifacts(), metadata(), compare()
+            repository(), default_commit(), source_run(), bad_publisher, artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("publisher event" in error for error in errors))
 
@@ -198,6 +199,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     publisher_run(),
                     artifacts(),
                     metadata(),
+                    "sha256:" + "b" * 64,
                     compare(),
                 )
                 self.assertTrue(any("source head_branch" in error for error in errors))
@@ -213,6 +215,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             publisher_run(),
             artifacts(),
             document,
+            "sha256:" + "b" * 64,
             compare(),
         )
 
@@ -222,7 +225,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         run = source_run()
         run["head_repository"]["id"] = 999
         errors = validate_post_split_runtime_proof(
-            repository(), default_commit(), run, publisher_run(), artifacts(), metadata(), compare()
+            repository(), default_commit(), run, publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("source head repository identity" in error for error in errors))
 
@@ -242,9 +245,24 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     publisher_run(),
                     artifact_list,
                     metadata(),
+                    "sha256:" + "b" * 64,
                     compare(),
                 )
                 self.assertTrue(any("validator artifact" in error for error in errors))
+
+    def test_rejects_unsigned_archive_digest_drift_from_validated_metadata(self) -> None:
+        errors = validate_post_split_runtime_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            metadata(),
+            "sha256:" + "c" * 64,
+            compare(),
+        )
+
+        self.assertTrue(any("unsigned app archive digest" in error for error in errors))
 
     def test_rejects_metadata_binding_drift(self) -> None:
         fields = {
@@ -267,6 +285,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     publisher_run(),
                     artifacts(),
                     document,
+                    "sha256:" + "b" * 64,
                     compare(),
                 )
                 self.assertTrue(any(field in error for error in errors))
@@ -292,6 +311,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     publisher_run(),
                     artifacts(),
                     document,
+                    "sha256:" + "b" * 64,
                     compare(),
                 )
                 self.assertTrue(
@@ -303,7 +323,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         run = source_run()
         run["id"] = True
         errors = validate_post_split_runtime_proof(
-            repository(), default_commit(), run, publisher_run(), artifacts(), metadata(), compare()
+            repository(), default_commit(), run, publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("source run id" in error for error in errors))
 
