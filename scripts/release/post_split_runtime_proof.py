@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any
 import re
 
+from scripts.release.validated_release_metadata import (
+    validate_validated_release_metadata_document,
+)
+
 
 SOURCE_WORKFLOW_NAME = "Release Build"
 SOURCE_WORKFLOW_PATH = ".github/workflows/release-build.yml"
@@ -53,8 +57,10 @@ def _metadata_binding_errors(
     publisher_run_attempt: int,
     publisher_sha: str,
 ) -> list[str]:
+    structural_errors = validate_validated_release_metadata_document(metadata)
+    errors = [f"validator metadata: {error}" for error in structural_errors]
     if not isinstance(metadata, dict):
-        return ["validator metadata must be a JSON object"]
+        return errors
 
     expected = {
         "sourceRepository": repository_full_name,
@@ -66,14 +72,10 @@ def _metadata_binding_errors(
         "publisherRunAttempt": publisher_run_attempt,
         "publisherSHA": publisher_sha,
     }
-    errors: list[str] = []
     for field, expected_value in expected.items():
         if metadata.get(field) != expected_value:
             errors.append(f"{field} does not match runtime proof evidence")
 
-    tag = metadata.get("tag")
-    if not isinstance(tag, str) or TAG_RE.fullmatch(tag) is None:
-        errors.append("tag must match stable SemVer form vX.Y.Z")
     return errors
 
 
