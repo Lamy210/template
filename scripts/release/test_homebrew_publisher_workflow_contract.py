@@ -42,6 +42,19 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         )
         self.assertNotIn(r"^v[0-9]+\.[0-9]+\.[0-9]+$", block)
 
+    def test_homebrew_validates_tap_repository_components_before_secret_use(self) -> None:
+        block = step_block(self.homebrew_text(), "Validate release identity and inputs")
+        self.assertTrue(block)
+        self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
+        self.assertIn(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", block)
+        self.assertIn('tap_owner="${TAP_REPOSITORY%%/*}"', block)
+        self.assertIn('tap_name="${TAP_REPOSITORY#*/}"', block)
+        self.assertIn('"${tap_owner}" == "."', block)
+        self.assertIn('"${tap_owner}" == ".."', block)
+        self.assertIn('"${tap_name}" == "."', block)
+        self.assertIn('"${tap_name}" == ".."', block)
+        self.assertNotIn("secrets.tap_token", block)
+
     def test_homebrew_validates_tap_default_branch_before_secret_use(self) -> None:
         block = step_block(self.homebrew_text(), "Validate release identity and inputs")
         self.assertTrue(block)
