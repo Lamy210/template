@@ -31,8 +31,15 @@ class RuntimeProofArtifactTests(unittest.TestCase):
 
     def test_extracts_unique_metadata_from_exact_digest(self) -> None:
         _, archive, output = self.fixture()
-        info = zipfile.ZipInfo("validated-release-metadata.json")
-        write_zip(archive, [(info, b'{"schemaVersion":1}\n')])
+        metadata = zipfile.ZipInfo("validated-release-metadata.json")
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        write_zip(
+            archive,
+            [
+                (metadata, b'{"schemaVersion":1}\n'),
+                (app_archive, b"archive"),
+            ],
+        )
 
         self.assertEqual(
             [],
@@ -46,8 +53,9 @@ class RuntimeProofArtifactTests(unittest.TestCase):
 
     def test_rejects_digest_mismatch(self) -> None:
         _, archive, output = self.fixture()
-        info = zipfile.ZipInfo("validated-release-metadata.json")
-        write_zip(archive, [(info, b"{}\n")])
+        metadata = zipfile.ZipInfo("validated-release-metadata.json")
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        write_zip(archive, [(metadata, b"{}\n"), (app_archive, b"archive")])
 
         errors = extract_runtime_proof_metadata(
             archive,
@@ -72,8 +80,12 @@ class RuntimeProofArtifactTests(unittest.TestCase):
 
         archive.unlink()
         duplicate_a = zipfile.ZipInfo("validated-release-metadata.json")
-        duplicate_b = zipfile.ZipInfo("nested/validated-release-metadata.json")
-        write_zip(archive, [(duplicate_a, b"{}"), (duplicate_b, b"{}")])
+        duplicate_b = zipfile.ZipInfo("validated-release-metadata.json")
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        write_zip(
+            archive,
+            [(duplicate_a, b"{}"), (duplicate_b, b"{}"), (app_archive, b"archive")],
+        )
         errors = extract_runtime_proof_metadata(
             archive,
             output,
@@ -81,12 +93,48 @@ class RuntimeProofArtifactTests(unittest.TestCase):
         )
         self.assertTrue(any("exactly one" in error for error in errors))
 
+    def test_rejects_nested_metadata_path_even_with_matching_basename(self) -> None:
+        _, archive, output = self.fixture()
+        nested = zipfile.ZipInfo("nested/validated-release-metadata.json")
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        write_zip(archive, [(nested, b"{}\n"), (app_archive, b"archive")])
+
+        errors = extract_runtime_proof_metadata(
+            archive,
+            output,
+            expected_digest=digest(archive),
+        )
+
+        self.assertTrue(any("root-level" in error for error in errors))
+
+    def test_rejects_missing_or_symlinked_unsigned_archive(self) -> None:
+        for symlink in (False, True):
+            with self.subTest(symlink=symlink):
+                _, archive, output = self.fixture()
+                metadata = zipfile.ZipInfo("validated-release-metadata.json")
+                entries = [(metadata, b"{}\n")]
+                if symlink:
+                    app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+                    app_archive.create_system = 3
+                    app_archive.external_attr = (stat.S_IFLNK | 0o777) << 16
+                    entries.append((app_archive, b"target"))
+                write_zip(archive, entries)
+
+                errors = extract_runtime_proof_metadata(
+                    archive,
+                    output,
+                    expected_digest=digest(archive),
+                )
+
+                self.assertTrue(any("unsigned app archive" in error for error in errors))
+
     def test_rejects_symlink_metadata_entry(self) -> None:
         _, archive, output = self.fixture()
         info = zipfile.ZipInfo("validated-release-metadata.json")
         info.create_system = 3
         info.external_attr = (stat.S_IFLNK | 0o777) << 16
-        write_zip(archive, [(info, b"target")])
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        write_zip(archive, [(info, b"target"), (app_archive, b"archive")])
 
         errors = extract_runtime_proof_metadata(
             archive,
@@ -99,7 +147,8 @@ class RuntimeProofArtifactTests(unittest.TestCase):
     def test_rejects_metadata_over_size_limit(self) -> None:
         _, archive, output = self.fixture()
         info = zipfile.ZipInfo("validated-release-metadata.json")
-        write_zip(archive, [(info, b"12345")])
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        write_zip(archive, [(info, b"12345"), (app_archive, b"archive")])
 
         errors = extract_runtime_proof_metadata(
             archive,
