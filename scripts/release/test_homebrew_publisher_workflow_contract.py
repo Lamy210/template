@@ -68,14 +68,22 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("ref: ${{ github.sha }}", text)
         self.assertIn("persist-credentials: false", text)
 
-    def test_published_checksum_uses_strict_trusted_parser(self) -> None:
-        block = step_block(self.homebrew_text(), "Download published checksum")
+    def test_published_assets_are_rebound_before_cask_render(self) -> None:
+        block = step_block(self.homebrew_text(), "Download and verify published release assets")
         self.assertTrue(block)
-        self.assertIn("source/scripts/release/release_checksum.py", block)
-        self.assertIn('"${checksum_file}"', block)
-        self.assertIn('"${DMG_NAME}"', block)
-        self.assertNotIn("awk 'NR == 1", block)
-        self.assertNotIn("[0-9a-fA-F]{64}", block)
+        self.assertIn('"${DMG_NAME}" "${DMG_NAME}.sha256" release-provenance.json', block)
+        self.assertIn("source/scripts/release/verify-published-release-assets.py", block)
+        self.assertIn('--dmg "release-assets/${DMG_NAME}"', block)
+        self.assertIn('--checksum "release-assets/${DMG_NAME}.sha256"', block)
+        self.assertIn("--provenance release-assets/release-provenance.json", block)
+        self.assertIn('--tag "${SOURCE_TAG}"', block)
+        self.assertIn('echo "SHA256=${sha256}" >>"${GITHUB_ENV}"', block)
+        self.assertNotIn("source/scripts/release/release_checksum.py", block)
+
+        self.assertLess(
+            self.homebrew_text().index("Download and verify published release assets"),
+            self.homebrew_text().index("Render Cask"),
+        )
 
     def test_rendered_cask_is_syntax_checked_before_tap_write(self) -> None:
         block = step_block(self.homebrew_text(), "Render Cask")
@@ -98,7 +106,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         for step_name in (
             "Validate release identity and inputs",
             "Checkout trusted publisher automation",
-            "Download published checksum",
+            "Download and verify published release assets",
             "Render Cask",
         ):
             with self.subTest(step_name=step_name):

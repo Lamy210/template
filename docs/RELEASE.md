@@ -325,10 +325,11 @@ It:
 
 1. validates the stable source tag and Cask/tap inputs;
 2. checks out trusted publisher automation at the publisher SHA;
-3. downloads the checksum from the immutable GitHub Release for `source_tag`;
-4. renders the Cask;
-5. creates/reuses an automation branch in the tap;
-6. opens/reuses a tap PR.
+3. downloads the published DMG, checksum, and `release-provenance.json` for `source_tag`;
+4. recomputes SHA-256 from the downloaded DMG and requires both the canonical checksum and final provenance to bind to those exact bytes and tag;
+5. renders the Cask from that reverified digest;
+6. creates/reuses an automation branch in the tap;
+7. opens/reuses a tap PR.
 
 It never receives Apple signing credentials.
 
