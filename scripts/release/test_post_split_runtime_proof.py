@@ -50,6 +50,7 @@ def source_run() -> dict:
         "status": "completed",
         "conclusion": "success",
         "head_sha": SOURCE_SHA,
+        "head_branch": "v1.2.3",
         "repository": {"id": REPO_ID, "full_name": REPOSITORY},
         "head_repository": {"id": REPO_ID, "full_name": REPOSITORY},
     }
@@ -180,6 +181,42 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             repository(), default_commit(), source_run(), bad_publisher, artifacts(), metadata(), compare()
         )
         self.assertTrue(any("publisher event" in error for error in errors))
+
+    def test_rejects_missing_or_malformed_source_release_tag(self) -> None:
+        cases = [None, "main", "v01.2.3", "v1.2.3-rc1"]
+        for value in cases:
+            with self.subTest(value=value):
+                run = source_run()
+                if value is None:
+                    run.pop("head_branch")
+                else:
+                    run["head_branch"] = value
+                errors = validate_post_split_runtime_proof(
+                    repository(),
+                    default_commit(),
+                    run,
+                    publisher_run(),
+                    artifacts(),
+                    metadata(),
+                    compare(),
+                )
+                self.assertTrue(any("source head_branch" in error for error in errors))
+
+    def test_rejects_metadata_tag_drift_from_source_run_tag(self) -> None:
+        document = metadata()
+        document["tag"] = "v1.2.4"
+
+        errors = validate_post_split_runtime_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            document,
+            compare(),
+        )
+
+        self.assertTrue(any("tag does not match runtime proof evidence" in error for error in errors))
 
     def test_rejects_repository_identity_drift(self) -> None:
         run = source_run()
