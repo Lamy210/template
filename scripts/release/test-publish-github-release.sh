@@ -32,6 +32,19 @@ set -euo pipefail
 : "${GH_FAKE_STATE_FILE:?GH_FAKE_STATE_FILE is required}"
 printf '%s\n' "$*" >>"${GH_FAKE_LOG}"
 
+if [[ "$1" == "api" ]]; then
+  if [[ "${GH_FAKE_RELEASE_LIST_FAIL:-false}" == "true" ]]; then
+    exit 1
+  fi
+  if [[ "${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" == "true" && -f "${GH_FAKE_STATE_FILE}" ]]; then
+    exit 1
+  fi
+  if [[ "${GH_FAKE_RELEASE_EXISTS:-false}" == "true" || -f "${GH_FAKE_STATE_FILE}" ]]; then
+    printf '%s\n' "${TAG_NAME:?TAG_NAME is required}"
+  fi
+  exit 0
+fi
+
 if [[ "$1" != "release" ]]; then
   echo "Unexpected gh command: $*" >&2
   exit 90
@@ -129,6 +142,8 @@ run_publisher() {
     GH_FAKE_CORRUPT_AFTER_CREATE="${GH_FAKE_CORRUPT_AFTER_CREATE:-false}" \
     GH_FAKE_CREATE_RACE="${GH_FAKE_CREATE_RACE:-false}" \
     GH_FAKE_CREATE_FAIL_EMPTY="${GH_FAKE_CREATE_FAIL_EMPTY:-false}" \
+    GH_FAKE_RELEASE_LIST_FAIL="${GH_FAKE_RELEASE_LIST_FAIL:-false}" \
+    GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE="${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" \
     PATH="${FAKE_BIN}:${PATH}" \
     TAG_NAME="${TAG_NAME}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
@@ -225,6 +240,20 @@ mv "${real_provenance_path}" "${RELEASE_PROVENANCE_PATH}"
 rm -f "${STATE_FILE}"
 rm -f "${REMOTE_DIR}"/*
 : >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false GH_FAKE_RELEASE_LIST_FAIL=true run_publisher; then
+  echo "Publisher treated a release-list API failure as release absence." >&2
+  exit 1
+fi
+if grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher attempted release creation after release-list API failure." >&2
+  exit 1
+fi
+if ! grep -F "api --paginate repos/${GITHUB_REPOSITORY}/releases?per_page=100 --jq .[].tag_name" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher did not use the paginated explicit-repository release probe." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
 GH_FAKE_RELEASE_EXISTS=false run_publisher
 if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
   echo "New release was not created." >&2
@@ -277,8 +306,8 @@ if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
   echo "Concurrent-create probe did not attempt release creation." >&2
   exit 1
 fi
-if [[ "$(grep -Fc "release view ${TAG_NAME} --repo ${GITHUB_REPOSITORY}" "${LOG_PATH}")" -lt 2 ]]; then
-  echo "Publisher did not re-read the release after a concurrent create race." >&2
+if [[ "$(grep -Fc "api --paginate repos/${GITHUB_REPOSITORY}/releases?per_page=100 --jq .[].tag_name" "${LOG_PATH}")" -lt 2 ]]; then
+  echo "Publisher did not re-probe release existence after a concurrent create race." >&2
   exit 1
 fi
 for asset_name in "$(basename "${DMG_PATH}")" "$(basename "${CHECKSUM_PATH}")" "$(basename "${RELEASE_PROVENANCE_PATH}")"; do
@@ -295,12 +324,24 @@ if GH_FAKE_RELEASE_EXISTS=false GH_FAKE_CREATE_FAIL_EMPTY=true run_publisher; th
   echo "Publisher accepted a failed create with no concurrent release to verify." >&2
   exit 1
 fi
-if [[ "$(grep -Fc "release view ${TAG_NAME} --repo ${GITHUB_REPOSITORY}" "${LOG_PATH}")" -lt 2 ]]; then
-  echo "Publisher did not re-check remote state after failed creation." >&2
+if [[ "$(grep -Fc "api --paginate repos/${GITHUB_REPOSITORY}/releases?per_page=100 --jq .[].tag_name" "${LOG_PATH}")" -lt 2 ]]; then
+  echo "Publisher did not re-check remote existence after failed creation." >&2
   exit 1
 fi
 if grep -F "release download ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
   echo "Publisher downloaded assets even though no concurrent release existed." >&2
+  exit 1
+fi
+
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false GH_FAKE_CREATE_RACE=true GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE=true run_publisher; then
+  echo "Publisher accepted a concurrent-create path whose release state could not be re-queried." >&2
+  exit 1
+fi
+if grep -F "release download ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher downloaded assets after concurrent release-state lookup failure." >&2
   exit 1
 fi
 

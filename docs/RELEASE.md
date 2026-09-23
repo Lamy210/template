@@ -311,6 +311,7 @@ Stable releases are append-never/replace-never.
 - requires and validates explicit `GITHUB_REPOSITORY=owner/repo` identity, and passes it to every GitHub Release read/write/download operation instead of relying on ambient Git remote state;
 - requires the canonical `release-provenance.json` asset; omission or renaming fails before any GitHub call;
 - requires the DMG, checksum, and provenance inputs to be regular non-symlink files;
+- enumerates releases through the paginated GitHub API in the explicitly bound repository before deciding that a tag has no release; API/auth/network failure is treated as unknown state and fails closed rather than as absence;
 - creates a missing release using the already-validated tag, then re-reads remote release state and re-downloads all three assets before reporting success;
 - if creation loses a concurrent-publisher race, re-reads the now-existing release and accepts it only through the same exact state/byte verification path; a failed create with no verifiable release still fails closed;
 - requires newly-created remote assets to be byte-identical to the local DMG, checksum, and final release attestation;
