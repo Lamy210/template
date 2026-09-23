@@ -327,13 +327,17 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         for token in (
             "actions/runs/",
             "/artifacts?per_page=100",
+            "/actions/artifacts/${artifact_id}/zip",
+            "extract-runtime-proof-metadata.py",
+            "artifact_digest",
             "compare/",
-            "gh run download",
             "validated-release-input-",
             "audit-post-split-runtime-proof.py",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, text)
+        self.assertNotIn("gh run download", text)
+
         for mutation in (
             "--method POST",
             "--method PUT",

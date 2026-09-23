@@ -71,9 +71,10 @@ gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${publisher_run_id}
 
 gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${publisher_run_id}/artifacts?per_page=100" >"${temp_root}/artifacts.json"
 
-artifact_name="$(
-  python3 - "${temp_root}/source-run.json" "${temp_root}/publisher-run.json" "${temp_root}/artifacts.json" <<'PY'
+artifact_identity_file="${temp_root}/artifact-identity.txt"
+python3 - "${temp_root}/source-run.json" "${temp_root}/publisher-run.json" "${temp_root}/artifacts.json" >"${artifact_identity_file}" <<'PY'
 import json
+import re
 import sys
 
 source_path, publisher_path, artifacts_path = sys.argv[1:]
@@ -118,23 +119,39 @@ if len(matches) != 1:
     raise SystemExit(
         f"expected exactly one validator artifact named {expected!r}; found {len(matches)}"
     )
-if matches[0].get("expired") is not False:
+
+artifact = matches[0]
+if artifact.get("expired") is not False:
     raise SystemExit("validator artifact is expired")
-print(expected)
+artifact_id = artifact.get("id")
+artifact_digest = artifact.get("digest")
+if type(artifact_id) is not int or artifact_id <= 0:
+    raise SystemExit("validator artifact id is missing or invalid")
+if (
+    not isinstance(artifact_digest, str)
+    or re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_digest) is None
+):
+    raise SystemExit("validator artifact digest is missing or invalid")
+
+print(artifact_id)
+print(artifact_digest)
 PY
-)"
 
-mkdir -p "${temp_root}/validator-artifact"
-gh run download "${publisher_run_id}" --repo "${repository}" --name "${artifact_name}" --dir "${temp_root}/validator-artifact"
-
-mapfile -d '' metadata_files < <(
-  find "${temp_root}/validator-artifact" -type f -name 'validated-release-metadata.json' -print0
-)
-if (("${#metadata_files[@]}" != 1)); then
-  echo "Expected exactly one validated-release-metadata.json; found ${#metadata_files[@]}." >&2
+readarray -t artifact_identity <"${artifact_identity_file}"
+if (("${#artifact_identity[@]}" != 2)); then
+  echo "Validator Artifact identity output was malformed." >&2
   exit 3
 fi
-cp "${metadata_files[0]}" "${temp_root}/metadata.json"
+artifact_id="${artifact_identity[0]}"
+artifact_digest="${artifact_identity[1]}"
+
+artifact_zip="${temp_root}/validator-artifact.zip"
+gh api "${api_headers[@]}" "repos/${repository}/actions/artifacts/${artifact_id}/zip" >"${artifact_zip}"
+
+python3 "${repo_root}/scripts/release/extract-runtime-proof-metadata.py" \
+  --archive "${artifact_zip}" \
+  --expected-digest "${artifact_digest}" \
+  --output "${temp_root}/metadata.json"
 
 readarray -t shas < <(
   python3 - "${temp_root}/source-run.json" "${temp_root}/publisher-run.json" <<'PY'
