@@ -238,7 +238,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--head-sha "${PUSHED_SHA}"', final_step)
         self.assertIn('if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]', final_step)
         self.assertIn("Selected tap pull request changed before final verification.", final_step)
-        self.assertEqual(2, final_step.count("verify_remote_branch"))
+        self.assertEqual(2, final_step.count("\n          verify_remote_branch\n"))
         self.assertIn('gh pr view "${PR_NUMBER}"', final_step)
         self.assertLess(
             text.index("Open or reuse tap pull request"),
