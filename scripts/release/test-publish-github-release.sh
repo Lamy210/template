@@ -79,6 +79,14 @@ PY
       done
     fi
     : >"${GH_FAKE_STATE_FILE}"
+    if [[ "${GH_FAKE_CREATE_FAIL_EMPTY:-false}" == "true" ]]; then
+      rm -f "${GH_FAKE_STATE_FILE}"
+      rm -f "${GH_FAKE_REMOTE_DIR}"/*
+      exit 1
+    fi
+    if [[ "${GH_FAKE_CREATE_RACE:-false}" == "true" ]]; then
+      exit 1
+    fi
     ;;
   download)
     : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
@@ -119,6 +127,8 @@ run_publisher() {
     GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
     GH_FAKE_STATE_FILE="${STATE_FILE}" \
     GH_FAKE_CORRUPT_AFTER_CREATE="${GH_FAKE_CORRUPT_AFTER_CREATE:-false}" \
+    GH_FAKE_CREATE_RACE="${GH_FAKE_CREATE_RACE:-false}" \
+    GH_FAKE_CREATE_FAIL_EMPTY="${GH_FAKE_CREATE_FAIL_EMPTY:-false}" \
     PATH="${FAKE_BIN}:${PATH}" \
     TAG_NAME="${TAG_NAME}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
@@ -258,6 +268,42 @@ if ! grep -F "release download ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --pattern
   echo "Post-create corruption probe did not re-download the created DMG." >&2
   exit 1
 fi
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
+
+: >"${LOG_PATH}"
+GH_FAKE_RELEASE_EXISTS=false GH_FAKE_CREATE_RACE=true run_publisher
+if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Concurrent-create probe did not attempt release creation." >&2
+  exit 1
+fi
+if [[ "$(grep -Fc "release view ${TAG_NAME} --repo ${GITHUB_REPOSITORY}" "${LOG_PATH}")" -lt 2 ]]; then
+  echo "Publisher did not re-read the release after a concurrent create race." >&2
+  exit 1
+fi
+for asset_name in "$(basename "${DMG_PATH}")" "$(basename "${CHECKSUM_PATH}")" "$(basename "${RELEASE_PROVENANCE_PATH}")"; do
+  if ! grep -F "release download ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --pattern ${asset_name}" "${LOG_PATH}" >/dev/null; then
+    echo "Concurrent-create path did not verify remote asset: ${asset_name}" >&2
+    exit 1
+  fi
+done
+
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false GH_FAKE_CREATE_FAIL_EMPTY=true run_publisher; then
+  echo "Publisher accepted a failed create with no concurrent release to verify." >&2
+  exit 1
+fi
+if [[ "$(grep -Fc "release view ${TAG_NAME} --repo ${GITHUB_REPOSITORY}" "${LOG_PATH}")" -lt 2 ]]; then
+  echo "Publisher did not re-check remote state after failed creation." >&2
+  exit 1
+fi
+if grep -F "release download ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher downloaded assets even though no concurrent release existed." >&2
+  exit 1
+fi
+
 rm -f "${STATE_FILE}"
 rm -f "${REMOTE_DIR}"/*
 
