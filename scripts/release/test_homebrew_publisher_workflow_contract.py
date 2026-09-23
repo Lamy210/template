@@ -71,6 +71,13 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
     def test_published_assets_are_rebound_before_cask_render(self) -> None:
         block = step_block(self.homebrew_text(), "Download and verify published release assets")
         self.assertTrue(block)
+        self.assertIn('gh release view "${SOURCE_TAG}"', block)
+        self.assertIn("--json assets,isDraft,isPrerelease,tagName", block)
+        self.assertIn("source/scripts/release/verify-release-state.py", block)
+        self.assertIn("--metadata release-assets/release.json", block)
+        self.assertIn('--asset "${DMG_NAME}"', block)
+        self.assertIn('--asset "${DMG_NAME}.sha256"', block)
+        self.assertIn("--asset release-provenance.json", block)
         self.assertIn('"${DMG_NAME}" "${DMG_NAME}.sha256" release-provenance.json', block)
         self.assertIn("source/scripts/release/verify-published-release-assets.py", block)
         self.assertIn('--dmg "release-assets/${DMG_NAME}"', block)

@@ -66,59 +66,11 @@ for local_path in "${assets[@]}"; do
   expected_asset_names+=("$(basename "${local_path}")")
 done
 
-python3 - "${release_json}" "${TAG_NAME}" "${expected_asset_names[@]}" <<'PY'
-import json
-from collections import Counter
-import sys
-
-release_path, expected_tag, *expected_names = sys.argv[1:]
-try:
-    with open(release_path, encoding="utf-8") as handle:
-        release = json.load(handle)
-except (OSError, json.JSONDecodeError) as error:
-    raise SystemExit(f"Existing release metadata is unreadable: {error}")
-
-if not isinstance(release, dict):
-    raise SystemExit("Existing release metadata must be a JSON object")
-
-tag_name = release.get("tagName")
-if not isinstance(tag_name, str) or tag_name != expected_tag:
-    raise SystemExit(
-        f"Existing release tag identity mismatch: expected {expected_tag!r}, got {tag_name!r}"
-    )
-if release.get("isDraft") is not False:
-    raise SystemExit("Existing release must be published, not draft")
-if release.get("isPrerelease") is not False:
-    raise SystemExit("Existing release must be a stable release, not prerelease")
-
-assets = release.get("assets")
-if not isinstance(assets, list):
-    raise SystemExit("Existing release assets metadata must be an array")
-
-actual_names = []
-for asset in assets:
-    if not isinstance(asset, dict):
-        raise SystemExit("Existing release asset metadata must contain only objects")
-    name = asset.get("name")
-    if not isinstance(name, str) or not name:
-        raise SystemExit("Existing release asset name must be a non-empty string")
-    actual_names.append(name)
-
-actual = Counter(actual_names)
-expected = Counter(expected_names)
-if actual != expected:
-    missing = sorted((expected - actual).elements())
-    unexpected = sorted((actual - expected).elements())
-    details = []
-    if missing:
-        details.append(f"missing={missing!r}")
-    if unexpected:
-        details.append(f"unexpected={unexpected!r}")
-    raise SystemExit(
-        "Existing release asset set does not exactly match immutable publication contract"
-        + (f": {', '.join(details)}" if details else "")
-    )
-PY
+release_state_args=(--metadata "${release_json}" --tag "${TAG_NAME}")
+for asset_name in "${expected_asset_names[@]}"; do
+  release_state_args+=(--asset "${asset_name}")
+done
+python3 "$(dirname "${BASH_SOURCE[0]}")/verify-release-state.py" "${release_state_args[@]}"
 
 for local_path in "${assets[@]}"; do
   asset_name="$(basename "${local_path}")"
