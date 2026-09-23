@@ -335,7 +335,7 @@ It:
 6. takes the verified provenance source SHA and independently re-resolves the live stable tag, requiring that tag to point to the same source commit and that commit to remain reachable from trusted publisher history;
 7. renders the Cask from that reverified digest;
 8. queries the automation branch fail-closed, rebuilds it from the trusted tap default branch, and pushes with an explicit force-with-lease expectation (including a create-only empty lease when the branch was absent);
-9. queries open tap PRs explicitly and creates/reuses one only from a successful unambiguous query result.
+9. queries open tap PRs explicitly, validates head repository/head/base identity so a same-named fork PR cannot be reused, and creates/reuses one only from a successful unambiguous same-repository result.
 
 It never receives Apple signing credentials.
 

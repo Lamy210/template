@@ -295,30 +295,37 @@ jobs:
         run: |
           set -euo pipefail
           version="${SOURCE_TAG#v}"
-          if ! open_pr_numbers="$(
-            gh pr list \
-              --repo "${TAP_REPOSITORY}" \
-              --state open \
-              --head "${BRANCH}" \
-              --base "${TAP_DEFAULT_BRANCH}" \
-              --limit 2 \
-              --json number \
-              --jq '.[].number'
-          )"; then
+          pr_metadata="${RUNNER_TEMP}/tap-open-prs.json"
+          if ! gh pr list \
+            --repo "${TAP_REPOSITORY}" \
+            --state open \
+            --head "${BRANCH}" \
+            --base "${TAP_DEFAULT_BRANCH}" \
+            --limit 100 \
+            --json number,headRefName,baseRefName,headRepository,headRepositoryOwner,isCrossRepository \
+            >"${pr_metadata}"; then
             echo "Failed to query existing tap pull requests." >&2
             exit 1
           fi
 
-          if [[ -z "${open_pr_numbers}" ]]; then
+          if ! open_pr_number="$(
+            python3 source/scripts/homebrew/select-tap-pull-request.py \
+              --metadata "${pr_metadata}" \
+              --repository "${TAP_REPOSITORY}" \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}"
+          )"; then
+            echo "Tap pull request query result failed identity validation." >&2
+            exit 1
+          fi
+
+          if [[ -z "${open_pr_number}" ]]; then
             gh pr create \
               --repo "${TAP_REPOSITORY}" \
               --base "${TAP_DEFAULT_BRANCH}" \
               --head "${BRANCH}" \
               --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
               --body "Automated Cask update for ${GITHUB_REPOSITORY}@${SOURCE_TAG}. Verify tap CI before merging."
-          elif [[ "${open_pr_numbers}" =~ ^[1-9][0-9]*$ ]]; then
-            gh pr view "${open_pr_numbers}" --repo "${TAP_REPOSITORY}" --web=false
           else
-            echo "Expected at most one open tap pull request for ${BRANCH}, got: ${open_pr_numbers}" >&2
-            exit 1
+            gh pr view "${open_pr_number}" --repo "${TAP_REPOSITORY}" --web=false
           fi

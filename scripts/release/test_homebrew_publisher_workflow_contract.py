@@ -178,19 +178,24 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
     def test_tap_pull_request_lookup_fails_closed_before_create(self) -> None:
         block = step_block(self.homebrew_text(), "Open or reuse tap pull request")
         self.assertTrue(block)
-        self.assertIn("if ! open_pr_numbers=", block)
         self.assertIn("gh pr list", block)
         self.assertIn('--repo "${TAP_REPOSITORY}"', block)
         self.assertIn("--state open", block)
         self.assertIn('--head "${BRANCH}"', block)
         self.assertIn('--base "${TAP_DEFAULT_BRANCH}"', block)
-        self.assertIn("--limit 2", block)
-        self.assertIn("--json number", block)
-        self.assertIn("--jq '.[].number'", block)
+        self.assertIn("--limit 100", block)
+        self.assertIn(
+            "--json number,headRefName,baseRefName,headRepository,headRepositoryOwner,isCrossRepository",
+            block,
+        )
         self.assertIn("Failed to query existing tap pull requests.", block)
+        self.assertIn("source/scripts/homebrew/select-tap-pull-request.py", block)
+        self.assertIn('--repository "${TAP_REPOSITORY}"', block)
+        self.assertIn('--head "${BRANCH}"', block)
+        self.assertIn('--base "${TAP_DEFAULT_BRANCH}"', block)
+        self.assertIn("Tap pull request query result failed identity validation.", block)
         self.assertNotIn('if gh pr view "${BRANCH}"', block)
-        self.assertIn('gh pr view "${open_pr_numbers}"', block)
-        self.assertIn("Expected at most one open tap pull request", block)
+        self.assertIn('gh pr view "${open_pr_number}"', block)
 
     def test_publisher_runs_homebrew_only_after_sign_and_publish(self) -> None:
         text = self.publisher_text()
