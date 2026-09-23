@@ -147,6 +147,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 run,
                 artifacts(),
                 metadata(),
+                "sha256:" + "b" * 64,
                 compare(),
             ),
         )
@@ -156,7 +157,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         relation["status"] = "identical"
         relation["ahead_by"] = 0
         errors = validate_post_split_runtime_proof(
-            repository(), default_commit(), source_run(), publisher_run(), artifacts(), metadata(), relation
+            repository(), default_commit(), source_run(), publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, relation
         )
         self.assertTrue(any("strict ancestor" in error for error in errors))
 
