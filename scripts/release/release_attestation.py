@@ -107,6 +107,43 @@ def validate_release_attestation(document: object) -> list[str]:
     return errors
 
 
+def verify_release_attestation(
+    document: object,
+    expected: ExpectedRelease,
+) -> list[str]:
+    errors = validate_release_attestation(document)
+    if not isinstance(document, dict):
+        return errors
+
+    expected_values = {
+        "sourceRepository": expected.source_repository,
+        "sourceRunId": expected.source_run_id,
+        "sourceRunAttempt": expected.source_run_attempt,
+        "sourceSHA": expected.source_sha,
+        "tag": expected.tag,
+        "sourceArtifactId": expected.source_artifact_id,
+        "sourceArtifactDigest": expected.source_artifact_digest,
+        "archiveSha256": expected.archive_sha256,
+        "publisherRunId": expected.publisher_run_id,
+        "publisherSHA": expected.publisher_sha,
+    }
+    for field, expected_value in expected_values.items():
+        if document.get(field) != expected_value:
+            errors.append(f"{field} does not match expected release identity")
+
+    if not expected.dmg_path.is_file():
+        errors.append(f"release DMG is missing: {expected.dmg_path}")
+    else:
+        actual_dmg_digest = sha256_file(expected.dmg_path)
+        if document.get("dmgSha256") != actual_dmg_digest:
+            errors.append(
+                "dmgSha256 does not match the exact release DMG: "
+                f"{actual_dmg_digest}"
+            )
+
+    return errors
+
+
 def build_release_attestation(expected: ExpectedRelease) -> dict[str, object]:
     if not expected.dmg_path.is_file():
         raise ValueError(f"DMG not found: {expected.dmg_path}")

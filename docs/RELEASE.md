@@ -195,6 +195,8 @@ The publisher does not trust only `github.event.workflow_run` display data or an
 - malformed artifact digest;
 - downloaded ZIP digest mismatch;
 - ZIP traversal/symlink/duplicate/unexpected-file attacks;
+- incomplete, malformed, or duplicate-ID artifact pagination;
+- workflow runs advertising more than 1,000 artifacts before pagination;
 - excessive source-artifact member count or declared uncompressed size.
 
 The resolver writes source-artifact metadata itself; it does not accept source-owned claims for GitHub artifact ID/digest as authoritative.
@@ -294,7 +296,11 @@ Its closed schema records:
 
 The attestation intentionally omits a wall-clock timestamp and `publisherRunAttempt`. A full publisher rerun keeps the same workflow run ID but increments `github.run_attempt`; excluding attempt-local data keeps the attestation deterministic when all release facts and final DMG bytes are identical, preserving immutable/idempotent release retry behavior.
 
-The verified Actions Artifact contains the DMG, checksum, and `release-provenance.json`. When GitHub Release publication is enabled, all three are published as immutable release assets.
+The verified Actions Artifact contains exactly the DMG, its checksum, and `release-provenance.json`. After exact-ID download, the separate no-Apple-secrets publication job rejects missing entries, unexpected extra entries, directories, and symlinked expected entries before interpreting provenance or mutating GitHub Release state.
+
+Before any GitHub Release mutation, the publication job independently revalidates the final attestation against the expected source run/artifact/tag, current publisher run/SHA, and SHA-256 recomputed from the exact downloaded DMG. The attestation is therefore a checked handoff across the repository-write boundary rather than merely signer-authored metadata.
+
+When GitHub Release publication is enabled, the DMG, checksum, and verified `release-provenance.json` are published as immutable release assets.
 
 ## GitHub Release immutability
 
@@ -302,6 +308,8 @@ Stable releases are append-never/replace-never.
 
 `publish-github-release.sh`:
 
+- requires the canonical `release-provenance.json` asset; omission or renaming fails before any GitHub call;
+- requires the DMG, checksum, and provenance inputs to be regular non-symlink files;
 - creates a missing release using the already-validated tag;
 - treats an existing release as a no-op only when the expected DMG, checksum, and final release-attestation assets are byte-identical by SHA-256;
 - fails when an expected asset is missing or differs;

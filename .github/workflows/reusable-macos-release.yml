@@ -411,6 +411,46 @@ jobs:
           python3 scripts/release/validate-release-output-name.py \
             --dmg-name "${DMG_NAME}"
 
+      - name: Require exact verified release payload
+        shell: bash
+        env:
+          DMG_NAME: ${{ inputs.dmg_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/validate-verified-release-payload.py \
+            --root release-output \
+            --dmg-name "${DMG_NAME}"
+
+      - name: Reverify final release provenance before publication
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+          PUBLISHER_RUN_ID: ${{ github.run_id }}
+          PUBLISHER_SHA: ${{ github.sha }}
+          DMG_PATH: release-output/${{ inputs.dmg_name }}
+          RELEASE_PROVENANCE_PATH: release-output/release-provenance.json
+        run: |
+          set -euo pipefail
+          python3 scripts/release/verify-release-provenance.py \
+            --metadata "${RELEASE_PROVENANCE_PATH}" \
+            --dmg "${DMG_PATH}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --source-run-id "${SOURCE_RUN_ID}" \
+            --source-run-attempt "${SOURCE_RUN_ATTEMPT}" \
+            --source-sha "${SOURCE_SHA}" \
+            --source-tag "${SOURCE_TAG}" \
+            --source-artifact-id "${SOURCE_ARTIFACT_ID}" \
+            --source-artifact-digest "${SOURCE_ARTIFACT_DIGEST}" \
+            --archive-sha256 "${ARCHIVE_SHA256}" \
+            --publisher-run-id "${PUBLISHER_RUN_ID}" \
+            --publisher-sha "${PUBLISHER_SHA}"
+
       - name: Rebind release tag before publication
         shell: bash
         env:

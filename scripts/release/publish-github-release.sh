@@ -3,19 +3,41 @@ set -euo pipefail
 
 : "${TAG_NAME:?TAG_NAME is required}"
 : "${DMG_PATH:?DMG_PATH is required}"
+: "${RELEASE_PROVENANCE_PATH:?RELEASE_PROVENANCE_PATH is required}"
 
 checksum_path="${DMG_PATH}.sha256"
-assets=("${DMG_PATH}" "${checksum_path}")
-if [[ -n "${RELEASE_PROVENANCE_PATH:-}" ]]; then
-  assets+=("${RELEASE_PROVENANCE_PATH}")
+if [[ "$(basename "${RELEASE_PROVENANCE_PATH}")" != "release-provenance.json" ]]; then
+  echo "Final release provenance must be named release-provenance.json." >&2
+  exit 1
 fi
 
+assets=("${DMG_PATH}" "${checksum_path}" "${RELEASE_PROVENANCE_PATH}")
 for file_path in "${assets[@]}"; do
-  if [[ ! -f "${file_path}" ]]; then
-    echo "Release asset not found: ${file_path}" >&2
+  if [[ ! -f "${file_path}" || -L "${file_path}" ]]; then
+    echo "Release asset must be a regular non-symlink file: ${file_path}" >&2
     exit 1
   fi
 done
+
+command -v python3 >/dev/null 2>&1 || {
+  echo "python3 is required to validate the release checksum." >&2
+  exit 1
+}
+
+if ! checksum_digest="$(
+  python3 "$(dirname "${BASH_SOURCE[0]}")/release_checksum.py" \
+    "${checksum_path}" \
+    "$(basename "${DMG_PATH}")"
+)"; then
+  echo "Release checksum asset failed canonical validation." >&2
+  exit 1
+fi
+
+dmg_digest="$(shasum -a 256 "${DMG_PATH}" | awk '{print $1}')"
+if [[ "${checksum_digest}" != "${dmg_digest}" ]]; then
+  echo "Release checksum does not match DMG payload: ${DMG_PATH}" >&2
+  exit 1
+fi
 
 if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
   gh release create "${TAG_NAME}" \
@@ -25,11 +47,6 @@ if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
     --title "${TAG_NAME}"
   exit 0
 fi
-
-command -v python3 >/dev/null 2>&1 || {
-  echo "python3 is required to verify immutable release asset membership." >&2
-  exit 1
-}
 
 TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 download_dir="$(mktemp -d "${TEMP_ROOT%/}/existing-release.XXXXXX")"
