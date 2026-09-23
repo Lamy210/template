@@ -135,17 +135,15 @@ if (
 
 print(artifact_id)
 print(artifact_digest)
-print(expected)
 PY
 
 readarray -t artifact_identity <"${artifact_identity_file}"
-if (("${#artifact_identity[@]}" != 3)); then
+if (("${#artifact_identity[@]}" != 2)); then
   echo "Validator Artifact identity output was malformed." >&2
   exit 3
 fi
 artifact_id="${artifact_identity[0]}"
 artifact_digest="${artifact_identity[1]}"
-artifact_name="${artifact_identity[2]}"
 
 artifact_zip="${temp_root}/validator-artifact.zip"
 gh api "${api_headers[@]}" "repos/${repository}/actions/artifacts/${artifact_id}/zip" >"${artifact_zip}"
