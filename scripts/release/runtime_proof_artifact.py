@@ -9,6 +9,7 @@ import zipfile
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 METADATA_NAME = "validated-release-metadata.json"
+APP_ARCHIVE_NAME = "unsigned-macos-app.tar.gz"
 DEFAULT_MAX_METADATA_BYTES = 1024 * 1024
 
 
@@ -54,23 +55,50 @@ def extract_runtime_proof_metadata(
 
     try:
         with zipfile.ZipFile(archive_path, "r") as archive:
-            candidates = [
+            infos = archive.infolist()
+            nested_metadata = [
                 info
-                for info in archive.infolist()
+                for info in infos
                 if not info.is_dir()
                 and PurePosixPath(info.filename).name == METADATA_NAME
+                and info.filename != METADATA_NAME
             ]
-            if len(candidates) != 1:
-                return [
-                    f"runtime proof artifact must contain exactly one {METADATA_NAME}; "
-                    f"found {len(candidates)}"
-                ]
+            if nested_metadata:
+                errors.append(
+                    "runtime proof metadata must be a root-level Artifact entry"
+                )
 
-            info = candidates[0]
-            if "\\" in info.filename:
-                errors.append("runtime proof metadata ZIP path must use POSIX separators")
+            metadata_candidates = [
+                info
+                for info in infos
+                if not info.is_dir() and info.filename == METADATA_NAME
+            ]
+            if len(metadata_candidates) != 1:
+                errors.append(
+                    f"runtime proof artifact must contain exactly one {METADATA_NAME}; "
+                    f"found {len(metadata_candidates)}"
+                )
+
+            app_candidates = [
+                info
+                for info in infos
+                if not info.is_dir() and info.filename == APP_ARCHIVE_NAME
+            ]
+            if len(app_candidates) != 1:
+                errors.append(
+                    "runtime proof artifact must contain exactly one root-level "
+                    f"unsigned app archive {APP_ARCHIVE_NAME}; found {len(app_candidates)}"
+                )
+
+            if errors:
+                return errors
+
+            info = metadata_candidates[0]
+            app_info = app_candidates[0]
             if _is_symlink(info):
                 errors.append("runtime proof metadata ZIP entry must not be a symbolic link")
+            if _is_symlink(app_info):
+                errors.append("runtime proof unsigned app archive must not be a symbolic link")
             if info.file_size > max_metadata_bytes:
                 errors.append(
                     "runtime proof metadata exceeds configured size limit: "
@@ -97,6 +125,7 @@ def extract_runtime_proof_metadata(
 
 
 __all__ = [
+    "APP_ARCHIVE_NAME",
     "DEFAULT_MAX_METADATA_BYTES",
     "extract_runtime_proof_metadata",
 ]
