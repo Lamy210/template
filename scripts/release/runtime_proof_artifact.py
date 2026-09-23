@@ -67,7 +67,7 @@ def extract_runtime_proof_metadata(
                 ]
 
             info = candidates[0]
-            if "\" in info.filename:
+            if "\\" in info.filename:
                 errors.append("runtime proof metadata ZIP path must use POSIX separators")
             if _is_symlink(info):
                 errors.append("runtime proof metadata ZIP entry must not be a symbolic link")
