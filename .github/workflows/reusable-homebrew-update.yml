@@ -284,8 +284,14 @@ jobs:
             echo "changed=false" >>"${GITHUB_OUTPUT}"
           else
             git commit -m "chore(cask): update ${CASK_TOKEN} to ${version}"
+            pushed_sha="$(git rev-parse HEAD)"
+            if [[ ! "${pushed_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Local automation branch returned an invalid commit SHA." >&2
+              exit 1
+            fi
             push_automation_branch
             echo "changed=true" >>"${GITHUB_OUTPUT}"
+            echo "pushed_sha=${pushed_sha}" >>"${GITHUB_OUTPUT}"
           fi
 
       - name: Open or reuse tap pull request
@@ -298,40 +304,64 @@ jobs:
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           CASK_TOKEN: ${{ inputs.cask_token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
+          PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}
         run: |
           set -euo pipefail
           version="${SOURCE_TAG#v}"
           pr_metadata="${RUNNER_TEMP}/tap-open-prs.json"
-          if ! gh pr list \
-            --repo "${TAP_REPOSITORY}" \
-            --state open \
-            --head "${BRANCH}" \
-            --base "${TAP_DEFAULT_BRANCH}" \
-            --limit 100 \
-            --json number,headRefName,baseRefName,headRepository,headRepositoryOwner,isCrossRepository \
-            >"${pr_metadata}"; then
-            echo "Failed to query existing tap pull requests." >&2
+          if [[ ! "${PUSHED_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "PUSHED_SHA must be the exact pushed automation commit." >&2
             exit 1
           fi
 
-          if ! open_pr_number="$(
+          query_open_pr_number() {
+            if ! gh pr list \
+              --repo "${TAP_REPOSITORY}" \
+              --state open \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --limit 100 \
+              --json number,headRefName,baseRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository \
+              >"${pr_metadata}"; then
+              echo "Failed to query existing tap pull requests." >&2
+              return 1
+            fi
+
             python3 source/scripts/homebrew/select-tap-pull-request.py \
               --metadata "${pr_metadata}" \
               --repository "${TAP_REPOSITORY}" \
               --head "${BRANCH}" \
-              --base "${TAP_DEFAULT_BRANCH}"
-          )"; then
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --head-sha "${PUSHED_SHA}"
+          }
+
+          if ! open_pr_number="$(query_open_pr_number)"; then
             echo "Tap pull request query result failed identity validation." >&2
             exit 1
           fi
 
           if [[ -z "${open_pr_number}" ]]; then
+            create_status=0
             gh pr create \
               --repo "${TAP_REPOSITORY}" \
               --base "${TAP_DEFAULT_BRANCH}" \
               --head "${BRANCH}" \
               --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
-              --body "Automated Cask update for ${GITHUB_REPOSITORY}@${SOURCE_TAG}. Verify tap CI before merging."
-          else
-            gh pr view "${open_pr_number}" --repo "${TAP_REPOSITORY}" --web=false
+              --body "Automated Cask update for ${GITHUB_REPOSITORY}@${SOURCE_TAG}. Verify tap CI before merging." \
+              >/dev/null || create_status=$?
+
+            if ! open_pr_number="$(query_open_pr_number)"; then
+              echo "Tap pull request post-create identity validation failed." >&2
+              exit 1
+            fi
+            if [[ -z "${open_pr_number}" ]]; then
+              if ((create_status == 0)); then
+                echo "Created tap pull request is not observable with the expected head commit." >&2
+              else
+                echo "Tap pull request creation failed and no concurrent matching pull request is available." >&2
+              fi
+              exit 1
+            fi
           fi
+
+          gh pr view "${open_pr_number}" --repo "${TAP_REPOSITORY}" --web=false

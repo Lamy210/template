@@ -4,6 +4,7 @@ import re
 
 
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _head_repository_identity(item: dict[str, object]) -> str | None:
@@ -36,6 +37,7 @@ def select_same_repository_pull_request(
     expected_repository: str,
     expected_head: str,
     expected_base: str,
+    expected_head_sha: str,
 ) -> tuple[list[str], int | None]:
     errors: list[str] = []
 
@@ -45,6 +47,11 @@ def select_same_repository_pull_request(
         errors.append("expected head branch must be a non-empty single line")
     if not isinstance(expected_base, str) or not expected_base or "\n" in expected_base:
         errors.append("expected base branch must be a non-empty single line")
+    if (
+        not isinstance(expected_head_sha, str)
+        or SHA_RE.fullmatch(expected_head_sha) is None
+    ):
+        errors.append("expected head commit must be 40 lowercase hexadecimal characters")
 
     if not isinstance(document, list):
         errors.append("pull request query result must be a JSON array")
@@ -70,13 +77,27 @@ def select_same_repository_pull_request(
             errors.append(f"pull request entry {index} has invalid head repository identity")
             continue
 
+        head_ref_oid = item.get("headRefOid")
+        if not isinstance(head_ref_oid, str) or SHA_RE.fullmatch(head_ref_oid) is None:
+            errors.append(f"pull request entry {index} has an invalid head commit")
+            continue
+
         is_cross_repository = item.get("isCrossRepository")
         if head_repository == expected_repository:
             if is_cross_repository is not False:
                 errors.append(
                     f"pull request entry {index} claims cross-repository identity for the tap repository"
                 )
-            if type(number) is int and number > 0:
+            if head_ref_oid != expected_head_sha:
+                errors.append(
+                    f"pull request entry {index} does not point to the pushed automation commit"
+                )
+            if (
+                type(number) is int
+                and number > 0
+                and is_cross_repository is False
+                and head_ref_oid == expected_head_sha
+            ):
                 candidates.append(number)
         elif is_cross_repository is not True:
             errors.append(
