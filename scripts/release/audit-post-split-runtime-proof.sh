@@ -151,7 +151,10 @@ gh api "${api_headers[@]}" "repos/${repository}/actions/artifacts/${artifact_id}
 python3 "${repo_root}/scripts/release/extract-runtime-proof-metadata.py" \
   --archive "${artifact_zip}" \
   --expected-digest "${artifact_digest}" \
-  --output "${temp_root}/metadata.json"
+  --output "${temp_root}/metadata.json" \
+  --app-archive-digest-output "${temp_root}/archive-digest.txt"
+
+read -r unsigned_archive_digest <"${temp_root}/archive-digest.txt"
 
 readarray -t shas < <(
   python3 - "${temp_root}/source-run.json" "${temp_root}/publisher-run.json" <<'PY'
@@ -175,4 +178,4 @@ publisher_sha="${shas[1]}"
 
 gh api "${api_headers[@]}" "repos/${repository}/compare/${source_sha}...${publisher_sha}" >"${temp_root}/compare.json"
 
-python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py" --repository "${temp_root}/repository.json" --default-commit "${temp_root}/default-commit.json" --source-run "${temp_root}/source-run.json" --publisher-run "${temp_root}/publisher-run.json" --artifacts "${temp_root}/artifacts.json" --metadata "${temp_root}/metadata.json" --compare "${temp_root}/compare.json"
+python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py" --repository "${temp_root}/repository.json" --default-commit "${temp_root}/default-commit.json" --source-run "${temp_root}/source-run.json" --publisher-run "${temp_root}/publisher-run.json" --artifacts "${temp_root}/artifacts.json" --metadata "${temp_root}/metadata.json" --archive-digest "${unsigned_archive_digest}" --compare "${temp_root}/compare.json"
