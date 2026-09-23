@@ -39,13 +39,14 @@ if [[ "${checksum_digest}" != "${dmg_digest}" ]]; then
   exit 1
 fi
 
+release_created=false
 if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
   gh release create "${TAG_NAME}" \
     "${assets[@]}" \
     --verify-tag \
     --generate-notes \
     --title "${TAG_NAME}"
-  exit 0
+  release_created=true
 fi
 
 TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
@@ -95,4 +96,8 @@ for local_path in "${assets[@]}"; do
   fi
 done
 
-printf 'GitHub Release %s already contains identical assets; publication is a no-op.\n' "${TAG_NAME}"
+if [[ "${release_created}" == true ]]; then
+  printf 'GitHub Release %s was created and verified with identical remote assets.\n' "${TAG_NAME}"
+else
+  printf 'GitHub Release %s already contains identical assets; publication is a no-op.\n' "${TAG_NAME}"
+fi

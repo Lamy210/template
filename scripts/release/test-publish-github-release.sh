@@ -9,6 +9,7 @@ LOCAL_DIR="${TMP_ROOT}/local"
 REMOTE_DIR="${TMP_ROOT}/remote"
 FAKE_BIN="${TMP_ROOT}/bin"
 LOG_PATH="${TMP_ROOT}/gh.log"
+STATE_FILE="${TMP_ROOT}/release-created"
 DMG_PATH="${LOCAL_DIR}/ExampleApp-v1.2.3.dmg"
 CHECKSUM_PATH="${DMG_PATH}.sha256"
 RELEASE_PROVENANCE_PATH="${LOCAL_DIR}/release-provenance.json"
@@ -27,6 +28,7 @@ cat >"${FAKE_BIN}/gh" <<'FAKE_GH'
 set -euo pipefail
 
 : "${GH_FAKE_LOG:?GH_FAKE_LOG is required}"
+: "${GH_FAKE_STATE_FILE:?GH_FAKE_STATE_FILE is required}"
 printf '%s\n' "$*" >>"${GH_FAKE_LOG}"
 
 if [[ "$1" != "release" ]]; then
@@ -36,7 +38,9 @@ fi
 
 case "$2" in
   view)
-    [[ "${GH_FAKE_RELEASE_EXISTS:-false}" == "true" ]] || exit 1
+    if [[ "${GH_FAKE_RELEASE_EXISTS:-false}" != "true" && ! -f "${GH_FAKE_STATE_FILE}" ]]; then
+      exit 1
+    fi
     if [[ " $* " == *" --json assets,isDraft,isPrerelease,tagName "* ]]; then
       : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
       python3 - "${GH_FAKE_REMOTE_DIR}" <<'PY'
@@ -58,7 +62,22 @@ PY
     fi
     ;;
   create)
-    exit 0
+    : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
+    shift 3
+    for argument in "$@"; do
+      if [[ -f "${argument}" ]]; then
+        cp "${argument}" "${GH_FAKE_REMOTE_DIR}/$(basename "${argument}")"
+      fi
+    done
+    if [[ "${GH_FAKE_CORRUPT_AFTER_CREATE:-false}" == "true" ]]; then
+      for dmg in "${GH_FAKE_REMOTE_DIR}"/*.dmg; do
+        if [[ -f "${dmg}" ]]; then
+          printf 'corrupted-after-create\n' >"${dmg}"
+          break
+        fi
+      done
+    fi
+    : >"${GH_FAKE_STATE_FILE}"
     ;;
   download)
     : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
@@ -97,6 +116,8 @@ chmod 0755 "${FAKE_BIN}/gh"
 run_publisher() {
   GH_FAKE_LOG="${LOG_PATH}" \
     GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
+    GH_FAKE_STATE_FILE="${STATE_FILE}" \
+    GH_FAKE_CORRUPT_AFTER_CREATE="${GH_FAKE_CORRUPT_AFTER_CREATE:-false}" \
     PATH="${FAKE_BIN}:${PATH}" \
     TAG_NAME="${TAG_NAME}" \
     DMG_PATH="${DMG_PATH}" \
@@ -154,12 +175,24 @@ fi
 rm -f "${RELEASE_PROVENANCE_PATH}"
 mv "${real_provenance_path}" "${RELEASE_PROVENANCE_PATH}"
 
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
 : >"${LOG_PATH}"
 GH_FAKE_RELEASE_EXISTS=false run_publisher
 if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
   echo "New release was not created." >&2
   exit 1
 fi
+if ! grep -F "release view ${TAG_NAME} --json assets,isDraft,isPrerelease,tagName" "${LOG_PATH}" >/dev/null; then
+  echo "New release was not re-read for post-create state verification." >&2
+  exit 1
+fi
+for asset_name in "$(basename "${DMG_PATH}")" "$(basename "${CHECKSUM_PATH}")" "$(basename "${RELEASE_PROVENANCE_PATH}")"; do
+  if ! grep -F "release download ${TAG_NAME} --pattern ${asset_name}" "${LOG_PATH}" >/dev/null; then
+    echo "New release asset was not re-downloaded for post-create verification: ${asset_name}" >&2
+    exit 1
+  fi
+done
 if grep -F -- "--clobber" "${LOG_PATH}" >/dev/null; then
   echo "Publisher must never use --clobber." >&2
   exit 1
@@ -168,6 +201,24 @@ if ! grep -F "$(basename "${RELEASE_PROVENANCE_PATH}")" "${LOG_PATH}" >/dev/null
   echo "New release did not include release provenance." >&2
   exit 1
 fi
+
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false GH_FAKE_CORRUPT_AFTER_CREATE=true run_publisher; then
+  echo "Publisher accepted a newly-created release whose remote DMG bytes drifted." >&2
+  exit 1
+fi
+if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Post-create corruption probe did not create a release first." >&2
+  exit 1
+fi
+if ! grep -F "release download ${TAG_NAME} --pattern $(basename "${DMG_PATH}")" "${LOG_PATH}" >/dev/null; then
+  echo "Post-create corruption probe did not re-download the created DMG." >&2
+  exit 1
+fi
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
 
 printf '%064d  %s\n' 0 "$(basename "${DMG_PATH}")" >"${CHECKSUM_PATH}"
 : >"${LOG_PATH}"

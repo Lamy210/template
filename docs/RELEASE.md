@@ -310,7 +310,8 @@ Stable releases are append-never/replace-never.
 
 - requires the canonical `release-provenance.json` asset; omission or renaming fails before any GitHub call;
 - requires the DMG, checksum, and provenance inputs to be regular non-symlink files;
-- creates a missing release using the already-validated tag;
+- creates a missing release using the already-validated tag, then re-reads remote release state and re-downloads all three assets before reporting success;
+- requires newly-created remote assets to be byte-identical to the local DMG, checksum, and final release attestation;
 - treats an existing release as a no-op only when the expected DMG, checksum, and final release-attestation assets are byte-identical by SHA-256;
 - fails when an expected asset is missing or differs;
 - never uses `--clobber` for stable release assets.
