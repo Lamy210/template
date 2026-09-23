@@ -90,15 +90,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
           path: source
 
       - name: Download and verify published release assets
+        id: published_assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_TAG: ${{ inputs.source_tag }}
           DMG_NAME: ${{ inputs.dmg_name }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_PUBLISHER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           mkdir -p release-assets
@@ -125,9 +129,30 @@ jobs:
               --dmg "release-assets/${DMG_NAME}" \
               --checksum "release-assets/${DMG_NAME}.sha256" \
               --provenance release-assets/release-provenance.json \
-              --tag "${SOURCE_TAG}"
+              --tag "${SOURCE_TAG}" \
+              --repository "${EXPECTED_REPOSITORY}" \
+              --publisher-sha "${EXPECTED_PUBLISHER_SHA}" \
+              --source-sha-output release-assets/source-sha.txt
           )"
+          source_sha="$(cat release-assets/source-sha.txt)"
+          if [[ ! "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Verified provenance returned an invalid source SHA." >&2
+            exit 1
+          fi
           echo "SHA256=${sha256}" >>"${GITHUB_ENV}"
+          echo "source_sha=${source_sha}" >>"${GITHUB_OUTPUT}"
+
+      - name: Rebind published provenance to live release source
+        shell: bash
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ steps.published_assets.outputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/verify-release-source.sh >/dev/null
 
       - name: Clone tap repository
         shell: bash
