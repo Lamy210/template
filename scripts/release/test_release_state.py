@@ -7,11 +7,15 @@ import sys
 import tempfile
 import unittest
 
-from scripts.release.release_state import validate_release_state
+from scripts.release.release_state import (
+    validate_release_expectations,
+    validate_release_state,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/release/verify-release-state.py"
+EXPECTATIONS_CLI = REPO_ROOT / "scripts/release/validate-release-expectations.py"
 TAG = "v1.2.3"
 ASSETS = [
     "MyApp-v1.2.3.dmg",
@@ -30,6 +34,43 @@ def release_metadata() -> dict[str, object]:
 
 
 class ReleaseStateTests(unittest.TestCase):
+    def test_release_expectations_accept_stable_tag_and_exact_safe_assets(self) -> None:
+        self.assertEqual(
+            [],
+            validate_release_expectations(
+                expected_tag=TAG,
+                expected_asset_names=ASSETS,
+            ),
+        )
+
+    def test_release_expectations_reject_noncanonical_tag_and_unsafe_assets(self) -> None:
+        errors = validate_release_expectations(
+            expected_tag="v01.2.3",
+            expected_asset_names=["unsafe[asset].dmg", "unsafe[asset].dmg"],
+        )
+        self.assertTrue(any("stable SemVer" in error for error in errors))
+        self.assertTrue(any("unique" in error for error in errors))
+        self.assertTrue(any("unsafe" in error for error in errors))
+
+    def test_expectations_cli_rejects_invalid_identity(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(EXPECTATIONS_CLI),
+                "--tag",
+                "--help",
+                "--asset",
+                "unsafe[asset].dmg",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertIn("stable SemVer", result.stderr)
+        self.assertIn("unsafe or malformed", result.stderr)
+
     def test_accepts_published_stable_exact_asset_set(self) -> None:
         self.assertEqual(
             [],

@@ -9,8 +9,7 @@ TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$
 ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
 
-def validate_release_state(
-    document: object,
+def validate_release_expectations(
     *,
     expected_tag: str,
     expected_asset_names: list[str],
@@ -28,6 +27,20 @@ def validate_release_state(
     for name in expected_asset_names:
         if not isinstance(name, str) or ASSET_NAME_RE.fullmatch(name) is None:
             errors.append(f"expected release asset name is unsafe or malformed: {name!r}")
+
+    return errors
+
+
+def validate_release_state(
+    document: object,
+    *,
+    expected_tag: str,
+    expected_asset_names: list[str],
+) -> list[str]:
+    errors = validate_release_expectations(
+        expected_tag=expected_tag,
+        expected_asset_names=expected_asset_names,
+    )
 
     if not isinstance(document, dict):
         errors.append("release metadata must be a JSON object")
