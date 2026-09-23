@@ -183,13 +183,36 @@ jobs:
           git fetch origin
 
           remote_branch_sha=""
-          if remote_line="$(git ls-remote --exit-code --heads origin "refs/heads/${branch}")"; then
-            remote_branch_sha="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $1 }')"
-            if [[ ! "${remote_branch_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "Existing automation branch returned an invalid SHA." >&2
-              exit 1
-            fi
-          fi
+          set +e
+          remote_line="$(git ls-remote --exit-code --branches origin "refs/heads/${branch}")"
+          ls_remote_status=$?
+          set -e
+
+          case "${ls_remote_status}" in
+            0)
+              remote_line_count="$(printf '%s\n' "${remote_line}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+              if [[ "${remote_line_count}" != "1" ]]; then
+                echo "Existing automation branch lookup must return exactly one ref." >&2
+                exit 1
+              fi
+              remote_branch_sha="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $1 }')"
+              remote_branch_ref="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $2 }')"
+              if [[ ! "${remote_branch_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "Existing automation branch returned an invalid SHA." >&2
+                exit 1
+              fi
+              if [[ "${remote_branch_ref}" != "refs/heads/${branch}" ]]; then
+                echo "Existing automation branch lookup returned an unexpected ref." >&2
+                exit 1
+              fi
+              ;;
+            2)
+              ;;
+            *)
+              echo "Failed to query existing automation branch from tap remote." >&2
+              exit "${ls_remote_status}"
+              ;;
+          esac
 
           git rev-parse --verify "refs/remotes/origin/${TAP_DEFAULT_BRANCH}^{commit}" >/dev/null
           git switch -C "${branch}" "origin/${TAP_DEFAULT_BRANCH}"
@@ -243,7 +266,8 @@ jobs:
               git push --set-upstream origin "HEAD:${BRANCH}" \
                 --force-with-lease="refs/heads/${BRANCH}:${REMOTE_BRANCH_SHA}"
             else
-              git push --set-upstream origin "HEAD:${BRANCH}"
+              git push --set-upstream origin "HEAD:${BRANCH}" \
+                --force-with-lease="refs/heads/${BRANCH}:"
             fi
           }
 
@@ -271,13 +295,30 @@ jobs:
         run: |
           set -euo pipefail
           version="${SOURCE_TAG#v}"
-          if gh pr view "${BRANCH}" --repo "${TAP_REPOSITORY}" >/dev/null 2>&1; then
-            gh pr view "${BRANCH}" --repo "${TAP_REPOSITORY}" --web=false
-          else
+          if ! open_pr_numbers="$(
+            gh pr list \
+              --repo "${TAP_REPOSITORY}" \
+              --state open \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --limit 2 \
+              --json number \
+              --jq '.[].number'
+          )"; then
+            echo "Failed to query existing tap pull requests." >&2
+            exit 1
+          fi
+
+          if [[ -z "${open_pr_numbers}" ]]; then
             gh pr create \
               --repo "${TAP_REPOSITORY}" \
               --base "${TAP_DEFAULT_BRANCH}" \
               --head "${BRANCH}" \
               --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
               --body "Automated Cask update for ${GITHUB_REPOSITORY}@${SOURCE_TAG}. Verify tap CI before merging."
+          elif [[ "${open_pr_numbers}" =~ ^[1-9][0-9]*$ ]]; then
+            gh pr view "${open_pr_numbers}" --repo "${TAP_REPOSITORY}" --web=false
+          else
+            echo "Expected at most one open tap pull request for ${BRANCH}, got: ${open_pr_numbers}" >&2
+            exit 1
           fi

@@ -334,8 +334,8 @@ It:
 5. recomputes SHA-256 from the downloaded DMG and requires the checksum plus final provenance to bind to those exact bytes, the current repository, and the trusted publisher SHA;
 6. takes the verified provenance source SHA and independently re-resolves the live stable tag, requiring that tag to point to the same source commit and that commit to remain reachable from trusted publisher history;
 7. renders the Cask from that reverified digest;
-8. creates/reuses an automation branch in the tap;
-9. opens/reuses a tap PR.
+8. queries the automation branch fail-closed, rebuilds it from the trusted tap default branch, and pushes with an explicit force-with-lease expectation (including a create-only empty lease when the branch was absent);
+9. queries open tap PRs explicitly and creates/reuses one only from a successful unambiguous query result.
 
 It never receives Apple signing credentials.
 
