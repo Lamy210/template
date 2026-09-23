@@ -206,6 +206,41 @@ if [[ -s "${LOG_PATH}" ]]; then
   exit 1
 fi
 
+original_tag_name="${TAG_NAME}"
+for invalid_tag in "v01.2.3" "--help"; do
+  TAG_NAME="${invalid_tag}"
+  : >"${LOG_PATH}"
+  if GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+    echo "Publisher accepted invalid stable release tag: ${invalid_tag}" >&2
+    exit 1
+  fi
+  if [[ -s "${LOG_PATH}" ]]; then
+    echo "Publisher contacted GitHub before rejecting invalid stable release tag: ${invalid_tag}" >&2
+    exit 1
+  fi
+done
+TAG_NAME="${original_tag_name}"
+
+original_dmg_path="${DMG_PATH}"
+unsafe_dmg_path="${LOCAL_DIR}/unsafe[asset].dmg"
+cp "${original_dmg_path}" "${unsafe_dmg_path}"
+(
+  cd "${LOCAL_DIR}"
+  shasum -a 256 "$(basename "${unsafe_dmg_path}")" >"$(basename "${unsafe_dmg_path}").sha256"
+)
+DMG_PATH="${unsafe_dmg_path}"
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted unsafe DMG asset basename." >&2
+  exit 1
+fi
+if [[ -s "${LOG_PATH}" ]]; then
+  echo "Publisher contacted GitHub before rejecting unsafe DMG asset basename." >&2
+  exit 1
+fi
+DMG_PATH="${original_dmg_path}"
+rm -f "${unsafe_dmg_path}" "${unsafe_dmg_path}.sha256"
+
 original_provenance_path="${RELEASE_PROVENANCE_PATH}"
 wrong_provenance_path="${LOCAL_DIR}/provenance.json"
 cp "${original_provenance_path}" "${wrong_provenance_path}"
