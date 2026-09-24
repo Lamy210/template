@@ -212,6 +212,20 @@ assert_status() {
   fi
 }
 
+existing_output="${TEMP_ROOT}/existing-output"
+mkdir -p "${existing_output}"
+printf 'preserve-me\n' >"${existing_output}/sentinel.txt"
+set +e
+run_resolver success "${existing_output}" >"${TEMP_ROOT}/existing.stdout" 2>"${TEMP_ROOT}/existing.stderr"
+existing_status=$?
+set -e
+if [[ "${existing_status}" -ne 2 ]]; then
+  printf 'existing output: expected usage exit 2, got %s\n' "${existing_status}" >&2
+  cat "${TEMP_ROOT}/existing.stderr" >&2 || true
+  exit 1
+fi
+[[ "$(cat "${existing_output}/sentinel.txt")" == "preserve-me" ]]
+
 success_output="${TEMP_ROOT}/success"
 run_id="$(run_resolver success "${success_output}")"
 [[ "${run_id}" == "9001" ]]
