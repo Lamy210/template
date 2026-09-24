@@ -432,6 +432,39 @@ jobs:
             exit 1
           fi
 
+          verify_canonical_tap_identity() {
+            local canonical_identity
+            local canonical_repository
+            local canonical_default_branch
+            local -a canonical_fields
+
+            if ! canonical_identity="$(
+              gh repo view "${TAP_REPOSITORY}" \
+                --json nameWithOwner,defaultBranchRef \
+                --jq '.nameWithOwner, .defaultBranchRef.name'
+            )"; then
+              echo "Failed to re-resolve canonical tap repository identity." >&2
+              return 1
+            fi
+
+            mapfile -t canonical_fields <<<"${canonical_identity}"
+            if (("${#canonical_fields[@]}" != 2)); then
+              echo "Canonical tap repository metadata is incomplete during final verification." >&2
+              return 1
+            fi
+            canonical_repository="${canonical_fields[0]}"
+            canonical_default_branch="${canonical_fields[1]}"
+
+            if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
+              echo "Tap repository identity changed before final verification." >&2
+              return 1
+            fi
+            if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+              echo "Tap default branch changed before final verification." >&2
+              return 1
+            fi
+          }
+
           verify_remote_branch() {
             local remote_line
             local remote_status
@@ -489,6 +522,7 @@ jobs:
               --head-sha "${PUSHED_SHA}"
           }
 
+          verify_canonical_tap_identity
           verify_remote_branch
           if ! final_pr_number="$(query_final_pr_number)"; then
             echo "Final tap pull request identity validation failed." >&2
@@ -499,4 +533,5 @@ jobs:
             exit 1
           fi
           verify_remote_branch
+          verify_canonical_tap_identity
           gh pr view "${PR_NUMBER}" --repo "${TAP_REPOSITORY}" --web=false
