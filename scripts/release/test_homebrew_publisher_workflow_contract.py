@@ -294,6 +294,10 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             "Tap default branch changed before final verification.",
             final_step,
         )
+        self.assertEqual(
+            2,
+            final_step.count("\n          verify_canonical_tap_identity\n"),
+        )
         self.assertIn("PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}", final_step)
         self.assertIn("PR_NUMBER: ${{ steps.pull_request.outputs.number }}", final_step)
         self.assertIn('git ls-remote --exit-code --branches origin "refs/heads/${BRANCH}"', final_step)
