@@ -175,16 +175,32 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertTrue(block)
         self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", block)
         self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
-        self.assertIn(
-            'gh repo view "${TAP_REPOSITORY}" --json nameWithOwner --jq \'.nameWithOwner\'',
-            block,
-        )
+        self.assertIn('gh repo view "${TAP_REPOSITORY}"', block)
+        self.assertIn("--json nameWithOwner,defaultBranchRef", block)
+        self.assertIn(".nameWithOwner, .defaultBranchRef.name", block)
         self.assertIn(
             'if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]',
             block,
         )
         self.assertIn(
             "Tap repository resolved to a different canonical repository identity.",
+            block,
+        )
+        self.assertNotIn("git push", block)
+        self.assertNotIn("gh pr create", block)
+
+    def test_homebrew_binds_configured_tap_default_to_canonical_repository_default(self) -> None:
+        block = step_block(self.homebrew_text(), "Verify cloned tap repository identity")
+        self.assertTrue(block)
+        self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", block)
+        self.assertIn("--json nameWithOwner,defaultBranchRef", block)
+        self.assertIn(".defaultBranchRef.name", block)
+        self.assertIn(
+            'if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]',
+            block,
+        )
+        self.assertIn(
+            "Configured tap_default_branch does not match the canonical repository default branch.",
             block,
         )
         self.assertNotIn("git push", block)
