@@ -20,12 +20,14 @@ def main() -> int:
     parser.add_argument("--archive", required=True, type=Path)
     parser.add_argument("--expected-digest", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--app-archive-digest-output", required=True, type=Path)
     args = parser.parse_args()
 
     errors = extract_runtime_proof_metadata(
         args.archive,
         args.output,
         expected_digest=args.expected_digest,
+        app_archive_digest_output_path=args.app_archive_digest_output,
     )
     for error in errors:
         print(error, file=sys.stderr)

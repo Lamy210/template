@@ -13,6 +13,7 @@ SOURCE_WORKFLOW_PATH = ".github/workflows/release-build.yml"
 PUBLISHER_WORKFLOW_NAME = "Release Publisher"
 PUBLISHER_WORKFLOW_PATH = ".github/workflows/release-publisher.yml"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 
 
@@ -162,6 +163,7 @@ def validate_post_split_runtime_proof(
     publisher_run: object,
     artifacts: object,
     metadata: object,
+    archive_digest: object,
     comparison: object,
 ) -> list[str]:
     errors: list[str] = []
@@ -256,6 +258,11 @@ def validate_post_split_runtime_proof(
         errors.append("current default-branch commit response must contain a valid SHA")
     elif _sha(publisher_sha) and default_commit.get("sha") != publisher_sha:
         errors.append("publisher SHA must equal current default-branch head")
+
+    if not isinstance(archive_digest, str) or DIGEST_RE.fullmatch(archive_digest) is None:
+        errors.append("unsigned app archive digest must use sha256:<64 lowercase hex>")
+    elif isinstance(metadata, dict) and metadata.get("archiveSha256") != archive_digest:
+        errors.append("unsigned app archive digest does not match validator metadata")
 
     if (
         _positive_int(repository_id)
