@@ -568,4 +568,12 @@ jobs:
           fi
           verify_remote_branch
           verify_canonical_tap_identity
-          gh pr view "${PR_NUMBER}" --repo "${TAP_REPOSITORY}" --web=false
+          if ! final_pr_number="$(query_final_pr_number)"; then
+            echo "Final tap pull request identity validation failed after remote rebind." >&2
+            exit 1
+          fi
+          if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]; then
+            echo "Selected tap pull request changed after remote rebind." >&2
+            exit 1
+          fi
+          printf 'Verified open tap pull request #%s at %s.\n' "${PR_NUMBER}" "${PUSHED_SHA}"
