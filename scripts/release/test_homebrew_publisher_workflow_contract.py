@@ -235,6 +235,44 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('pushed_sha="$(git rev-parse HEAD)"', push)
         self.assertIn('echo "pushed_sha=${pushed_sha}" >>"${GITHUB_OUTPUT}"', push)
 
+    def test_homebrew_rebinds_canonical_tap_identity_before_push_and_success(self) -> None:
+        text = self.homebrew_text()
+        push = step_block(text, "Commit and push Cask branch")
+        final_step = step_block(text, "Reverify tap branch and pull request identity")
+        self.assertTrue(push)
+        self.assertTrue(final_step)
+
+        for block in (push, final_step):
+            self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
+            self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", block)
+            self.assertIn('gh repo view "${TAP_REPOSITORY}"', block)
+            self.assertIn("--json nameWithOwner,defaultBranchRef", block)
+            self.assertIn(".nameWithOwner, .defaultBranchRef.name", block)
+
+        self.assertIn("Tap repository identity changed before branch push.", push)
+        self.assertIn("Tap default branch changed before branch push.", push)
+        self.assertIn(
+            "\n            verify_canonical_tap_identity\n",
+            push,
+        )
+        self.assertLess(
+            push.index("\n            verify_canonical_tap_identity\n"),
+            push.index("git push --set-upstream origin"),
+        )
+
+        self.assertIn(
+            "Tap repository identity changed before final verification.",
+            final_step,
+        )
+        self.assertIn(
+            "Tap default branch changed before final verification.",
+            final_step,
+        )
+        self.assertEqual(
+            2,
+            final_step.count("\n          verify_canonical_tap_identity\n"),
+        )
+
     def test_tap_pull_request_lookup_fails_closed_before_create(self) -> None:
         block = step_block(self.homebrew_text(), "Open or reuse tap pull request")
         self.assertTrue(block)
@@ -284,7 +322,20 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]', final_step)
         self.assertIn("Selected tap pull request changed before final verification.", final_step)
         self.assertEqual(2, final_step.count("\n          verify_remote_branch\n"))
-        self.assertIn('gh pr view "${PR_NUMBER}"', final_step)
+        self.assertEqual(
+            2,
+            final_step.count('final_pr_number="$(query_final_pr_number)"'),
+        )
+        self.assertNotIn('gh pr view "${PR_NUMBER}"', final_step)
+        final_query = final_step.rindex('final_pr_number="$(query_final_pr_number)"')
+        self.assertGreater(
+            final_query,
+            final_step.rindex("\n          verify_remote_branch\n"),
+        )
+        self.assertGreater(
+            final_query,
+            final_step.rindex("\n          verify_canonical_tap_identity\n"),
+        )
         self.assertLess(
             text.index("Open or reuse tap pull request"),
             text.index("Reverify tap branch and pull request identity"),
