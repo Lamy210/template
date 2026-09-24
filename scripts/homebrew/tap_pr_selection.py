@@ -41,8 +41,11 @@ def select_same_repository_pull_request(
 ) -> tuple[list[str], int | None]:
     errors: list[str] = []
 
+    expected_repository_key: str | None = None
     if not isinstance(expected_repository, str) or REPOSITORY_RE.fullmatch(expected_repository) is None:
         errors.append("expected repository must be in owner/repo form")
+    else:
+        expected_repository_key = expected_repository.lower()
     if not isinstance(expected_head, str) or not expected_head or "\n" in expected_head:
         errors.append("expected head branch must be a non-empty single line")
     if not isinstance(expected_base, str) or not expected_base or "\n" in expected_base:
@@ -83,7 +86,10 @@ def select_same_repository_pull_request(
             continue
 
         is_cross_repository = item.get("isCrossRepository")
-        if head_repository == expected_repository:
+        if (
+            expected_repository_key is not None
+            and head_repository.lower() == expected_repository_key
+        ):
             if is_cross_repository is not False:
                 errors.append(
                     f"pull request entry {index} claims cross-repository identity for the tap repository"
