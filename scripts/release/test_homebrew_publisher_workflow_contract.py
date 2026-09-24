@@ -190,6 +190,23 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("git push", block)
         self.assertNotIn("gh pr create", block)
 
+    def test_homebrew_binds_configured_tap_default_to_canonical_repository_default(self) -> None:
+        block = step_block(self.homebrew_text(), "Verify cloned tap repository identity")
+        self.assertTrue(block)
+        self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", block)
+        self.assertIn("--json nameWithOwner,defaultBranchRef", block)
+        self.assertIn(".defaultBranchRef.name", block)
+        self.assertIn(
+            'if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]',
+            block,
+        )
+        self.assertIn(
+            "Configured tap_default_branch does not match the canonical repository default branch.",
+            block,
+        )
+        self.assertNotIn("git push", block)
+        self.assertNotIn("gh pr create", block)
+
     def test_existing_automation_branch_is_rebuilt_from_trusted_tap_default(self) -> None:
         prepare = step_block(self.homebrew_text(), "Prepare tap update branch")
         push = step_block(self.homebrew_text(), "Commit and push Cask branch")
