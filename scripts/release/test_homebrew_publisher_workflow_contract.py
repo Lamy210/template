@@ -175,10 +175,9 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertTrue(block)
         self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", block)
         self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
-        self.assertIn(
-            'gh repo view "${TAP_REPOSITORY}" --json nameWithOwner --jq \'.nameWithOwner\'',
-            block,
-        )
+        self.assertIn('gh repo view "${TAP_REPOSITORY}"', block)
+        self.assertIn("--json nameWithOwner,defaultBranchRef", block)
+        self.assertIn(".nameWithOwner, .defaultBranchRef.name", block)
         self.assertIn(
             'if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]',
             block,
