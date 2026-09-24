@@ -140,6 +140,17 @@ class BaselineBundleBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "output"):
             self.build()
 
+    def test_rejects_symlink_output_before_resolving_destination(self):
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        redirected = self.repo / "redirected" / "visual-baseline"
+        self.output.symlink_to(redirected, target_is_directory=True)
+
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            self.build()
+
+        self.assertTrue(self.output.is_symlink())
+        self.assertFalse(redirected.exists())
+
     def test_rejects_tampered_profile_fingerprint(self):
         payload = profile_payload()
         payload["profileFingerprint"] = "sha256:" + "0" * 64
