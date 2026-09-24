@@ -62,6 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--publisher-run", required=True, type=Path)
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--metadata", required=True, type=Path)
+    parser.add_argument("--archive-digest", required=True)
     parser.add_argument("--compare", required=True, type=Path)
     return parser.parse_args()
 
@@ -91,6 +92,7 @@ def main() -> int:
         publisher_run,
         artifacts,
         metadata,
+        args.archive_digest,
         comparison,
     )
     for error in errors:
