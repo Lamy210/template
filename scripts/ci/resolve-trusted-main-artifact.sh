@@ -89,6 +89,9 @@ done
 [[ "${workflow}" != */* ]] || die "${EXIT_USAGE}" '--workflow must be a workflow file name, not a path'
 [[ -n "${artifact_name}" ]] || die "${EXIT_USAGE}" '--artifact is required'
 [[ -n "${output_dir}" ]] || die "${EXIT_USAGE}" '--output is required'
+if [[ -e "${output_dir}" || -L "${output_dir}" ]]; then
+  die "${EXIT_USAGE}" '--output must not already exist'
+fi
 [[ -n "${branch}" ]] || die "${EXIT_USAGE}" '--branch must not be empty'
 [[ "${max_runs}" =~ ^[0-9]+$ ]] || die "${EXIT_USAGE}" '--max-runs must be an integer from 1 to 100'
 max_runs_number=$((10#${max_runs}))
@@ -465,6 +468,5 @@ with open(output, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 
-rm -rf "${output_dir}"
 mv "${stage_dir}" "${output_dir}"
 printf '%s\n' "${selected_run_id}"
