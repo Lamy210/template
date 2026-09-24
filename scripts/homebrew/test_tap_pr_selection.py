@@ -52,6 +52,18 @@ class TapPullRequestSelectionTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertEqual(42, number)
 
+    def test_selects_same_repository_case_insensitively(self) -> None:
+        errors, number = select_same_repository_pull_request(
+            [pr(42, "Example/Homebrew-Tap", cross_repository=False)],
+            expected_repository="example/homebrew-tap",
+            expected_head=HEAD,
+            expected_base=BASE,
+            expected_head_sha=HEAD_SHA,
+        )
+
+        self.assertEqual([], errors)
+        self.assertEqual(42, number)
+
     def test_ignores_same_named_fork_pull_request(self) -> None:
         errors, number = self.select(
             [pr(7, "attacker/homebrew-tap", cross_repository=True, head_sha="b" * 40)]
