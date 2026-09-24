@@ -299,15 +299,50 @@ jobs:
           GH_TOKEN: ${{ secrets.tap_token }}
           SOURCE_TAG: ${{ inputs.source_tag }}
           CASK_TOKEN: ${{ inputs.cask_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}
         run: |
           set -euo pipefail
           version="${SOURCE_TAG#v}"
           cd tap
+
+          verify_canonical_tap_identity() {
+            local canonical_identity
+            local canonical_fields
+            local canonical_repository
+            local canonical_default_branch
+
+            if ! canonical_identity="$(
+              gh repo view "${TAP_REPOSITORY}" \
+                --json nameWithOwner,defaultBranchRef \
+                --jq '.nameWithOwner, .defaultBranchRef.name'
+            )"; then
+              echo "Failed to re-resolve canonical tap repository identity before push." >&2
+              return 1
+            fi
+
+            mapfile -t canonical_fields <<<"${canonical_identity}"
+            if (("${#canonical_fields[@]}" != 2)); then
+              echo "Canonical tap repository metadata is incomplete before push." >&2
+              return 1
+            fi
+            canonical_repository="${canonical_fields[0]}"
+            canonical_default_branch="${canonical_fields[1]}"
+            if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
+              echo "Tap repository identity changed before branch push." >&2
+              return 1
+            fi
+            if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+              echo "Tap default branch changed before branch push." >&2
+              return 1
+            fi
+          }
           git add "Casks/${CASK_TOKEN}.rb"
 
           push_automation_branch() {
+            verify_canonical_tap_identity
             if [[ -n "${REMOTE_BRANCH_SHA}" ]]; then
               if [[ ! "${REMOTE_BRANCH_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
                 echo "REMOTE_BRANCH_SHA must be a canonical commit SHA when present." >&2
@@ -432,6 +467,38 @@ jobs:
             exit 1
           fi
 
+          verify_canonical_tap_identity() {
+            local canonical_identity
+            local canonical_fields
+            local canonical_repository
+            local canonical_default_branch
+
+            if ! canonical_identity="$(
+              gh repo view "${TAP_REPOSITORY}" \
+                --json nameWithOwner,defaultBranchRef \
+                --jq '.nameWithOwner, .defaultBranchRef.name'
+            )"; then
+              echo "Failed to re-resolve canonical tap repository identity during final verification." >&2
+              return 1
+            fi
+
+            mapfile -t canonical_fields <<<"${canonical_identity}"
+            if (("${#canonical_fields[@]}" != 2)); then
+              echo "Canonical tap repository metadata is incomplete during final verification." >&2
+              return 1
+            fi
+            canonical_repository="${canonical_fields[0]}"
+            canonical_default_branch="${canonical_fields[1]}"
+            if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
+              echo "Tap repository identity changed before final verification." >&2
+              return 1
+            fi
+            if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+              echo "Tap default branch changed before final verification." >&2
+              return 1
+            fi
+          }
+
           verify_remote_branch() {
             local remote_line
             local remote_status
@@ -489,6 +556,7 @@ jobs:
               --head-sha "${PUSHED_SHA}"
           }
 
+          verify_canonical_tap_identity
           verify_remote_branch
           if ! final_pr_number="$(query_final_pr_number)"; then
             echo "Final tap pull request identity validation failed." >&2
@@ -499,4 +567,13 @@ jobs:
             exit 1
           fi
           verify_remote_branch
-          gh pr view "${PR_NUMBER}" --repo "${TAP_REPOSITORY}" --web=false
+          verify_canonical_tap_identity
+          if ! final_pr_number="$(query_final_pr_number)"; then
+            echo "Final tap pull request identity validation failed after remote rebind." >&2
+            exit 1
+          fi
+          if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]; then
+            echo "Selected tap pull request changed after remote rebind." >&2
+            exit 1
+          fi
+          printf 'Verified open tap pull request #%s at %s.\n' "${PR_NUMBER}" "${PUSHED_SHA}"
