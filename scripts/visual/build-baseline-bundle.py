@@ -232,6 +232,8 @@ def build_bundle(
     repo_root = repo_root.resolve()
     manifest_path = manifest_path.resolve()
     current_profile_path = current_profile_path.resolve()
+    if output_root.is_symlink():
+        raise ValueError("output directory must not be a symlink")
     output_root = output_root.resolve()
 
     if output_root.exists():
