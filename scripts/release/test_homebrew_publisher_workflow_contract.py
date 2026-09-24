@@ -140,9 +140,11 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         text = self.homebrew_text()
         for step_name in (
             "Clone tap repository",
+            "Verify cloned tap repository identity",
             "Prepare tap update branch",
             "Commit and push Cask branch",
             "Open or reuse tap pull request",
+            "Reverify tap branch and pull request identity",
         ):
             with self.subTest(step_name=step_name):
                 block = step_block(text, step_name)
@@ -160,6 +162,33 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
                 block = step_block(text, step_name)
                 self.assertTrue(block, f"missing step: {step_name}")
                 self.assertNotIn("secrets.tap_token", block)
+
+    def test_homebrew_rejects_repository_redirect_or_transfer_before_branch_operations(self) -> None:
+        text = self.homebrew_text()
+        clone = text.index("Clone tap repository")
+        verify = text.index("Verify cloned tap repository identity")
+        prepare = text.index("Prepare tap update branch")
+        self.assertLess(clone, verify)
+        self.assertLess(verify, prepare)
+
+        block = step_block(text, "Verify cloned tap repository identity")
+        self.assertTrue(block)
+        self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", block)
+        self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
+        self.assertIn(
+            'gh repo view "${TAP_REPOSITORY}" --json nameWithOwner --jq \'.nameWithOwner\'',
+            block,
+        )
+        self.assertIn(
+            'if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]',
+            block,
+        )
+        self.assertIn(
+            "Tap repository resolved to a different canonical repository identity.",
+            block,
+        )
+        self.assertNotIn("git push", block)
+        self.assertNotIn("gh pr create", block)
 
     def test_existing_automation_branch_is_rebuilt_from_trusted_tap_default(self) -> None:
         prepare = step_block(self.homebrew_text(), "Prepare tap update branch")
