@@ -308,7 +308,20 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]', final_step)
         self.assertIn("Selected tap pull request changed before final verification.", final_step)
         self.assertEqual(2, final_step.count("\n          verify_remote_branch\n"))
-        self.assertIn('gh pr view "${PR_NUMBER}"', final_step)
+        self.assertEqual(
+            2,
+            final_step.count('final_pr_number="$(query_final_pr_number)"'),
+        )
+        self.assertNotIn('gh pr view "${PR_NUMBER}"', final_step)
+        final_query = final_step.rindex('final_pr_number="$(query_final_pr_number)"')
+        self.assertGreater(
+            final_query,
+            final_step.rindex("\n          verify_remote_branch\n"),
+        )
+        self.assertGreater(
+            final_query,
+            final_step.rindex("\n          verify_canonical_tap_identity\n"),
+        )
         self.assertLess(
             text.index("Open or reuse tap pull request"),
             text.index("Reverify tap branch and pull request identity"),
