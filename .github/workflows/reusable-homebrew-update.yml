@@ -170,6 +170,32 @@ jobs:
           gh auth setup-git
           gh repo clone "${TAP_REPOSITORY}" tap
 
+      - name: Verify cloned tap repository identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+        run: |
+          set -euo pipefail
+          if ! canonical_repository="$(gh repo view "${TAP_REPOSITORY}" --json nameWithOwner --jq '.nameWithOwner')"; then
+            echo "Failed to resolve canonical tap repository identity." >&2
+            exit 1
+          fi
+          if [[ ! "${canonical_repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "Canonical tap repository identity is malformed." >&2
+            exit 1
+          fi
+          canonical_owner="${canonical_repository%%/*}"
+          canonical_name="${canonical_repository#*/}"
+          if [[ "${canonical_owner}" == "." || "${canonical_owner}" == ".." || "${canonical_name}" == "." || "${canonical_name}" == ".." ]]; then
+            echo "Canonical tap repository identity contains an invalid component." >&2
+            exit 1
+          fi
+          if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
+            echo "Tap repository resolved to a different canonical repository identity." >&2
+            exit 1
+          fi
+
       - name: Prepare tap update branch
         id: branch
         shell: bash
