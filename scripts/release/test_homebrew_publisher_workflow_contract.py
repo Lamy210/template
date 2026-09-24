@@ -274,6 +274,30 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("id: pull_request", open_step)
         self.assertIn('echo "number=${open_pr_number}" >>"${GITHUB_OUTPUT}"', open_step)
         self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", final_step)
+        self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", final_step)
+        self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", final_step)
+        self.assertIn("--json nameWithOwner,defaultBranchRef", final_step)
+        self.assertIn(".nameWithOwner, .defaultBranchRef.name", final_step)
+        self.assertIn(
+            'if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]',
+            final_step,
+        )
+        self.assertIn(
+            'if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]',
+            final_step,
+        )
+        self.assertIn(
+            "Tap repository identity changed before final verification.",
+            final_step,
+        )
+        self.assertIn(
+            "Tap default branch changed before final verification.",
+            final_step,
+        )
+        self.assertEqual(
+            2,
+            final_step.count("\n          verify_canonical_tap_identity\n"),
+        )
         self.assertIn("PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}", final_step)
         self.assertIn("PR_NUMBER: ${{ steps.pull_request.outputs.number }}", final_step)
         self.assertIn('git ls-remote --exit-code --branches origin "refs/heads/${BRANCH}"', final_step)
