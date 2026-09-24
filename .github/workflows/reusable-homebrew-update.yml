@@ -175,12 +175,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.tap_token }}
           TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
         run: |
           set -euo pipefail
-          if ! canonical_repository="$(gh repo view "${TAP_REPOSITORY}" --json nameWithOwner --jq '.nameWithOwner')"; then
+          if ! canonical_identity="$(
+            gh repo view "${TAP_REPOSITORY}" \
+              --json nameWithOwner,defaultBranchRef \
+              --jq '.nameWithOwner, .defaultBranchRef.name'
+          )"; then
             echo "Failed to resolve canonical tap repository identity." >&2
             exit 1
           fi
+
+          mapfile -t canonical_fields <<<"${canonical_identity}"
+          if (("${#canonical_fields[@]}" != 2)); then
+            echo "Canonical tap repository metadata is incomplete." >&2
+            exit 1
+          fi
+          canonical_repository="${canonical_fields[0]}"
+          canonical_default_branch="${canonical_fields[1]}"
+
           if [[ ! "${canonical_repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
             echo "Canonical tap repository identity is malformed." >&2
             exit 1
@@ -193,6 +207,10 @@ jobs:
           fi
           if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
             echo "Tap repository resolved to a different canonical repository identity." >&2
+            exit 1
+          fi
+          if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+            echo "Configured tap_default_branch does not match the canonical repository default branch." >&2
             exit 1
           fi
 
