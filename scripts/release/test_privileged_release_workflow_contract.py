@@ -172,9 +172,13 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             "ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}",
             "PUBLISHER_RUN_ID: ${{ github.run_id }}",
             "PUBLISHER_SHA: ${{ github.sha }}",
+            "APP_BASENAME: ${{ inputs.app_path }}",
+            "BUNDLE_ID: ${{ inputs.bundle_id }}",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, text)
+        self.assertIn('--app-basename "${APP_BASENAME}"', text)
+        self.assertIn('--bundle-id "${BUNDLE_ID}"', text)
         self.assertGreaterEqual(text.count("release-output/release-provenance.json"), 2)
         self.assertIn(
             "RELEASE_PROVENANCE_PATH: release-output/release-provenance.json",
@@ -209,10 +213,14 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             "ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}",
             "PUBLISHER_RUN_ID: ${{ github.run_id }}",
             "PUBLISHER_SHA: ${{ github.sha }}",
+            "APP_BASENAME: ${{ inputs.app_path }}",
+            "BUNDLE_ID: ${{ inputs.bundle_id }}",
             "RELEASE_PROVENANCE_PATH: release-output/release-provenance.json",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, text)
+        self.assertIn('--app-basename "${APP_BASENAME}"', text)
+        self.assertIn('--bundle-id "${BUNDLE_ID}"', text)
 
     def test_github_release_uses_validated_source_tag(self) -> None:
         text = self.release_text()
