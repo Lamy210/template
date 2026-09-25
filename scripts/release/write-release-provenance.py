@@ -20,6 +20,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--archive-sha256", required=True)
     parser.add_argument("--publisher-run-id", required=True, type=int)
     parser.add_argument("--publisher-sha", required=True)
+    parser.add_argument("--app-basename", required=True)
+    parser.add_argument("--bundle-id", required=True)
     parser.add_argument("--dmg-path", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     return parser.parse_args()
@@ -38,6 +40,8 @@ def main() -> int:
         archive_sha256=args.archive_sha256,
         publisher_run_id=args.publisher_run_id,
         publisher_sha=args.publisher_sha,
+        app_basename=args.app_basename,
+        bundle_id=args.bundle_id,
         dmg_path=args.dmg_path,
     )
     document = build_release_attestation(expected)
