@@ -42,6 +42,9 @@
             "context": "Required gate"
           },
           {
+            "context": "Tests / Required Gate"
+          },
+          {
             "context": "swift-quality / Swift quality"
           }
         ],

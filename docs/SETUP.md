@@ -146,15 +146,15 @@ The repository-level `quality.yml` covers GitHub Actions security with `zizmor` 
 
 After the first pull request runs successfully, select stable check names from GitHub's Ruleset UI. Do not type a guessed check name before it has run at least once.
 
-For this template itself, require at minimum the jobs produced by:
+For this template itself, require the stable aggregate checks observed from a successful pull request:
 
 ```text
-Quality / Repository hygiene
-Quality / GitHub Actions security
-Swift Quality / Swift quality
+Required gate
+Tests / Required Gate
+swift-quality / Swift quality
 ```
 
-The exact UI label can vary with GitHub's workflow/job presentation; select the observed checks from a successful pull request.
+Do not infer these names from YAML alone. Confirm the exact Check Runs emitted by GitHub after the testing and release/governance foundations have landed, then select those observed checks in the Ruleset UI.
 
 Application repositories should additionally require their application build and unit/integration test jobs. If an application does not use Swift, remove or replace the Swift profile rather than keeping a permanently skipped/irrelevant required check.
 

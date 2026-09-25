@@ -9,6 +9,7 @@ from typing import Any
 
 CANONICAL_CHECKS = {
     "Required gate",
+    "Tests / Required Gate",
     "swift-quality / Swift quality",
 }
 EXPECTED_RULE_TYPES = {
