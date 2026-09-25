@@ -52,6 +52,7 @@ def valid_live_ruleset() -> dict:
                     "strict_required_status_checks_policy": True,
                     "required_status_checks": [
                         {"context": "Required gate"},
+                        {"context": "Tests / Required Gate"},
                         {"context": "swift-quality / Swift quality"},
                     ],
                 },
