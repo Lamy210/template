@@ -337,7 +337,8 @@ It:
 7. renders the Cask from that reverified digest;
 8. after cloning the tap, resolves GitHub's canonical `nameWithOwner` and `defaultBranchRef.name`, requires the repository identity to match case-insensitively, and requires the configured `tap_default_branch` to equal the repository's actual default branch before any branch write;
 9. queries the automation branch fail-closed, rebuilds it from the trusted tap default branch, re-resolves canonical repository/default-branch metadata immediately before each branch push, and pushes only with an explicit force-with-lease expectation (including a create-only empty lease when the branch was absent);
-10. queries open tap PRs explicitly, validates head repository/head/base plus the exact pushed head commit so a same-named fork or raced/stale branch cannot be reused, re-queries after creation, revalidates canonical tap/default-branch and remote branch identity, and makes one final exact open-PR query the last remote operation before success so a closed/merged/raced PR is not accepted from stale earlier evidence.
+10. when the rendered Cask is already current but an old automation branch exists, resets that branch to the trusted default commit and then makes a final two-ref remote query requiring both the default and automation refs to still equal the cleanup SHA;
+11. queries open tap PRs explicitly for changed updates, validates head repository/head/base plus the exact pushed head commit so a same-named fork or raced/stale branch cannot be reused, re-queries after creation, revalidates canonical tap/default-branch and remote branch identity, and makes one final exact open-PR query the last remote operation before success so a closed/merged/raced PR is not accepted from stale earlier evidence.
 
 It never receives Apple signing credentials.
 
