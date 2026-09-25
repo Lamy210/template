@@ -48,6 +48,7 @@ jobs:
             scripts.release.test_homebrew_publisher_workflow_contract \
             scripts.homebrew.test_release_checksum \
             scripts.homebrew.test_cask_asset \
+            scripts.homebrew.test_cask_output_path \
             scripts.homebrew.test_tap_pr_selection \
             scripts.release.test_quality_release_isolation_contract \
             scripts.release.test_verify_validated_release_metadata \

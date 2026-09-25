@@ -67,6 +67,8 @@ scripts/homebrew/render-cask.sh
 
 It escapes values before inserting them into Ruby string literals and fails when an unresolved placeholder remains.
 
+The renderer also requires an explicit trusted `CASK_OUTPUT_ROOT`. Before creating the parent directory and again immediately before writing, it validates that the output stays lexically below that root and that the root, every existing parent component, and any existing target are not symlinks. Existing parents must be directories and an existing target must be a regular file. This prevents a tap-controlled `Casks/` symlink or Cask-file symlink from redirecting the generated output into the trusted publisher checkout or another workspace path.
+
 ## Release identity contract
 
 `reusable-homebrew-update.yml` requires a validated `source_tag` input in stable `vX.Y.Z` form.
