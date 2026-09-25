@@ -32,6 +32,8 @@ def main() -> int:
     parser.add_argument("--archive-sha256", required=True)
     parser.add_argument("--publisher-run-id", required=True, type=int)
     parser.add_argument("--publisher-sha", required=True)
+    parser.add_argument("--app-basename", required=True)
+    parser.add_argument("--bundle-id", required=True)
     args = parser.parse_args()
 
     expected = ExpectedRelease(
@@ -45,6 +47,8 @@ def main() -> int:
         archive_sha256=args.archive_sha256,
         publisher_run_id=args.publisher_run_id,
         publisher_sha=args.publisher_sha,
+        app_basename=args.app_basename,
+        bundle_id=args.bundle_id,
         dmg_path=args.dmg,
     )
     errors = verify_release_attestation(load_json(args.metadata), expected)
