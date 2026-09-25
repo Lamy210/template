@@ -108,7 +108,7 @@ Required approving reviews: 1 -> 0
 
 Do **not** add required status checks or a bypass actor in this emergency edit.
 
-Why: PR #3 contains the stable `Required gate`, governance validation, and release-isolation checks that must exist successfully on `main` before they can safely become required live policy.
+Why: PR #2 provides the stable `Tests / Required Gate`, while PR #3 provides the stable `Required gate`, Swift/governance validation, and release-isolation checks. Those checks must exist successfully on `main` before they can safely become required live policy.
 
 After saving, re-read the live Ruleset and confirm PR #2 is no longer blocked by the one-approval rule.
 
@@ -349,12 +349,13 @@ The workflow is a verification surface, not an administration surface: it never 
 Open a harmless pull request and verify:
 
 1. `Required gate` is created.
-2. `swift-quality / Swift quality` is created.
-3. A failing required check blocks merge.
-4. Green required checks allow the Solo maintainer to merge without an external approval.
-5. An unresolved review conversation blocks merge.
-6. The supported merge path is squash.
-7. Direct/force updates to the default branch remain restricted.
+2. `Tests / Required Gate` is created.
+3. `swift-quality / Swift quality` is created.
+4. A failing required check blocks merge.
+5. Green required checks allow the Solo maintainer to merge without an external approval.
+6. An unresolved review conversation blocks merge.
+7. The supported merge path is squash.
+8. Direct/force updates to the default branch remain restricted.
 
 Do not use a real release tag for destructive Ruleset testing.
 
