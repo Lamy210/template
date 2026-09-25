@@ -259,7 +259,8 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('remote_branch_sha=${remote_branch_sha}', prepare)
         self.assertIn('remote_branch_ref', prepare)
         self.assertIn('base_sha="$(git rev-parse "refs/remotes/origin/${TAP_DEFAULT_BRANCH}^{commit}")"', prepare)
-        self.assertIn('echo "base_sha=${base_sha}" >>"${GITHUB_OUTPUT}"', prepare)
+        self.assertIn('echo "base_sha=${base_sha}"', prepare)
+        self.assertIn('} >>"${GITHUB_OUTPUT}"', prepare)
 
         self.assertIn("REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}", push)
         self.assertIn("BASE_SHA: ${{ steps.branch.outputs.base_sha }}", push)
