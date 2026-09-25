@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from scripts.homebrew.cask_asset import validate_cask_asset_mapping
 
@@ -45,6 +46,20 @@ class CaskAssetMappingTests(unittest.TestCase):
                     dmg_basename_template=template,
                 )
                 self.assertTrue(any("exactly one #{version} placeholder" in error for error in errors))
+
+    def test_reuses_shared_release_output_name_policy(self) -> None:
+        with patch(
+            "scripts.homebrew.cask_asset.validate_dmg_name",
+            return_value=["shared release DMG policy rejected value"],
+        ) as shared_validator:
+            errors = validate_cask_asset_mapping(
+                source_tag="v1.2.3",
+                dmg_name="MyApp-v1.2.3.dmg",
+                dmg_basename_template="MyApp-v#{version}.dmg",
+            )
+
+        shared_validator.assert_called_once_with("MyApp-v1.2.3.dmg")
+        self.assertIn("shared release DMG policy rejected value", errors)
 
     def test_rejects_noncanonical_tag_or_dmg_name(self) -> None:
         cases = (
