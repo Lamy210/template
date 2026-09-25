@@ -20,8 +20,6 @@ if [[ ! -f "${TEMPLATE_PATH}" ]]; then
   exit 1
 fi
 
-mkdir -p "$(dirname "${OUTPUT_CASK}")"
-
 python3 - "${TEMPLATE_PATH}" "${OUTPUT_CASK}" <<'PY'
 import os
 import pathlib
@@ -31,6 +29,16 @@ import sys
 source = pathlib.Path(sys.argv[1])
 target = pathlib.Path(sys.argv[2])
 text = source.read_text(encoding="utf-8")
+
+target_parent = target.parent
+if target.is_symlink():
+    raise SystemExit(f"OUTPUT_CASK must not be a symbolic link: {target}")
+if target_parent.is_symlink():
+    raise SystemExit(f"OUTPUT_CASK parent must not be a symbolic link: {target_parent}")
+
+target_parent.mkdir(parents=True, exist_ok=True)
+if target_parent.is_symlink() or not target_parent.is_dir():
+    raise SystemExit(f"OUTPUT_CASK parent must be a real directory: {target_parent}")
 
 keys = (
     "CASK_TOKEN",
@@ -76,7 +84,17 @@ for key in keys:
 if "{{" in text or "}}" in text:
     raise SystemExit("Unresolved placeholder remains in rendered Cask")
 
-target.write_text(text, encoding="utf-8")
+flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+
+try:
+    descriptor = os.open(target, flags, 0o644)
+except OSError as error:
+    raise SystemExit(f"Unable to open OUTPUT_CASK safely: {error}") from error
+
+with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+    handle.write(text)
 PY
 
 printf 'Rendered %s\n' "${OUTPUT_CASK}"
