@@ -95,6 +95,15 @@ dmg_basename_template=Other-v#{version}.dmg
 
 fails before any tap branch write or pull-request operation. This prevents a verified release asset and the generated Cask URL from drifting to different filenames.
 
+The Cask application identity is rebound separately. The publisher validation job exports its validator-owned `appBasename` and `bundleId` only as comparison evidence. Before the tap token is exposed, the Homebrew updater requires:
+
+```text
+app_name + ".app" == validated_app_basename
+bundle_id          == validated_bundle_id
+```
+
+The trusted Homebrew `app_name` and `bundle_id` remain the values used to render the Cask. Validator-owned values are not allowed to silently redefine publisher policy; a disagreement fails closed instead.
+
 ## Published checksum contract
 
 The Homebrew updater treats the published `.sha256` asset as structured release metadata, not as an arbitrary text file.
