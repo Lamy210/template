@@ -59,6 +59,7 @@ def desired_rules() -> list[dict]:
                 "strict_required_status_checks_policy": True,
                 "required_status_checks": [
                     {"context": "Required gate", "integration_id": 123},
+                    {"context": "Tests / Required Gate", "integration_id": 123},
                     {"context": "swift-quality / Swift quality", "integration_id": 123},
                 ],
                 "do_not_enforce_on_create": False,
