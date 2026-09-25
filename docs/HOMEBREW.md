@@ -159,10 +159,12 @@ The predictable `automation/<cask>-v<version>` branch name is an output location
 
 On every run, the updater:
 
-1. fetches the tap repository and records the current remote automation-branch SHA if that branch already exists;
-2. rebuilds the local automation branch from the trusted tap default branch, never from the existing automation branch;
-3. renders only the intended Cask change;
-4. updates an existing automation branch with an exact-SHA `--force-with-lease`, so a concurrent or unexpected remote rewrite causes the run to fail instead of being overwritten.
+1. resolves the tap's canonical GitHub HTTPS/SSH clone URLs and requires the effective `origin` fetch and push URLs to match them; Git URL rewrites or mirrors that would redirect the remote fail closed;
+2. fetches the tap repository and records the current remote automation-branch SHA if that branch already exists;
+3. rebuilds the local automation branch from the trusted tap default branch, never from the existing automation branch;
+4. renders only the intended Cask change;
+5. revalidates canonical repository identity plus the effective origin remote before branch mutation and final acceptance;
+6. updates an existing automation branch with an exact-SHA `--force-with-lease`, so a concurrent or unexpected remote rewrite causes the run to fail instead of being overwritten.
 
 If the existing automation branch contains stale or unrelated commits, those commits are not carried forward. If the desired Cask is already identical, an existing remote automation branch is still reset to the trusted default-branch state using the same lease check.
 

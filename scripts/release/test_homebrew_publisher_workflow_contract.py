@@ -212,8 +212,11 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", block)
         self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
         self.assertIn('gh repo view "${TAP_REPOSITORY}"', block)
-        self.assertIn("--json nameWithOwner,defaultBranchRef", block)
-        self.assertIn(".nameWithOwner, .defaultBranchRef.name", block)
+        self.assertIn("--json nameWithOwner,defaultBranchRef,url,sshUrl", block)
+        self.assertIn(".nameWithOwner, .defaultBranchRef.name, .url, .sshUrl", block)
+        self.assertIn("source/scripts/homebrew/validate-tap-remote.py", block)
+        self.assertIn("git -C tap remote get-url origin", block)
+        self.assertIn("git -C tap remote get-url --push origin", block)
         self.assertIn(
             'if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]',
             block,
@@ -313,8 +316,9 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
             self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", block)
             self.assertIn('gh repo view "${TAP_REPOSITORY}"', block)
-            self.assertIn("--json nameWithOwner,defaultBranchRef", block)
-            self.assertIn(".nameWithOwner, .defaultBranchRef.name", block)
+            self.assertIn("--json nameWithOwner,defaultBranchRef,url,sshUrl", block)
+            self.assertIn(".nameWithOwner, .defaultBranchRef.name, .url, .sshUrl", block)
+            self.assertIn("validate-tap-remote.py", block)
 
         self.assertIn("Tap repository identity changed before branch push.", push)
         self.assertIn("Tap default branch changed before branch push.", push)
@@ -356,6 +360,9 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("BRANCH: ${{ steps.branch.outputs.branch }}", cleanup)
         self.assertIn("CLEANUP_SHA: ${{ steps.push.outputs.cleanup_sha }}", cleanup)
         self.assertIn('gh repo view "${TAP_REPOSITORY}"', cleanup)
+        self.assertIn("--json nameWithOwner,defaultBranchRef,url,sshUrl", cleanup)
+        self.assertIn("source/scripts/homebrew/validate-tap-remote.py", cleanup)
+        self.assertIn("git -C tap remote get-url --push origin", cleanup)
         self.assertIn('git ls-remote --exit-code --heads origin \\', cleanup)
         self.assertIn('"refs/heads/${TAP_DEFAULT_BRANCH}"', cleanup)
         self.assertIn('"refs/heads/${BRANCH}"', cleanup)
