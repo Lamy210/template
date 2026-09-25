@@ -12,6 +12,7 @@ set -euo pipefail
 : "${HOMEPAGE:?HOMEPAGE is required}"
 : "${BUNDLE_ID:?BUNDLE_ID is required}"
 : "${OUTPUT_CASK:?OUTPUT_CASK is required}"
+: "${CASK_OUTPUT_ROOT:?CASK_OUTPUT_ROOT is required}"
 
 TEMPLATE_PATH="${CASK_TEMPLATE:-templates/homebrew/Cask.rb.template}"
 
@@ -20,7 +21,15 @@ if [[ ! -f "${TEMPLATE_PATH}" ]]; then
   exit 1
 fi
 
+validate_output_path() {
+  python3 "$(dirname "${BASH_SOURCE[0]}")/validate-cask-output-path.py" \
+    --root "${CASK_OUTPUT_ROOT}" \
+    --output "${OUTPUT_CASK}"
+}
+
+validate_output_path
 mkdir -p "$(dirname "${OUTPUT_CASK}")"
+validate_output_path
 
 python3 - "${TEMPLATE_PATH}" "${OUTPUT_CASK}" <<'PY'
 import os
