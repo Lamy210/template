@@ -371,9 +371,23 @@ jobs:
 
           if git diff --cached --quiet; then
             if [[ -n "${REMOTE_BRANCH_SHA}" ]]; then
+              cleanup_sha="$(git rev-parse HEAD)"
+              if [[ ! "${cleanup_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "No-op cleanup returned an invalid local commit SHA." >&2
+                exit 1
+              fi
               push_automation_branch
+              {
+                echo "cleanup_performed=true"
+                echo "cleanup_sha=${cleanup_sha}"
+                echo "changed=false"
+              } >>"${GITHUB_OUTPUT}"
+            else
+              {
+                echo "cleanup_performed=false"
+                echo "changed=false"
+              } >>"${GITHUB_OUTPUT}"
             fi
-            echo "changed=false" >>"${GITHUB_OUTPUT}"
           else
             git commit -m "chore(cask): update ${CASK_TOKEN} to ${version}"
             pushed_sha="$(git rev-parse HEAD)"
@@ -382,8 +396,11 @@ jobs:
               exit 1
             fi
             push_automation_branch
-            echo "changed=true" >>"${GITHUB_OUTPUT}"
-            echo "pushed_sha=${pushed_sha}" >>"${GITHUB_OUTPUT}"
+            {
+              echo "cleanup_performed=false"
+              echo "changed=true"
+              echo "pushed_sha=${pushed_sha}"
+            } >>"${GITHUB_OUTPUT}"
           fi
 
       - name: Open or reuse tap pull request
@@ -590,3 +607,79 @@ jobs:
             exit 1
           fi
           printf 'Verified open tap pull request #%s at %s.\n' "${PR_NUMBER}" "${PUSHED_SHA}"
+
+      - name: Reverify no-op tap branch cleanup
+        if: ${{ steps.push.outputs.changed == 'false' && steps.push.outputs.cleanup_performed == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          CLEANUP_SHA: ${{ steps.push.outputs.cleanup_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${CLEANUP_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "CLEANUP_SHA must be the exact no-op cleanup commit." >&2
+            exit 1
+          fi
+
+          if ! canonical_identity="$(
+            gh repo view "${TAP_REPOSITORY}" \
+              --json nameWithOwner,defaultBranchRef \
+              --jq '.nameWithOwner, .defaultBranchRef.name'
+          )"; then
+            echo "Failed to re-resolve canonical tap repository identity after no-op cleanup." >&2
+            exit 1
+          fi
+          mapfile -t canonical_fields <<<"${canonical_identity}"
+          if (("${#canonical_fields[@]}" != 2)); then
+            echo "Canonical tap repository metadata is incomplete after no-op cleanup." >&2
+            exit 1
+          fi
+          if [[ "${canonical_fields[0],,}" != "${TAP_REPOSITORY,,}" ]]; then
+            echo "Tap repository identity changed after no-op cleanup." >&2
+            exit 1
+          fi
+          if [[ "${canonical_fields[1]}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+            echo "Tap default branch changed after no-op cleanup." >&2
+            exit 1
+          fi
+
+          set +e
+          remote_lines="$(
+            cd tap &&
+              git ls-remote --exit-code --heads origin \
+                "refs/heads/${TAP_DEFAULT_BRANCH}" \
+                "refs/heads/${BRANCH}"
+          )"
+          remote_status=$?
+          set -e
+          if ((remote_status != 0)); then
+            echo "Failed to re-query tap refs after no-op cleanup." >&2
+            exit 1
+          fi
+
+          remote_count="$(printf '%s\n' "${remote_lines}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          if [[ "${remote_count}" != "2" ]]; then
+            echo "No-op cleanup verification must return exactly the default and automation refs." >&2
+            exit 1
+          fi
+
+          default_ref="refs/heads/${TAP_DEFAULT_BRANCH}"
+          automation_ref="refs/heads/${BRANCH}"
+          default_sha="$(printf '%s\n' "${remote_lines}" | awk -v ref="${default_ref}" '$2 == ref {print $1}')"
+          automation_sha="$(printf '%s\n' "${remote_lines}" | awk -v ref="${automation_ref}" '$2 == ref {print $1}')"
+          if [[ ! "${default_sha}" =~ ^[0-9a-f]{40}$ || ! "${automation_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "No-op cleanup verification returned malformed ref identity." >&2
+            exit 1
+          fi
+          if [[ "${default_sha}" != "${CLEANUP_SHA}" ]]; then
+            echo "Tap default branch moved during no-op cleanup." >&2
+            exit 1
+          fi
+          if [[ "${automation_sha}" != "${CLEANUP_SHA}" ]]; then
+            echo "Automation branch moved after no-op cleanup." >&2
+            exit 1
+          fi
+          printf 'Verified no-op tap branch cleanup at %s.\n' "${CLEANUP_SHA}"
