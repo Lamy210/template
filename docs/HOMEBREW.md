@@ -85,6 +85,16 @@ The updater downloads `${dmg_name}.sha256` from the immutable GitHub Release for
 
 This prevents the default-branch publisher's own ref context from being mistaken for the released application tag.
 
+The Cask filename template is also bound to the exact published DMG identity. Before the Homebrew tap credential is used, the updater expands the single required `#{version}` placeholder in `dmg_basename_template` with the validated `source_tag` version and requires the result to equal `dmg_name` byte-for-byte. A configuration such as:
+
+```text
+source_tag=v1.2.3
+dmg_name=MyApp-v1.2.3.dmg
+dmg_basename_template=Other-v#{version}.dmg
+```
+
+fails before any tap branch write or pull-request operation. This prevents a verified release asset and the generated Cask URL from drifting to different filenames.
+
 ## Published checksum contract
 
 The Homebrew updater treats the published `.sha256` asset as structured release metadata, not as an arbitrary text file.
