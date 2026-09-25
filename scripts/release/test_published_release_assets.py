@@ -46,6 +46,8 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
                 archive_sha256=ARCHIVE_SHA256,
                 publisher_run_id=300,
                 publisher_sha=PUBLISHER_SHA,
+                app_basename="MyApp.app",
+                bundle_id="com.example.MyApp",
                 dmg_path=dmg,
             )
         )
@@ -63,6 +65,8 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         *,
         repository: str = REPOSITORY,
         publisher_sha: str = PUBLISHER_SHA,
+        app_basename: str = "MyApp.app",
+        bundle_id: str = "com.example.MyApp",
     ) -> tuple[list[str], str | None, str | None]:
         return verify_published_release_assets(
             dmg_path=dmg,
@@ -71,6 +75,8 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
             expected_tag=TAG,
             expected_repository=repository,
             expected_publisher_sha=publisher_sha,
+            expected_app_basename=app_basename,
+            expected_bundle_id=bundle_id,
         )
 
     def test_accepts_three_mutually_bound_published_assets(self) -> None:
@@ -114,6 +120,29 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         self.assertIsNone(digest)
         self.assertIsNone(source_sha)
         self.assertTrue(any("publisher SHA" in error for error in errors))
+
+    def test_rejects_published_application_identity_drift(self) -> None:
+        _, dmg, checksum, provenance = self.fixture()
+
+        errors, digest, source_sha = self.verify(
+            dmg,
+            checksum,
+            provenance,
+            app_basename="Other.app",
+        )
+        self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
+        self.assertTrue(any("app basename" in error for error in errors))
+
+        errors, digest, source_sha = self.verify(
+            dmg,
+            checksum,
+            provenance,
+            bundle_id="com.attacker.Other",
+        )
+        self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
+        self.assertTrue(any("bundle ID" in error for error in errors))
 
     def test_rejects_malformed_expected_trust_identity(self) -> None:
         _, dmg, checksum, provenance = self.fixture()
@@ -173,6 +202,10 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
                 REPOSITORY,
                 "--publisher-sha",
                 PUBLISHER_SHA,
+                "--app-basename",
+                "MyApp.app",
+                "--bundle-id",
+                "com.example.MyApp",
                 "--source-sha-output",
                 str(source_sha_output),
             ],
@@ -209,6 +242,10 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
                 REPOSITORY,
                 "--publisher-sha",
                 PUBLISHER_SHA,
+                "--app-basename",
+                "MyApp.app",
+                "--bundle-id",
+                "com.example.MyApp",
                 "--source-sha-output",
                 str(source_sha_output),
             ],
