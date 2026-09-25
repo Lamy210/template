@@ -131,6 +131,20 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("scripts/release/verify-release-source.sh", block)
         self.assertNotIn("secrets.tap_token", block)
 
+    def test_cask_dmg_template_is_bound_to_exact_published_asset_before_tap_secret(self) -> None:
+        text = self.homebrew_text()
+        bind = step_block(text, "Bind Cask DMG template to published asset")
+        self.assertTrue(bind)
+        self.assertIn("source/scripts/homebrew/validate-cask-asset.py", bind)
+        self.assertIn("SOURCE_TAG: ${{ inputs.source_tag }}", bind)
+        self.assertIn("DMG_NAME: ${{ inputs.dmg_name }}", bind)
+        self.assertIn("DMG_BASENAME_TEMPLATE: ${{ inputs.dmg_basename_template }}", bind)
+        self.assertIn('--source-tag "${SOURCE_TAG}"', bind)
+        self.assertIn('--dmg-name "${DMG_NAME}"', bind)
+        self.assertIn('--dmg-basename-template "${DMG_BASENAME_TEMPLATE}"', bind)
+        self.assertNotIn("secrets.tap_token", bind)
+        self.assertLess(text.index("Bind Cask DMG template to published asset"), text.index("Clone tap repository"))
+
     def test_rendered_cask_is_syntax_checked_before_tap_write(self) -> None:
         block = step_block(self.homebrew_text(), "Render Cask")
         self.assertTrue(block)
@@ -154,6 +168,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         for step_name in (
             "Validate release identity and inputs",
             "Checkout trusted publisher automation",
+            "Bind Cask DMG template to published asset",
             "Download and verify published release assets",
             "Rebind published provenance to live release source",
             "Render Cask",
