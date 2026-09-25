@@ -38,6 +38,8 @@ jobs:
       source_artifact_id: ${{ steps.release_outputs.outputs.source_artifact_id }}
       source_artifact_digest: ${{ steps.release_outputs.outputs.source_artifact_digest }}
       archive_sha256: ${{ steps.release_outputs.outputs.archive_sha256 }}
+      validated_app_basename: ${{ steps.release_outputs.outputs.validated_app_basename }}
+      validated_bundle_id: ${{ steps.release_outputs.outputs.validated_bundle_id }}
 
     steps:
       - name: Checkout trusted publisher control code
@@ -157,6 +159,8 @@ jobs:
               "source_artifact_id": metadata["sourceArtifactId"],
               "source_artifact_digest": metadata["sourceArtifactDigest"],
               "archive_sha256": metadata["archiveSha256"],
+              "validated_app_basename": metadata["appBasename"],
+              "validated_bundle_id": metadata["bundleId"],
           }
           for key, value in output_values.items():
               print(f"{key}={value}")
@@ -222,6 +226,8 @@ jobs:
     uses: ./.github/workflows/reusable-homebrew-update.yml
     with:
       source_tag: ${{ needs.validate.outputs.source_tag }}
+      validated_app_basename: ${{ needs.validate.outputs.validated_app_basename }}
+      validated_bundle_id: ${{ needs.validate.outputs.validated_bundle_id }}
       tap_repository: Lamy210/homebrew-tap
       tap_default_branch: main
       cask_token: my-app
