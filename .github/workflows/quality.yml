@@ -139,6 +139,7 @@ jobs:
           DESCRIPTION: Example macOS application
           HOMEPAGE: https://example.com
           BUNDLE_ID: com.example.ExampleApp
+          CASK_OUTPUT_ROOT: ${{ runner.temp }}
           OUTPUT_CASK: ${{ runner.temp }}/example-app.rb
         run: |
           set -euo pipefail
