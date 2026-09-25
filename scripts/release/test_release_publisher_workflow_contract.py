@@ -189,6 +189,33 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
             privileged,
         )
 
+    def test_exports_validated_application_identity_only_for_comparison(self) -> None:
+        validate = job_block(self.workflow_text(), "validate")
+        self.assertIn(
+            "validated_app_basename: ${{ steps.release_outputs.outputs.validated_app_basename }}",
+            validate,
+        )
+        self.assertIn(
+            "validated_bundle_id: ${{ steps.release_outputs.outputs.validated_bundle_id }}",
+            validate,
+        )
+        self.assertIn('"validated_app_basename": metadata["appBasename"]', validate)
+        self.assertIn('"validated_bundle_id": metadata["bundleId"]', validate)
+
+        homebrew = job_block(self.workflow_text(), "homebrew")
+        self.assertIn(
+            "validated_app_basename: ${{ needs.validate.outputs.validated_app_basename }}",
+            homebrew,
+        )
+        self.assertIn(
+            "validated_bundle_id: ${{ needs.validate.outputs.validated_bundle_id }}",
+            homebrew,
+        )
+
+        privileged = job_block(self.workflow_text(), "sign-and-publish")
+        self.assertNotIn("validated_app_basename:", privileged)
+        self.assertNotIn("validated_bundle_id:", privileged)
+
     def test_privileged_release_policy_comes_from_trusted_publisher(self) -> None:
         block = job_block(self.workflow_text(), "sign-and-publish")
         self.assertTrue(block, "sign-and-publish job is required")
