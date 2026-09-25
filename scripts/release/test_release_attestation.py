@@ -36,6 +36,8 @@ def expected_release(dmg_path: Path) -> ExpectedRelease:
         archive_sha256=ARCHIVE_SHA256,
         publisher_run_id=99887766,
         publisher_sha=PUBLISHER_SHA,
+        app_basename="MyApp.app",
+        bundle_id="com.example.MyApp",
         dmg_path=dmg_path,
     )
 
@@ -50,6 +52,7 @@ class ReleaseAttestationTests(unittest.TestCase):
             document = build_release_attestation(expected_release(dmg))
 
             self.assertEqual([], validate_release_attestation(document))
+            self.assertEqual(2, document["schemaVersion"])
             self.assertEqual(
                 "sha256:" + hashlib.sha256(payload).hexdigest(),
                 document["dmgSha256"],
@@ -67,6 +70,8 @@ class ReleaseAttestationTests(unittest.TestCase):
                     "archiveSha256",
                     "publisherRunId",
                     "publisherSHA",
+                    "appBasename",
+                    "bundleId",
                     "dmgSha256",
                 },
                 set(document),
@@ -109,6 +114,14 @@ class ReleaseAttestationTests(unittest.TestCase):
         bad_repository["sourceRepository"] = "../repo"
         mutations.append(bad_repository)
 
+        bad_app_basename = dict(valid)
+        bad_app_basename["appBasename"] = "../MyApp.app"
+        mutations.append(bad_app_basename)
+
+        empty_bundle_id = dict(valid)
+        empty_bundle_id["bundleId"] = ""
+        mutations.append(empty_bundle_id)
+
         for document in mutations:
             with self.subTest(document=document):
                 self.assertTrue(validate_release_attestation(document))
@@ -126,6 +139,16 @@ class ReleaseAttestationTests(unittest.TestCase):
             drifted["sourceRunAttempt"] = 3
             identity_errors = verify_release_attestation(drifted, expected)
             self.assertTrue(any("sourceRunAttempt" in error for error in identity_errors))
+
+            app_drifted = dict(document)
+            app_drifted["appBasename"] = "Other.app"
+            app_errors = verify_release_attestation(app_drifted, expected)
+            self.assertTrue(any("appBasename" in error for error in app_errors))
+
+            bundle_drifted = dict(document)
+            bundle_drifted["bundleId"] = "com.attacker.Other"
+            bundle_errors = verify_release_attestation(bundle_drifted, expected)
+            self.assertTrue(any("bundleId" in error for error in bundle_errors))
 
             dmg.write_bytes(b"tampered-final-dmg\n")
             digest_errors = verify_release_attestation(document, expected)
@@ -172,6 +195,10 @@ class ReleaseAttestationTests(unittest.TestCase):
                     "99887766",
                     "--publisher-sha",
                     PUBLISHER_SHA,
+                    "--app-basename",
+                    "MyApp.app",
+                    "--bundle-id",
+                    "com.example.MyApp",
                 ],
                 cwd=REPO_ROOT,
                 text=True,
@@ -213,6 +240,10 @@ class ReleaseAttestationTests(unittest.TestCase):
                 "99887766",
                 "--publisher-sha",
                 PUBLISHER_SHA,
+                "--app-basename",
+                "MyApp.app",
+                "--bundle-id",
+                "com.example.MyApp",
                 "--dmg-path",
                 str(dmg),
             ]
