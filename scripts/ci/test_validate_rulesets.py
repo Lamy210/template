@@ -46,6 +46,7 @@ def valid_main_solo() -> dict:
                     "strict_required_status_checks_policy": True,
                     "required_status_checks": [
                         {"context": "Required gate"},
+                        {"context": "Tests / Required Gate"},
                         {"context": "swift-quality / Swift quality"},
                     ],
                 },
@@ -110,6 +111,20 @@ class MainSoloRulesetTests(unittest.TestCase):
         errors = validate_main_solo(document)
 
         self.assertTrue(any("required check contexts must equal" in error for error in errors))
+
+    def test_rejects_missing_tests_required_gate(self) -> None:
+        document = copy.deepcopy(valid_main_solo())
+        status_rule = next(
+            rule for rule in document["rules"] if rule["type"] == "required_status_checks"
+        )
+        status_rule["parameters"]["required_status_checks"] = [
+            {"context": "Required gate"},
+            {"context": "swift-quality / Swift quality"},
+        ]
+
+        errors = validate_main_solo(document)
+
+        self.assertTrue(any("Tests / Required Gate" in error for error in errors))
 
     def test_rejects_duplicate_required_check_context(self) -> None:
         document = copy.deepcopy(valid_main_solo())
