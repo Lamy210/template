@@ -103,6 +103,7 @@ jobs:
             scripts.homebrew.test_release_checksum \
             scripts.homebrew.test_cask_asset \
             scripts.homebrew.test_cask_output_path \
+            scripts.homebrew.test_tap_remote \
             scripts.homebrew.test_tap_pr_selection \
             scripts.release.test_verify_validated_release_metadata \
             -v
