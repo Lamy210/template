@@ -7,6 +7,14 @@ on:
         description: Validated stable release tag produced by the publisher, for example v1.2.3.
         required: true
         type: string
+      validated_app_basename:
+        description: App bundle basename already validated by the publisher, for comparison only.
+        required: true
+        type: string
+      validated_bundle_id:
+        description: Bundle identifier already validated by the publisher, for comparison only.
+        required: true
+        type: string
       tap_repository:
         description: Homebrew tap repository in owner/repo form.
         required: true
@@ -63,6 +71,10 @@ jobs:
           TAP_REPOSITORY: ${{ inputs.tap_repository }}
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           DMG_NAME: ${{ inputs.dmg_name }}
+          APP_NAME: ${{ inputs.app_name }}
+          BUNDLE_ID: ${{ inputs.bundle_id }}
+          VALIDATED_APP_BASENAME: ${{ inputs.validated_app_basename }}
+          VALIDATED_BUNDLE_ID: ${{ inputs.validated_bundle_id }}
         run: |
           set -euo pipefail
           if [[ ! "${SOURCE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
@@ -89,6 +101,14 @@ jobs:
           fi
           if [[ ! "${DMG_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*\.dmg$ ]]; then
             echo "dmg_name must be a literal DMG asset basename." >&2
+            exit 1
+          fi
+          if [[ "${APP_NAME}.app" != "${VALIDATED_APP_BASENAME}" ]]; then
+            echo "Homebrew app_name does not match the publisher-validated application basename." >&2
+            exit 1
+          fi
+          if [[ "${BUNDLE_ID}" != "${VALIDATED_BUNDLE_ID}" ]]; then
+            echo "Homebrew bundle_id does not match the publisher-validated bundle identifier." >&2
             exit 1
           fi
 
