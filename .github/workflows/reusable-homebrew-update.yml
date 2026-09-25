@@ -298,10 +298,16 @@ jobs:
           esac
 
           git rev-parse --verify "refs/remotes/origin/${TAP_DEFAULT_BRANCH}^{commit}" >/dev/null
+          base_sha="$(git rev-parse "refs/remotes/origin/${TAP_DEFAULT_BRANCH}^{commit}")"
+          if [[ ! "${base_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Fetched tap default branch returned an invalid commit SHA." >&2
+            exit 1
+          fi
           git switch -C "${branch}" "origin/${TAP_DEFAULT_BRANCH}"
 
           echo "branch=${branch}" >>"${GITHUB_OUTPUT}"
           echo "remote_branch_sha=${remote_branch_sha}" >>"${GITHUB_OUTPUT}"
+          echo "base_sha=${base_sha}" >>"${GITHUB_OUTPUT}"
 
       - name: Render Cask
         shell: bash
@@ -337,6 +343,7 @@ jobs:
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}
+          BASE_SHA: ${{ steps.branch.outputs.base_sha }}
         run: |
           set -euo pipefail
           version="${SOURCE_TAG#v}"
@@ -375,8 +382,52 @@ jobs:
           }
           git add "Casks/${CASK_TOKEN}.rb"
 
+          verify_remote_default_branch() {
+            local remote_line
+            local remote_status
+            local remote_count
+            local remote_sha
+            local remote_ref
+
+            if [[ ! "${BASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "BASE_SHA must be the exact fetched tap default-branch commit." >&2
+              return 1
+            fi
+
+            set +e
+            remote_line="$(git ls-remote --exit-code --heads origin "refs/heads/${TAP_DEFAULT_BRANCH}")"
+            remote_status=$?
+            set -e
+            if ((remote_status != 0)); then
+              echo "Failed to re-query the tap default branch before branch push." >&2
+              return 1
+            fi
+
+            remote_count="$(printf '%s\n' "${remote_line}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+            if [[ "${remote_count}" != "1" ]]; then
+              echo "Tap default branch lookup must return exactly one ref before branch push." >&2
+              return 1
+            fi
+
+            remote_sha="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $1 }')"
+            remote_ref="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $2 }')"
+            if [[ "${remote_ref}" != "refs/heads/${TAP_DEFAULT_BRANCH}" ]]; then
+              echo "Tap default branch lookup returned an unexpected ref before branch push." >&2
+              return 1
+            fi
+            if [[ ! "${remote_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Tap default branch lookup returned an invalid commit SHA before branch push." >&2
+              return 1
+            fi
+            if [[ "${remote_sha}" != "${BASE_SHA}" ]]; then
+              echo "Tap default branch moved after the automation branch was prepared." >&2
+              return 1
+            fi
+          }
+
           push_automation_branch() {
             verify_canonical_tap_identity
+            verify_remote_default_branch
             if [[ -n "${REMOTE_BRANCH_SHA}" ]]; then
               if [[ ! "${REMOTE_BRANCH_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
                 echo "REMOTE_BRANCH_SHA must be a canonical commit SHA when present." >&2
@@ -395,6 +446,10 @@ jobs:
               cleanup_sha="$(git rev-parse HEAD)"
               if [[ ! "${cleanup_sha}" =~ ^[0-9a-f]{40}$ ]]; then
                 echo "No-op cleanup returned an invalid local commit SHA." >&2
+                exit 1
+              fi
+              if [[ "${cleanup_sha}" != "${BASE_SHA}" ]]; then
+                echo "No-op cleanup is not based on the observed tap default-branch commit." >&2
                 exit 1
               fi
               push_automation_branch

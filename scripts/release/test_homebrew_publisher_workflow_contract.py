@@ -258,8 +258,11 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('remote_branch_sha=', prepare)
         self.assertIn('remote_branch_sha=${remote_branch_sha}', prepare)
         self.assertIn('remote_branch_ref', prepare)
+        self.assertIn('base_sha="$(git rev-parse "refs/remotes/origin/${TAP_DEFAULT_BRANCH}^{commit}")"', prepare)
+        self.assertIn('echo "base_sha=${base_sha}" >>"${GITHUB_OUTPUT}"', prepare)
 
         self.assertIn("REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}", push)
+        self.assertIn("BASE_SHA: ${{ steps.branch.outputs.base_sha }}", push)
         self.assertIn(
             '--force-with-lease="refs/heads/${BRANCH}:${REMOTE_BRANCH_SHA}"',
             push,
@@ -274,7 +277,29 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('echo "cleanup_performed=true"', push)
         self.assertIn('echo "cleanup_sha=${cleanup_sha}"', push)
         self.assertIn('echo "cleanup_performed=false"', push)
+        self.assertIn('if [[ "${cleanup_sha}" != "${BASE_SHA}" ]]', push)
+        self.assertIn("No-op cleanup is not based on the observed tap default-branch commit.", push)
         self.assertGreaterEqual(push.count('} >>"${GITHUB_OUTPUT}"'), 3)
+
+    def test_homebrew_rebinds_default_branch_commit_before_any_branch_push(self) -> None:
+        push = step_block(self.homebrew_text(), "Commit and push Cask branch")
+        self.assertTrue(push)
+        self.assertIn("BASE_SHA: ${{ steps.branch.outputs.base_sha }}", push)
+        self.assertIn("verify_remote_default_branch() {", push)
+        self.assertIn(
+            'git ls-remote --exit-code --heads origin "refs/heads/${TAP_DEFAULT_BRANCH}"',
+            push,
+        )
+        self.assertIn('if [[ "${remote_sha}" != "${BASE_SHA}" ]]', push)
+        self.assertIn(
+            "Tap default branch moved after the automation branch was prepared.",
+            push,
+        )
+        self.assertIn("\n            verify_remote_default_branch\n", push)
+        self.assertLess(
+            push.index("\n            verify_remote_default_branch\n"),
+            push.index("git push --set-upstream origin"),
+        )
 
     def test_homebrew_rebinds_canonical_tap_identity_before_push_and_success(self) -> None:
         text = self.homebrew_text()
