@@ -271,6 +271,20 @@ class PortableRulesetStructureTests(unittest.TestCase):
 
 
 class RulesetRolloutDocumentationTests(unittest.TestCase):
+    def test_smoke_verification_requires_all_canonical_check_contexts(self) -> None:
+        text = RULESET_GUIDE.read_text(encoding="utf-8")
+        start = text.index("## Smoke verification after import")
+        end = text.index("## Offline validation", start)
+        smoke = text[start:end]
+
+        for context in (
+            "Required gate",
+            "Tests / Required Gate",
+            "swift-quality / Swift quality",
+        ):
+            with self.subTest(context=context):
+                self.assertIn(f"`{context}`", smoke)
+
     def test_landing_order_places_pr2_before_pr3(self) -> None:
         text = RULESET_GUIDE.read_text(encoding="utf-8")
         pr2 = text.find("Merge PR #2")
