@@ -36,6 +36,7 @@ The default-branch profile requires:
 - deletion protection;
 - non-fast-forward / force-push protection;
 - `Required gate`;
+- `Tests / Required Gate`;
 - `swift-quality / Swift quality`;
 - required status checks remain enforced when a matching ref is created; GitHub's `do_not_enforce_on_create` field may be omitted or explicitly `false`, but not `true`;
 - portable status-check entries containing only the check context, not repository-specific `integration_id` values;
@@ -161,6 +162,7 @@ Confirm GitHub actually emitted successful Check Runs on the merged `main` commi
 
 ```text
 Required gate
+Tests / Required Gate
 swift-quality / Swift quality
 ```
 
@@ -180,6 +182,7 @@ Before enabling it, verify:
 - linear history is enabled;
 - only squash is allowed by the Ruleset contract;
 - `Required gate` is required;
+- `Tests / Required Gate` is required;
 - `swift-quality / Swift quality` is required;
 - required checks are enforced on ref creation;
 - no broad `release**` branch patterns exist;
@@ -242,12 +245,13 @@ Do not enable production signing/publication until this proof succeeds.
 Open a harmless pull request and verify:
 
 1. `Required gate` is created;
-2. `swift-quality / Swift quality` is created;
-3. failing required checks block merge;
-4. green required checks allow the Solo maintainer to merge without an external approval;
-5. unresolved review conversations block merge;
-6. squash is the supported merge path;
-7. direct/force updates to the default branch remain restricted.
+2. `Tests / Required Gate` is created;
+3. `swift-quality / Swift quality` is created;
+4. failing required checks block merge;
+5. green required checks allow the Solo maintainer to merge without an external approval;
+6. unresolved review conversations block merge;
+7. squash is the supported merge path;
+8. direct/force updates to the default branch remain restricted.
 
 Also run the manual **Governance Audit** workflow and require it to pass.
 
@@ -383,7 +387,7 @@ The validator rejects policy weakening, noncanonical state, or lockout regressio
 - an extra approval requirement for unattributed changes being enabled;
 - `dismiss_stale_reviews_on_push` being missing, non-boolean, or `false`;
 - `release*` branches being added to the default-branch profile;
-- either canonical required check being removed or renamed;
+- any canonical required check being removed or renamed;
 - duplicate or non-string required check contexts;
 - `do_not_enforce_on_create=true`, which would skip required status checks when a matching ref is created;
 - repository-specific `integration_id` or other fields being added to the portable status-check entries;
