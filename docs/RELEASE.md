@@ -245,6 +245,8 @@ The secret-free validation job emits `validated-release-metadata.json`. It inclu
 
 The privileged workflow compares metadata to explicit caller inputs and recomputes the actual archive digest before certificate import. A modified/mismatched re-handoff fails closed.
 
+The publisher exports the already-validated `appBasename` and `bundleId` as comparison-only outputs for the downstream Homebrew job. They do **not** replace trusted publisher policy: signing still receives explicit trusted `app_path` / `bundle_id` inputs, and Homebrew still renders from explicit trusted `app_name` / `bundle_id` configuration. The downstream job only requires those trusted values to match the validator-owned application identity before any tap credential is used.
+
 ## Signing and notarization order
 
 The expected privileged order is:
@@ -334,11 +336,12 @@ It:
 4. downloads the published DMG, checksum, and `release-provenance.json` for `source_tag`;
 5. recomputes SHA-256 from the downloaded DMG and requires the checksum plus final provenance to bind to those exact bytes, the current repository, and the trusted publisher SHA;
 6. takes the verified provenance source SHA and independently re-resolves the live stable tag, requiring that tag to point to the same source commit and that commit to remain reachable from trusted publisher history;
-7. renders the Cask from that reverified digest;
-8. after cloning the tap, resolves GitHub's canonical `nameWithOwner` and `defaultBranchRef.name`, requires the repository identity to match case-insensitively, and requires the configured `tap_default_branch` to equal the repository's actual default branch before any branch write;
-9. queries the automation branch fail-closed, rebuilds it from the trusted tap default branch, re-resolves canonical repository/default-branch metadata immediately before each branch push, and pushes only with an explicit force-with-lease expectation (including a create-only empty lease when the branch was absent);
-10. when the rendered Cask is already current but an old automation branch exists, resets that branch to the trusted default commit and then makes a final two-ref remote query requiring both the default and automation refs to still equal the cleanup SHA;
-11. queries open tap PRs explicitly for changed updates, validates head repository/head/base plus the exact pushed head commit so a same-named fork or raced/stale branch cannot be reused, re-queries after creation, revalidates canonical tap/default-branch and remote branch identity, and makes one final exact open-PR query the last remote operation before success so a closed/merged/raced PR is not accepted from stale earlier evidence.
+7. requires trusted Homebrew `app_name + ".app"` and `bundle_id` to equal the validator-owned `appBasename` and `bundleId` exported by the publisher, before the tap credential is used;
+8. renders the Cask from that reverified digest and trusted publisher policy;
+9. after cloning the tap, resolves GitHub's canonical `nameWithOwner` and `defaultBranchRef.name`, requires the repository identity to match case-insensitively, and requires the configured `tap_default_branch` to equal the repository's actual default branch before any branch write;
+10. queries the automation branch fail-closed, rebuilds it from the trusted tap default branch, re-resolves canonical repository/default-branch metadata immediately before each branch push, and pushes only with an explicit force-with-lease expectation (including a create-only empty lease when the branch was absent);
+11. when the rendered Cask is already current but an old automation branch exists, resets that branch to the trusted default commit and then makes a final two-ref remote query requiring both the default and automation refs to still equal the cleanup SHA;
+12. queries open tap PRs explicitly for changed updates, validates head repository/head/base plus the exact pushed head commit so a same-named fork or raced/stale branch cannot be reused, re-queries after creation, revalidates canonical tap/default-branch and remote branch identity, and makes one final exact open-PR query the last remote operation before success so a closed/merged/raced PR is not accepted from stale earlier evidence.
 
 It never receives Apple signing credentials.
 
