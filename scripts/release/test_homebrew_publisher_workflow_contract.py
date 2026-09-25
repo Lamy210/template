@@ -70,6 +70,25 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             block,
         )
 
+    def test_homebrew_compares_validated_application_identity_before_tap_secret(self) -> None:
+        text = self.homebrew_text()
+        self.assertIn("validated_app_basename:", text)
+        self.assertIn("validated_bundle_id:", text)
+
+        block = step_block(text, "Validate release identity and inputs")
+        self.assertTrue(block)
+        for token in (
+            "APP_NAME: ${{ inputs.app_name }}",
+            "BUNDLE_ID: ${{ inputs.bundle_id }}",
+            "VALIDATED_APP_BASENAME: ${{ inputs.validated_app_basename }}",
+            "VALIDATED_BUNDLE_ID: ${{ inputs.validated_bundle_id }}",
+            'if [[ "${APP_NAME}.app" != "${VALIDATED_APP_BASENAME}" ]]',
+            'if [[ "${BUNDLE_ID}" != "${VALIDATED_BUNDLE_ID}" ]]',
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, block)
+        self.assertNotIn("secrets.tap_token", block)
+
     def test_homebrew_never_derives_release_identity_from_github_ref(self) -> None:
         text = self.homebrew_text()
         for forbidden in ("github.ref_name", "GITHUB_REF_NAME", "GITHUB_REF_TYPE"):
