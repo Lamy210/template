@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import re
 
+from scripts.release.release_output_name import validate_dmg_name
+
 
 TAG_RE = re.compile(
     r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$"
 )
-DMG_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*\.dmg$")
 DMG_TEMPLATE_RE = re.compile(
     r"^[A-Za-z0-9._+-]*#\{version\}[A-Za-z0-9._+-]*\.dmg$"
 )
@@ -23,8 +24,7 @@ def validate_cask_asset_mapping(
     if TAG_RE.fullmatch(source_tag) is None:
         errors.append("source_tag must use stable SemVer form vX.Y.Z")
 
-    if DMG_NAME_RE.fullmatch(dmg_name) is None:
-        errors.append("dmg_name must be a safe literal .dmg basename")
+    errors.extend(validate_dmg_name(dmg_name))
 
     if DMG_TEMPLATE_RE.fullmatch(dmg_basename_template) is None:
         errors.append(
