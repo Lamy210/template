@@ -28,6 +28,7 @@ CASK_TEMPLATE="${template}" \
   DESCRIPTION="${dangerous}" \
   HOMEPAGE='https://example.com' \
   BUNDLE_ID='com.example.ExampleApp' \
+  CASK_OUTPUT_ROOT="${TEMP_ROOT}" \
   OUTPUT_CASK="${output}" \
   bash "${REPO_ROOT}/scripts/homebrew/render-cask.sh"
 
@@ -54,6 +55,7 @@ CASK_TEMPLATE="${template}" \
   DESCRIPTION='safe description' \
   HOMEPAGE='https://example.com' \
   BUNDLE_ID='com.example.ExampleApp' \
+  CASK_OUTPUT_ROOT="${TEMP_ROOT}" \
   OUTPUT_CASK="${TEMP_ROOT}/malicious.rb" \
   bash "${REPO_ROOT}/scripts/homebrew/render-cask.sh" \
   >"${TEMP_ROOT}/malicious.stdout" \
@@ -62,6 +64,36 @@ status=$?
 set -e
 if [[ "${status}" -eq 0 ]]; then
   echo 'Unsafe DMG basename interpolation was accepted.' >&2
+  exit 1
+fi
+
+mkdir "${TEMP_ROOT}/outside-casks"
+ln -s "${TEMP_ROOT}/outside-casks" "${TEMP_ROOT}/linked-casks"
+set +e
+CASK_TEMPLATE="${template}" \
+  CASK_TOKEN='example-app' \
+  VERSION='1.2.3' \
+  SHA256='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+  GITHUB_OWNER='example' \
+  GITHUB_REPO='example-app' \
+  DMG_BASENAME='ExampleApp-v#{version}.dmg' \
+  APP_NAME='ExampleApp' \
+  DESCRIPTION='safe description' \
+  HOMEPAGE='https://example.com' \
+  BUNDLE_ID='com.example.ExampleApp' \
+  CASK_OUTPUT_ROOT="${TEMP_ROOT}" \
+  OUTPUT_CASK="${TEMP_ROOT}/linked-casks/example-app.rb" \
+  bash "${REPO_ROOT}/scripts/homebrew/render-cask.sh" \
+  >"${TEMP_ROOT}/symlink.stdout" \
+  2>"${TEMP_ROOT}/symlink.stderr"
+status=$?
+set -e
+if [[ "${status}" -eq 0 ]]; then
+  echo 'Symlinked Cask output parent was accepted.' >&2
+  exit 1
+fi
+if [[ -e "${TEMP_ROOT}/outside-casks/example-app.rb" ]]; then
+  echo 'Renderer wrote through a symlinked Cask output parent.' >&2
   exit 1
 fi
 

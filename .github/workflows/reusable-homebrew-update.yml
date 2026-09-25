@@ -307,6 +307,7 @@ jobs:
         shell: bash
         env:
           CASK_TEMPLATE: source/templates/homebrew/Cask.rb.template
+          CASK_OUTPUT_ROOT: tap
           CASK_TOKEN: ${{ inputs.cask_token }}
           VERSION: ${{ inputs.source_tag }}
           SOURCE_REPOSITORY: ${{ github.repository }}
