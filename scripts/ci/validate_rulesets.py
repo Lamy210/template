@@ -281,7 +281,7 @@ def validate_main_solo(document: dict) -> list[str]:
                     ):
                         errors.append(
                             "required check contexts must equal "
-                            "{'Required gate', 'swift-quality / Swift quality'}"
+                            f"{sorted(CANONICAL_CHECKS)!r}"
                         )
                 portable_check_shape = all(
                     isinstance(item, dict) and set(item) == {"context"}
