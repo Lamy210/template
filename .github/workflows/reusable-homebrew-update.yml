@@ -100,6 +100,19 @@ jobs:
           persist-credentials: false
           path: source
 
+      - name: Bind Cask DMG template to published asset
+        shell: bash
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          DMG_NAME: ${{ inputs.dmg_name }}
+          DMG_BASENAME_TEMPLATE: ${{ inputs.dmg_basename_template }}
+        run: |
+          set -euo pipefail
+          python3 source/scripts/homebrew/validate-cask-asset.py \
+            --source-tag "${SOURCE_TAG}" \
+            --dmg-name "${DMG_NAME}" \
+            --dmg-basename-template "${DMG_BASENAME_TEMPLATE}"
+
       - name: Download and verify published release assets
         id: published_assets
         shell: bash
