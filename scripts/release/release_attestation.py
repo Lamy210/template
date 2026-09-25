@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA_FIELDS = {
     "schemaVersion",
     "sourceRepository",
@@ -19,6 +19,8 @@ SCHEMA_FIELDS = {
     "archiveSha256",
     "publisherRunId",
     "publisherSHA",
+    "appBasename",
+    "bundleId",
     "dmgSha256",
 }
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -39,6 +41,8 @@ class ExpectedRelease:
     archive_sha256: str
     publisher_run_id: int
     publisher_sha: str
+    app_basename: str
+    bundle_id: str
     dmg_path: Path
 
 
@@ -48,6 +52,17 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return f"sha256:{digest.hexdigest()}"
+
+
+def _safe_app_basename(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and value not in {".", ".."}
+        and "/" not in value
+        and "\\" not in value
+        and value.endswith(".app")
+    )
 
 
 def validate_release_attestation(document: object) -> list[str]:
@@ -95,6 +110,12 @@ def validate_release_attestation(document: object) -> list[str]:
     if not isinstance(tag, str) or TAG_RE.fullmatch(tag) is None:
         errors.append("tag must match stable SemVer form vX.Y.Z")
 
+    if not _safe_app_basename(document.get("appBasename")):
+        errors.append("appBasename must be a safe .app basename")
+    bundle_id = document.get("bundleId")
+    if not isinstance(bundle_id, str) or not bundle_id:
+        errors.append("bundleId must be a non-empty string")
+
     for field in (
         "sourceArtifactDigest",
         "archiveSha256",
@@ -126,6 +147,8 @@ def verify_release_attestation(
         "archiveSha256": expected.archive_sha256,
         "publisherRunId": expected.publisher_run_id,
         "publisherSHA": expected.publisher_sha,
+        "appBasename": expected.app_basename,
+        "bundleId": expected.bundle_id,
     }
     for field, expected_value in expected_values.items():
         if document.get(field) != expected_value:
@@ -160,6 +183,8 @@ def build_release_attestation(expected: ExpectedRelease) -> dict[str, object]:
         "archiveSha256": expected.archive_sha256,
         "publisherRunId": expected.publisher_run_id,
         "publisherSHA": expected.publisher_sha,
+        "appBasename": expected.app_basename,
+        "bundleId": expected.bundle_id,
         "dmgSha256": sha256_file(expected.dmg_path),
     }
     errors = validate_release_attestation(document)
