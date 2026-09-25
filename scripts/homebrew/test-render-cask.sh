@@ -65,4 +65,65 @@ if [[ "${status}" -eq 0 ]]; then
   exit 1
 fi
 
-printf 'Homebrew Cask renderer interpolation test passed\n'
+symlink_target="${TEMP_ROOT}/symlink-target.rb"
+printf 'do-not-overwrite\n' >"${symlink_target}"
+symlink_output="${TEMP_ROOT}/symlink-output.rb"
+ln -s "${symlink_target}" "${symlink_output}"
+
+set +e
+CASK_TEMPLATE="${template}" \
+  CASK_TOKEN='example-app' \
+  VERSION='1.2.3' \
+  SHA256='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+  GITHUB_OWNER='example' \
+  GITHUB_REPO='example-app' \
+  DMG_BASENAME='ExampleApp-v#{version}.dmg' \
+  APP_NAME='ExampleApp' \
+  DESCRIPTION='safe description' \
+  HOMEPAGE='https://example.com' \
+  BUNDLE_ID='com.example.ExampleApp' \
+  OUTPUT_CASK="${symlink_output}" \
+  bash "${REPO_ROOT}/scripts/homebrew/render-cask.sh" \
+  >"${TEMP_ROOT}/symlink.stdout" \
+  2>"${TEMP_ROOT}/symlink.stderr"
+status=$?
+set -e
+if [[ "${status}" -eq 0 ]]; then
+  echo 'Symlinked Cask output was accepted.' >&2
+  exit 1
+fi
+grep -Fx 'do-not-overwrite' "${symlink_target}" >/dev/null
+
+real_casks="${TEMP_ROOT}/real-casks"
+linked_casks="${TEMP_ROOT}/linked-casks"
+mkdir -p "${real_casks}"
+ln -s "${real_casks}" "${linked_casks}"
+
+set +e
+CASK_TEMPLATE="${template}" \
+  CASK_TOKEN='example-app' \
+  VERSION='1.2.3' \
+  SHA256='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+  GITHUB_OWNER='example' \
+  GITHUB_REPO='example-app' \
+  DMG_BASENAME='ExampleApp-v#{version}.dmg' \
+  APP_NAME='ExampleApp' \
+  DESCRIPTION='safe description' \
+  HOMEPAGE='https://example.com' \
+  BUNDLE_ID='com.example.ExampleApp' \
+  OUTPUT_CASK="${linked_casks}/example-app.rb" \
+  bash "${REPO_ROOT}/scripts/homebrew/render-cask.sh" \
+  >"${TEMP_ROOT}/parent-symlink.stdout" \
+  2>"${TEMP_ROOT}/parent-symlink.stderr"
+status=$?
+set -e
+if [[ "${status}" -eq 0 ]]; then
+  echo 'Cask output below a symlinked parent was accepted.' >&2
+  exit 1
+fi
+if [[ -e "${real_casks}/example-app.rb" ]]; then
+  echo 'Renderer wrote through a symlinked output parent.' >&2
+  exit 1
+fi
+
+printf 'Homebrew Cask renderer interpolation and output-confinement test passed\n'
