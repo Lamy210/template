@@ -159,6 +159,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             "Commit and push Cask branch",
             "Open or reuse tap pull request",
             "Reverify tap branch and pull request identity",
+            "Reverify no-op tap branch cleanup",
         ):
             with self.subTest(step_name=step_name):
                 block = step_block(text, step_name)
@@ -248,7 +249,12 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             push,
         )
         self.assertIn('pushed_sha="$(git rev-parse HEAD)"', push)
-        self.assertIn('echo "pushed_sha=${pushed_sha}" >>"${GITHUB_OUTPUT}"', push)
+        self.assertIn('echo "pushed_sha=${pushed_sha}"', push)
+        self.assertIn('cleanup_sha="$(git rev-parse HEAD)"', push)
+        self.assertIn('echo "cleanup_performed=true"', push)
+        self.assertIn('echo "cleanup_sha=${cleanup_sha}"', push)
+        self.assertIn('echo "cleanup_performed=false"', push)
+        self.assertGreaterEqual(push.count('} >>"${GITHUB_OUTPUT}"'), 3)
 
     def test_homebrew_rebinds_canonical_tap_identity_before_push_and_success(self) -> None:
         text = self.homebrew_text()
@@ -286,6 +292,35 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertEqual(
             2,
             final_step.count("\n          verify_canonical_tap_identity\n"),
+        )
+
+    def test_homebrew_rebinds_noop_cleanup_to_current_default_before_success(self) -> None:
+        text = self.homebrew_text()
+        push = step_block(text, "Commit and push Cask branch")
+        cleanup = step_block(text, "Reverify no-op tap branch cleanup")
+        self.assertTrue(push)
+        self.assertTrue(cleanup)
+        self.assertIn(
+            "if: ${{ steps.push.outputs.changed == 'false' && steps.push.outputs.cleanup_performed == 'true' }}",
+            cleanup,
+        )
+        self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", cleanup)
+        self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", cleanup)
+        self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", cleanup)
+        self.assertIn("BRANCH: ${{ steps.branch.outputs.branch }}", cleanup)
+        self.assertIn("CLEANUP_SHA: ${{ steps.push.outputs.cleanup_sha }}", cleanup)
+        self.assertIn('gh repo view "${TAP_REPOSITORY}"', cleanup)
+        self.assertIn('git ls-remote --exit-code --heads origin \\', cleanup)
+        self.assertIn('"refs/heads/${TAP_DEFAULT_BRANCH}"', cleanup)
+        self.assertIn('"refs/heads/${BRANCH}"', cleanup)
+        self.assertIn('if [[ "${remote_count}" != "2" ]]', cleanup)
+        self.assertIn('if [[ "${default_sha}" != "${CLEANUP_SHA}" ]]', cleanup)
+        self.assertIn("Tap default branch moved during no-op cleanup.", cleanup)
+        self.assertIn('if [[ "${automation_sha}" != "${CLEANUP_SHA}" ]]', cleanup)
+        self.assertIn("Automation branch moved after no-op cleanup.", cleanup)
+        self.assertLess(
+            text.index("Commit and push Cask branch"),
+            text.index("Reverify no-op tap branch cleanup"),
         )
 
     def test_tap_pull_request_lookup_fails_closed_before_create(self) -> None:
