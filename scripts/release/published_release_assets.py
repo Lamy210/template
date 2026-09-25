@@ -7,6 +7,7 @@ import re
 from scripts.release.release_attestation import (
     REPOSITORY_RE,
     SHA_RE,
+    is_safe_app_basename,
     sha256_file,
     validate_release_attestation,
 )
@@ -24,6 +25,8 @@ def verify_published_release_assets(
     expected_tag: str,
     expected_repository: str,
     expected_publisher_sha: str,
+    expected_app_basename: str,
+    expected_bundle_id: str,
 ) -> tuple[list[str], str | None, str | None]:
     errors: list[str] = []
 
@@ -46,6 +49,11 @@ def verify_published_release_assets(
         or SHA_RE.fullmatch(expected_publisher_sha) is None
     ):
         errors.append("expected publisher SHA must be 40 lowercase hexadecimal characters")
+
+    if not is_safe_app_basename(expected_app_basename):
+        errors.append("expected app basename must be a safe .app basename")
+    if not isinstance(expected_bundle_id, str) or not expected_bundle_id:
+        errors.append("expected bundle ID must be a non-empty string")
 
     for label, path in (
         ("DMG", dmg_path),
@@ -97,6 +105,14 @@ def verify_published_release_assets(
             )
         if provenance.get("dmgSha256") != actual_digest:
             errors.append("published release provenance DMG digest does not match downloaded DMG")
+        if provenance.get("appBasename") != expected_app_basename:
+            errors.append(
+                "published release provenance app basename does not match expected application"
+            )
+        if provenance.get("bundleId") != expected_bundle_id:
+            errors.append(
+                "published release provenance bundle ID does not match expected application"
+            )
 
         candidate_source_sha = provenance.get("sourceSHA")
         if isinstance(candidate_source_sha, str) and SHA_RE.fullmatch(candidate_source_sha):
