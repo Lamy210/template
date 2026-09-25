@@ -54,7 +54,7 @@ def sha256_file(path: Path) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
-def _safe_app_basename(value: object) -> bool:
+def is_safe_app_basename(value: object) -> bool:
     return (
         isinstance(value, str)
         and bool(value)
@@ -110,7 +110,7 @@ def validate_release_attestation(document: object) -> list[str]:
     if not isinstance(tag, str) or TAG_RE.fullmatch(tag) is None:
         errors.append("tag must match stable SemVer form vX.Y.Z")
 
-    if not _safe_app_basename(document.get("appBasename")):
+    if not is_safe_app_basename(document.get("appBasename")):
         errors.append("appBasename must be a safe .app basename")
     bundle_id = document.get("bundleId")
     if not isinstance(bundle_id, str) or not bundle_id:
