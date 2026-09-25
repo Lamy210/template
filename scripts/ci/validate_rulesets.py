@@ -23,6 +23,7 @@ TOP_LEVEL_FIELDS = {
 }
 CANONICAL_CHECKS = {
     "Required gate",
+    "Tests / Required Gate",
     "swift-quality / Swift quality",
 }
 SINGLETON_MAIN_RULES = {
@@ -259,7 +260,7 @@ def validate_main_solo(document: dict) -> list[str]:
             if not isinstance(checks, list):
                 errors.append(
                     "required check contexts must equal "
-                    "{'Required gate', 'swift-quality / Swift quality'}"
+                    f"{sorted(CANONICAL_CHECKS)!r}"
                 )
             else:
                 raw_contexts = [
@@ -280,7 +281,7 @@ def validate_main_solo(document: dict) -> list[str]:
                     ):
                         errors.append(
                             "required check contexts must equal "
-                            "{'Required gate', 'swift-quality / Swift quality'}"
+                            f"{sorted(CANONICAL_CHECKS)!r}"
                         )
                 portable_check_shape = all(
                     isinstance(item, dict) and set(item) == {"context"}
