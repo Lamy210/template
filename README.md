@@ -117,7 +117,7 @@ The default Swift profile makes code-quality failures visible as separate concer
 - **complexity** — dedicated SwiftLint metrics gate
 - **optional semantic analysis** — `swiftlint analyze` when the caller provides a clean compiler log
 - **repository automation** — actionlint, zizmor, ShellCheck, and shfmt
-- **release trust boundary** — provenance, exact-artifact, source-binding, workflow-contract, and hostile-archive regression tests
+- **release trust boundary** — provenance, exact-artifact, source-binding, workflow-contract, and hostile-archive regression tests; the dedicated Release Isolation TDD suite runs on pull requests and again after merges to `main`
 
 The thresholds and exception policy are documented in [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md) and [`docs/QUALITY.md`](docs/QUALITY.md). CI uses strict linting, so warning-level quality thresholds are blocking by default.
 
