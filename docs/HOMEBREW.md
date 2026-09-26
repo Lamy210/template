@@ -159,7 +159,7 @@ The predictable `automation/<cask>-v<version>` branch name is an output location
 
 On every run, the updater:
 
-1. resolves the tap's canonical GitHub HTTPS/SSH clone URLs and requires the effective `origin` fetch and push URLs to match them; Git URL rewrites or mirrors that would redirect the remote fail closed;
+1. resolves the tap's canonical GitHub HTTPS/SSH clone URLs and requires exactly one effective `origin` fetch URL and one effective push URL, both canonical; Git URL rewrites, mirrors, or additional push destinations fail closed;
 2. fetches the tap repository and records the current remote automation-branch SHA if that branch already exists;
 3. rebuilds the local automation branch from the trusted tap default branch, never from the existing automation branch;
 4. renders only the intended Cask change;

@@ -57,6 +57,13 @@ class TapRemoteTests(unittest.TestCase):
         )
         self.assertTrue(any("fetch URL" in error for error in errors))
 
+    def test_rejects_multiple_effective_push_urls(self) -> None:
+        errors = self.validate(
+            f"{HTTPS}.git",
+            f"{HTTPS}.git\nhttps://github.com/example/other.git",
+        )
+        self.assertTrue(any("single canonical line" in error for error in errors))
+
     def test_rejects_multiline_remote(self) -> None:
         errors = self.validate(f"{HTTPS}.git\nhttps://evil.example/repo.git", SSH)
         self.assertTrue(any("single canonical line" in error for error in errors))
