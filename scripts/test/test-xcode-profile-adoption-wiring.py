@@ -90,7 +90,7 @@ class XcodeProfileAdoptionWiringTests(unittest.TestCase):
         ):
             with self.subTest(reusable=reusable):
                 self.assertIn(
-                    f'reusable workflow call "\\\\$/\\\\.github/workflows/{reusable}\\\\.yml"',
+                    f'reusable workflow call "\\$/\\.github/workflows/{reusable}\\.yml"',
                     config,
                 )
 

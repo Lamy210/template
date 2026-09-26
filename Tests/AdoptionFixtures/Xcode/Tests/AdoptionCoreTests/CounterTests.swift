@@ -32,7 +32,8 @@ final class CounterTests: XCTestCase {
             return
         }
 
-        let payload = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="))
+        let encodedPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        let payload = try XCTUnwrap(Data(base64Encoded: encodedPNG))
         try payload.write(
             to: outputDirectory.appendingPathComponent("adoption-counter.png"),
             options: .atomic
