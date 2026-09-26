@@ -472,6 +472,7 @@ The read-only proof collector verifies all of the following from GitHub API evid
 - publisher SHA equals the repository's current default-branch head at proof time;
 - the validator Artifact name is bound to the exact publisher run/attempt and source run/attempt;
 - the Artifact is non-expired and is itself bound to the publisher SHA/repository identity;
+- the downloaded validator Artifact contains exactly the two expected root-level regular files (`validated-release-metadata.json` and `unsigned-macos-app.tar.gz`) with no additional file payloads;
 - `validated-release-metadata.json` binds the same source repository/run/attempt/SHA and publisher run/attempt/SHA.
 
 A successful proof demonstrates the intended property:

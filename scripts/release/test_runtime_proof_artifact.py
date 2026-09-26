@@ -159,6 +159,76 @@ class RuntimeProofArtifactTests(unittest.TestCase):
 
         self.assertTrue(any("root-level" in error for error in errors))
 
+    def test_rejects_unexpected_or_nested_duplicate_files(self) -> None:
+        cases = (
+            ("extra file", "extra.txt", "unexpected file"),
+            (
+                "nested metadata duplicate",
+                "nested/validated-release-metadata.json",
+                "root-level",
+            ),
+            (
+                "nested app duplicate",
+                "nested/unsigned-macos-app.tar.gz",
+                "root-level",
+            ),
+        )
+        for label, unexpected_name, expected_error in cases:
+            with self.subTest(label=label):
+                _, archive, output = self.fixture()
+                metadata = zipfile.ZipInfo("validated-release-metadata.json")
+                app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+                unexpected = zipfile.ZipInfo(unexpected_name)
+                write_zip(
+                    archive,
+                    [
+                        (metadata, b"{}\n"),
+                        (app_archive, b"archive"),
+                        (unexpected, b"unexpected"),
+                    ],
+                )
+
+                errors = extract_runtime_proof_metadata(
+                    archive,
+                    output,
+                    expected_digest=digest(archive),
+                )
+
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+                self.assertFalse(output.exists())
+
+    def test_rejects_special_file_types_for_expected_members(self) -> None:
+        for special_name in (
+            "validated-release-metadata.json",
+            "unsigned-macos-app.tar.gz",
+        ):
+            with self.subTest(special_name=special_name):
+                _, archive, output = self.fixture()
+                metadata = zipfile.ZipInfo("validated-release-metadata.json")
+                app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+                special = metadata if special_name == metadata.filename else app_archive
+                special.create_system = 3
+                special.external_attr = (stat.S_IFIFO | 0o600) << 16
+                write_zip(
+                    archive,
+                    [
+                        (metadata, b"{}\n"),
+                        (app_archive, b"archive"),
+                    ],
+                )
+
+                errors = extract_runtime_proof_metadata(
+                    archive,
+                    output,
+                    expected_digest=digest(archive),
+                )
+
+                self.assertTrue(any("regular file" in error for error in errors), errors)
+                self.assertFalse(output.exists())
+
     def test_rejects_missing_or_symlinked_unsigned_archive(self) -> None:
         for symlink in (False, True):
             with self.subTest(symlink=symlink):

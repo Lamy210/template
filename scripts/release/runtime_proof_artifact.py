@@ -12,6 +12,7 @@ from scripts.release.actions_artifact import MAX_APP_ARCHIVE_BYTES
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 METADATA_NAME = "validated-release-metadata.json"
 APP_ARCHIVE_NAME = "unsigned-macos-app.tar.gz"
+EXPECTED_FILES = frozenset({METADATA_NAME, APP_ARCHIVE_NAME})
 DEFAULT_MAX_METADATA_BYTES = 1024 * 1024
 
 
@@ -23,11 +24,14 @@ def _sha256_file(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def _is_symlink(info: zipfile.ZipInfo) -> bool:
+def _unix_file_type(info: zipfile.ZipInfo) -> int:
     if info.create_system != 3:
-        return False
-    file_type = (info.external_attr >> 16) & stat.S_IFMT(0o170000)
-    return file_type == stat.S_IFLNK
+        return 0
+    return (info.external_attr >> 16) & stat.S_IFMT(0o170000)
+
+
+def _is_symlink(info: zipfile.ZipInfo) -> bool:
+    return _unix_file_type(info) == stat.S_IFLNK
 
 
 def extract_runtime_proof_metadata(
@@ -70,34 +74,38 @@ def extract_runtime_proof_metadata(
     try:
         with zipfile.ZipFile(archive_path, "r") as archive:
             infos = archive.infolist()
-            nested_metadata = [
-                info
-                for info in infos
-                if not info.is_dir()
-                and PurePosixPath(info.filename).name == METADATA_NAME
-                and info.filename != METADATA_NAME
-            ]
-            if nested_metadata:
-                errors.append(
-                    "runtime proof metadata must be a root-level Artifact entry"
-                )
+            metadata_candidates: list[zipfile.ZipInfo] = []
+            app_candidates: list[zipfile.ZipInfo] = []
+            for member in infos:
+                if member.is_dir():
+                    continue
 
-            metadata_candidates = [
-                info
-                for info in infos
-                if not info.is_dir() and info.filename == METADATA_NAME
-            ]
+                basename = PurePosixPath(member.filename).name
+                if basename in EXPECTED_FILES and member.filename != basename:
+                    label = (
+                        "metadata"
+                        if basename == METADATA_NAME
+                        else "unsigned app archive"
+                    )
+                    errors.append(
+                        f"runtime proof {label} must be a root-level Artifact entry"
+                    )
+                    continue
+
+                if member.filename == METADATA_NAME:
+                    metadata_candidates.append(member)
+                elif member.filename == APP_ARCHIVE_NAME:
+                    app_candidates.append(member)
+                else:
+                    errors.append(
+                        f"unexpected file in runtime proof artifact: {member.filename}"
+                    )
+
             if len(metadata_candidates) != 1:
                 errors.append(
                     f"runtime proof artifact must contain exactly one {METADATA_NAME}; "
                     f"found {len(metadata_candidates)}"
                 )
-
-            app_candidates = [
-                info
-                for info in infos
-                if not info.is_dir() and info.filename == APP_ARCHIVE_NAME
-            ]
             if len(app_candidates) != 1:
                 errors.append(
                     "runtime proof artifact must contain exactly one root-level "
@@ -111,8 +119,12 @@ def extract_runtime_proof_metadata(
             app_info = app_candidates[0]
             if _is_symlink(info):
                 errors.append("runtime proof metadata ZIP entry must not be a symbolic link")
+            elif _unix_file_type(info) not in {0, stat.S_IFREG}:
+                errors.append("runtime proof metadata ZIP entry must be a regular file")
             if _is_symlink(app_info):
                 errors.append("runtime proof unsigned app archive must not be a symbolic link")
+            elif _unix_file_type(app_info) not in {0, stat.S_IFREG}:
+                errors.append("runtime proof unsigned app archive must be a regular file")
             if info.file_size > max_metadata_bytes:
                 errors.append(
                     "runtime proof metadata exceeds configured size limit: "
