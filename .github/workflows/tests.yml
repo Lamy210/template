@@ -33,6 +33,7 @@ jobs:
       visual_required: ${{ steps.policy.outputs.visual_required }}
       visual_bootstrap: ${{ steps.policy.outputs.visual_bootstrap }}
     env:
+      MACOS_TEST_PROFILE: ${{ vars.MACOS_TEST_PROFILE }}
       MACOS_TEST_ADAPTER: ${{ vars.MACOS_TEST_ADAPTER }}
       MACOS_INTEGRATION_ENABLED: ${{ vars.MACOS_INTEGRATION_ENABLED }}
       MACOS_INTEGRATION_REQUIRED: ${{ vars.MACOS_INTEGRATION_REQUIRED }}
@@ -49,11 +50,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Resolve test profile
+        shell: bash
+        run: >-
+          python3 scripts/test/resolve-test-profile.py
+          --from-env
+          --output "${RUNNER_TEMP}/test-policy.json"
+
       - name: Classify configured test subsystems
         id: policy
+        shell: bash
         run: >-
           python3 scripts/test/classify-test-policy.py
-          --from-env
+          --input "${RUNNER_TEMP}/test-policy.json"
           --github-output "$GITHUB_OUTPUT"
 
   unit-run:
