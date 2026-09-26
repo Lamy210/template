@@ -12,7 +12,9 @@ updates:
       - ci
 
   - package-ecosystem: swift
-    directory: /
+    directories:
+      - /Tools/VisualDiff
+      - /Tests/AdoptionFixtures/SwiftPM
     schedule:
       interval: weekly
     cooldown:

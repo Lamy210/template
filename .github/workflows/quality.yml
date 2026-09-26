@@ -64,6 +64,10 @@ jobs:
         shell: bash
         run: python3 -m unittest scripts.ci.test_tool_installer_retry_policy -v
 
+      - name: Dependabot configuration policy
+        shell: bash
+        run: python3 -m unittest scripts.ci.test_dependabot_config -v
+
       - name: Ruleset governance validation
         shell: bash
         run: |
