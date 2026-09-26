@@ -6,6 +6,7 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 QUALITY_WORKFLOW = REPO_ROOT / ".github/workflows/quality.yml"
+RELEASE_ISOLATION_WORKFLOW = REPO_ROOT / ".github/workflows/release-isolation-tdd.yml"
 
 
 class QualityReleaseIsolationContractTests(unittest.TestCase):
@@ -32,6 +33,20 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
                 self.assertIn(module, text)
         self.assertIn("scripts/release/test-resolve-release-build-artifact.sh", text)
         self.assertIn("scripts/release/test-verify-release-source.sh", text)
+
+    def test_release_isolation_runs_on_pull_requests_and_post_merge_main(self) -> None:
+        text = RELEASE_ISOLATION_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("  pull_request:\n", text)
+        self.assertIn("  push:\n    branches:\n      - main\n", text)
+        self.assertIn("  workflow_dispatch:\n", text)
+        self.assertIn(
+            "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+            text,
+        )
+        self.assertIn(
+            "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+            text,
+        )
 
     def test_required_gate_depends_on_repository_hygiene(self) -> None:
         text = self.quality_text()
