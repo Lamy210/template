@@ -259,7 +259,7 @@ def validate_post_split_runtime_proof(
     if not isinstance(default_commit, dict) or not _sha(default_commit.get("sha")):
         errors.append("initial default-branch commit response must contain a valid SHA")
     elif _sha(publisher_sha) and default_commit.get("sha") != publisher_sha:
-        errors.append("publisher SHA must equal initial default-branch head")
+        errors.append("publisher SHA must equal current default-branch head at initial snapshot")
 
     if final_default_commit is not None:
         if not isinstance(final_default_commit, dict) or not _sha(
@@ -269,7 +269,7 @@ def validate_post_split_runtime_proof(
         else:
             final_default_sha = final_default_commit.get("sha")
             if _sha(publisher_sha) and final_default_sha != publisher_sha:
-                errors.append("publisher SHA must equal final default-branch head")
+                errors.append("publisher SHA must equal current default-branch head at final snapshot")
             if (
                 isinstance(default_commit, dict)
                 and _sha(default_commit.get("sha"))
