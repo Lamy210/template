@@ -165,6 +165,8 @@ def validate_post_split_runtime_proof(
     metadata: object,
     archive_digest: object,
     comparison: object,
+    *,
+    final_default_commit: object | None = None,
 ) -> list[str]:
     errors: list[str] = []
 
@@ -255,9 +257,27 @@ def validate_post_split_runtime_proof(
         errors.append("source SHA must differ from publisher SHA for post-split ancestor proof")
 
     if not isinstance(default_commit, dict) or not _sha(default_commit.get("sha")):
-        errors.append("current default-branch commit response must contain a valid SHA")
+        errors.append("initial default-branch commit response must contain a valid SHA")
     elif _sha(publisher_sha) and default_commit.get("sha") != publisher_sha:
-        errors.append("publisher SHA must equal current default-branch head")
+        errors.append("publisher SHA must equal initial default-branch head")
+
+    if final_default_commit is not None:
+        if not isinstance(final_default_commit, dict) or not _sha(
+            final_default_commit.get("sha")
+        ):
+            errors.append("final default-branch commit response must contain a valid SHA")
+        else:
+            final_default_sha = final_default_commit.get("sha")
+            if _sha(publisher_sha) and final_default_sha != publisher_sha:
+                errors.append("publisher SHA must equal final default-branch head")
+            if (
+                isinstance(default_commit, dict)
+                and _sha(default_commit.get("sha"))
+                and default_commit.get("sha") != final_default_sha
+            ):
+                errors.append(
+                    "default-branch head changed during runtime proof collection"
+                )
 
     if not isinstance(archive_digest, str) or DIGEST_RE.fullmatch(archive_digest) is None:
         errors.append("unsigned app archive digest must use sha256:<64 lowercase hex>")
