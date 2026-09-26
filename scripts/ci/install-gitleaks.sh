@@ -11,7 +11,8 @@ ARCHIVE_PATH="${TEMP_ROOT%/}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
 rm -rf "${TOOLS_ROOT}"
 mkdir -p "${TOOLS_ROOT}"
 
-curl --fail --silent --show-error --location --retry 3 \
+curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+  --retry-max-time 60 \
   --output "${ARCHIVE_PATH}" \
   "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
 printf '%s  %s\n' "${GITLEAKS_SHA256}" "${ARCHIVE_PATH}" | shasum -a 256 --check
