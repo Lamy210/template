@@ -454,10 +454,13 @@ bash scripts/release/prove-post-split-ancestor-runtime.sh \
   --repository owner/disposable-repo \
   --confirm-disposable owner/disposable-repo \
   --source-ref POST_SPLIT_ANCESTOR_REF \
-  --tag v0.0.1
+  --tag v0.0.1 \
+  --evidence-output post-split-proof.json
 ```
 
 The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
+
+When `--evidence-output` is supplied, the runner writes a deterministic JSON identity document **only after** the read-only auditor succeeds. The file binds the repository, default branch, proof tag/source ref, source and publisher SHAs, and exact source/publisher run IDs plus attempts. It contains no timestamp or credentials, and the output path must not already exist, so a previous proof record is never silently overwritten.
 
 The manual procedure remains useful for incident analysis or when the tag/run pair already exists:
 
