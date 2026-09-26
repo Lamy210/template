@@ -97,6 +97,7 @@ jobs:
             scripts/test/test-adoption-fixture-contract.py \
             scripts/test/test-emit-profile-adoption-outputs.py \
             scripts/test/test-swiftpm-profile-adoption-wiring.py \
+            scripts/test/test-xcode-profile-adoption-wiring.py \
             -v
 
       - name: Workflow concurrency policy tests

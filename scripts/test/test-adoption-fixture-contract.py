@@ -20,6 +20,37 @@ class AdoptionFixtureContractTests(unittest.TestCase):
                 self.assertTrue(path.is_file())
                 self.assertFalse(path.is_symlink())
 
+    def test_xcode_fixture_has_committed_shared_scheme_and_sources(self) -> None:
+        fixture = ROOT / "Tests/AdoptionFixtures/Xcode"
+        expected = (
+            fixture / "AdoptionApp.xcodeproj/project.pbxproj",
+            fixture
+            / "AdoptionApp.xcodeproj/xcshareddata/xcschemes/AdoptionApp.xcscheme",
+            fixture / "Sources/AdoptionApp/main.swift",
+            fixture / "Sources/AdoptionCore/Counter.swift",
+            fixture / "Tests/AdoptionCoreTests/CounterTests.swift",
+        )
+        for path in expected:
+            with self.subTest(path=path.relative_to(ROOT)):
+                self.assertTrue(path.is_file())
+                self.assertFalse(path.is_symlink())
+
+    def test_xcode_fixture_is_secret_free_and_unsigned(self) -> None:
+        fixture = ROOT / "Tests/AdoptionFixtures/Xcode"
+        project = (fixture / "AdoptionApp.xcodeproj/project.pbxproj").read_text(
+            encoding="utf-8"
+        )
+        scheme = (
+            fixture
+            / "AdoptionApp.xcodeproj/xcshareddata/xcschemes/AdoptionApp.xcscheme"
+        ).read_text(encoding="utf-8")
+        self.assertIn('productType = "com.apple.product-type.application";', project)
+        self.assertIn('productType = "com.apple.product-type.bundle.unit-test";', project)
+        self.assertIn("CODE_SIGNING_ALLOWED = NO;", project)
+        self.assertIn('BlueprintName = "AdoptionCoreTests"', scheme)
+        self.assertNotIn("DevelopmentTeam", project)
+        self.assertNotIn("PROVISIONING_PROFILE", project)
+
     def test_swiftpm_fixture_has_no_external_packages(self) -> None:
         package = (FIXTURE / "Package.swift").read_text(encoding="utf-8")
         self.assertIn('name: "AdoptionCore"', package)

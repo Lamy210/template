@@ -5,8 +5,10 @@ on:
     paths:
       - ".github/workflows/test-profile-adoption.yml"
       - ".github/workflows/reusable-swift-tests.yml"
+      - ".github/workflows/reusable-macos-e2e.yml"
       - ".github/workflows/tests.yml"
       - "Tests/AdoptionFixtures/SwiftPM/**"
+      - "Tests/AdoptionFixtures/Xcode/**"
       - "scripts/test/**"
   workflow_dispatch:
 
@@ -106,6 +108,59 @@ jobs:
           set -euo pipefail
           python3 scripts/test/emit-profile-adoption-outputs.py             --resolved "${RUNNER_TEMP}/resolved.json"             --classified "${RUNNER_TEMP}/classified.json"             --github-output "${GITHUB_OUTPUT}"
 
+  prepare-macos-app:
+    name: Prepare macos-app profile
+    runs-on: ubuntu-latest
+    outputs:
+      adapter: ${{ steps.runtime.outputs.adapter }}
+      coverage_enabled: ${{ steps.runtime.outputs.coverage_enabled }}
+      coverage_required: ${{ steps.runtime.outputs.coverage_required }}
+      e2e_enabled: ${{ steps.runtime.outputs.e2e_enabled }}
+      e2e_required: ${{ steps.runtime.outputs.e2e_required }}
+      visual_enabled: ${{ steps.runtime.outputs.visual_enabled }}
+      visual_required: ${{ steps.runtime.outputs.visual_required }}
+    steps:
+      - name: Checkout policy code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve and classify macos-app profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >"${RUNNER_TEMP}/profile-input.json" <<'JSON'
+          {
+            "profile": "macos-app",
+            "adapter": "xcode",
+            "integrationEnabled": null,
+            "integrationRequired": null,
+            "coverageEnabled": null,
+            "coverageRequired": null,
+            "e2eEnabled": null,
+            "e2eRequired": null,
+            "visualEnabled": null,
+            "visualRequired": null,
+            "visualBootstrap": null
+          }
+          JSON
+          python3 scripts/test/resolve-test-profile.py \
+            --input "${RUNNER_TEMP}/profile-input.json" \
+            --output "${RUNNER_TEMP}/resolved.json"
+          python3 scripts/test/classify-test-policy.py \
+            --input "${RUNNER_TEMP}/resolved.json" \
+            >"${RUNNER_TEMP}/classified.json"
+
+      - name: Export macos-app runtime policy
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/test/emit-profile-adoption-outputs.py \
+            --resolved "${RUNNER_TEMP}/resolved.json" \
+            --classified "${RUNNER_TEMP}/classified.json" \
+            --github-output "${GITHUB_OUTPUT}"
+
   minimal-swiftpm:
     name: minimal / SwiftPM runtime
     needs: prepare-minimal
@@ -139,6 +194,78 @@ jobs:
       coverage_required: ${{ needs.prepare-standard.outputs.coverage_required == 'true' }}
       bootstrap_coverage: true
       coverage_artifact_name: adoption-standard-coverage-baseline
+
+  macos-app-unit:
+    name: macos-app / Xcode unit runtime
+    needs: prepare-macos-app
+    permissions:
+      contents: read
+      actions: read
+    uses: $/.github/workflows/reusable-swift-tests.yml
+    with:
+      check_name: Adoption / macos-app unit
+      adapter: ${{ needs.prepare-macos-app.outputs.adapter }}
+      working_directory: Tests/AdoptionFixtures/Xcode
+      project_path: AdoptionApp.xcodeproj
+      scheme: AdoptionApp
+      required: true
+      enable_coverage: ${{ needs.prepare-macos-app.outputs.coverage_enabled == 'true' }}
+      coverage_required: ${{ needs.prepare-macos-app.outputs.coverage_required == 'true' }}
+      bootstrap_coverage: true
+      coverage_artifact_name: adoption-macos-app-coverage-baseline
+
+  macos-app-e2e:
+    name: macos-app / Xcode E2E runtime
+    needs: prepare-macos-app
+    permissions:
+      contents: read
+    uses: $/.github/workflows/reusable-macos-e2e.yml
+    with:
+      working_directory: Tests/AdoptionFixtures/Xcode
+      project_path: AdoptionApp.xcodeproj
+      scheme: AdoptionApp
+      profile_id: adoption-macos-app-xcode-26.6
+      required: ${{ needs.prepare-macos-app.outputs.e2e_required == 'true' }}
+
+  verify-macos-app:
+    name: Verify macos-app profile adoption
+    if: ${{ always() }}
+    needs:
+      - prepare-macos-app
+      - macos-app-unit
+      - macos-app-e2e
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require exact macos-app profile and runtime results
+        shell: bash
+        env:
+          PREPARE: ${{ needs.prepare-macos-app.result }}
+          UNIT_JOB: ${{ needs.macos-app-unit.result }}
+          E2E_JOB: ${{ needs.macos-app-e2e.result }}
+          TEST_RESULT: ${{ needs.macos-app-unit.outputs.test_result }}
+          COVERAGE_RESULT: ${{ needs.macos-app-unit.outputs.coverage_result }}
+          E2E_RESULT: ${{ needs.macos-app-e2e.outputs.result }}
+          COVERAGE_ENABLED: ${{ needs.prepare-macos-app.outputs.coverage_enabled }}
+          COVERAGE_REQUIRED: ${{ needs.prepare-macos-app.outputs.coverage_required }}
+          E2E_ENABLED: ${{ needs.prepare-macos-app.outputs.e2e_enabled }}
+          E2E_REQUIRED: ${{ needs.prepare-macos-app.outputs.e2e_required }}
+          VISUAL_ENABLED: ${{ needs.prepare-macos-app.outputs.visual_enabled }}
+          VISUAL_REQUIRED: ${{ needs.prepare-macos-app.outputs.visual_required }}
+        run: |
+          set -euo pipefail
+          [[ "${PREPARE}" == success ]]
+          [[ "${UNIT_JOB}" == success ]]
+          [[ "${E2E_JOB}" == success ]]
+          [[ "${TEST_RESULT}" == success ]]
+          [[ "${COVERAGE_RESULT}" == success ]]
+          [[ "${E2E_RESULT}" == success ]]
+          [[ "${COVERAGE_ENABLED}" == true ]]
+          [[ "${COVERAGE_REQUIRED}" == true ]]
+          [[ "${E2E_ENABLED}" == true ]]
+          [[ "${E2E_REQUIRED}" == true ]]
+          [[ "${VISUAL_ENABLED}" == false ]]
+          [[ "${VISUAL_REQUIRED}" == false ]]
 
   verify:
     name: Verify SwiftPM profile adoption
