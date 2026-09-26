@@ -1,0 +1,437 @@
+// !$*UTF8*$!
+{
+  archiveVersion = 1;
+  classes = {
+  };
+  objectVersion = 56;
+  objects = {
+
+/* Begin PBXBuildFile section */
+    A40000000000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* main.swift */; };
+    A40000000000000000000002 /* Counter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* Counter.swift */; };
+    A40000000000000000000003 /* CounterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* CounterTests.swift */; };
+    A40000000000000000000004 /* AdoptionCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* AdoptionCore.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+    A70100000000000000000001 /* PBXContainerItemProxy */ = {
+      isa = PBXContainerItemProxy;
+      containerPortal = A00000000000000000000001 /* Project object */;
+      proxyType = 1;
+      remoteGlobalIDString = A50000000000000000000002;
+      remoteInfo = AdoptionCore;
+    };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+    A20000000000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+    A20000000000000000000002 /* Counter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Counter.swift; sourceTree = "<group>"; };
+    A20000000000000000000003 /* CounterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CounterTests.swift; sourceTree = "<group>"; };
+    A30000000000000000000001 /* AdoptionApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AdoptionApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+    A30000000000000000000002 /* AdoptionCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = AdoptionCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+    A30000000000000000000003 /* AdoptionCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AdoptionCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+    A60100000000000000000001 /* Frameworks */ = {
+      isa = PBXFrameworksBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+    A61100000000000000000001 /* Frameworks */ = {
+      isa = PBXFrameworksBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+    A62100000000000000000001 /* Frameworks */ = {
+      isa = PBXFrameworksBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+        A40000000000000000000004 /* AdoptionCore.framework in Frameworks */,
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+    A10000000000000000000001 = {
+      isa = PBXGroup;
+      children = (
+        A11000000000000000000001 /* Sources */,
+        A11300000000000000000001 /* Tests */,
+        A10100000000000000000001 /* Products */,
+      );
+      sourceTree = "<group>";
+    };
+    A10100000000000000000001 /* Products */ = {
+      isa = PBXGroup;
+      children = (
+        A30000000000000000000001 /* AdoptionApp.app */,
+        A30000000000000000000002 /* AdoptionCore.framework */,
+        A30000000000000000000003 /* AdoptionCoreTests.xctest */,
+      );
+      name = Products;
+      sourceTree = "<group>";
+    };
+    A11000000000000000000001 /* Sources */ = {
+      isa = PBXGroup;
+      children = (
+        A11100000000000000000001 /* AdoptionApp */,
+        A11200000000000000000001 /* AdoptionCore */,
+      );
+      path = Sources;
+      sourceTree = "<group>";
+    };
+    A11100000000000000000001 /* AdoptionApp */ = {
+      isa = PBXGroup;
+      children = (
+        A20000000000000000000001 /* main.swift */,
+      );
+      path = AdoptionApp;
+      sourceTree = "<group>";
+    };
+    A11200000000000000000001 /* AdoptionCore */ = {
+      isa = PBXGroup;
+      children = (
+        A20000000000000000000002 /* Counter.swift */,
+      );
+      path = AdoptionCore;
+      sourceTree = "<group>";
+    };
+    A11300000000000000000001 /* Tests */ = {
+      isa = PBXGroup;
+      children = (
+        A11400000000000000000001 /* AdoptionCoreTests */,
+      );
+      path = Tests;
+      sourceTree = "<group>";
+    };
+    A11400000000000000000001 /* AdoptionCoreTests */ = {
+      isa = PBXGroup;
+      children = (
+        A20000000000000000000003 /* CounterTests.swift */,
+      );
+      path = AdoptionCoreTests;
+      sourceTree = "<group>";
+    };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+    A50000000000000000000001 /* AdoptionApp */ = {
+      isa = PBXNativeTarget;
+      buildConfigurationList = A81200000000000000000001 /* Build configuration list for PBXNativeTarget "AdoptionApp" */;
+      buildPhases = (
+        A60000000000000000000001 /* Sources */,
+        A60100000000000000000001 /* Frameworks */,
+        A60200000000000000000001 /* Resources */,
+      );
+      buildRules = (
+      );
+      dependencies = (
+      );
+      name = AdoptionApp;
+      productName = AdoptionApp;
+      productReference = A30000000000000000000001 /* AdoptionApp.app */;
+      productType = "com.apple.product-type.application";
+    };
+    A50000000000000000000002 /* AdoptionCore */ = {
+      isa = PBXNativeTarget;
+      buildConfigurationList = A82200000000000000000001 /* Build configuration list for PBXNativeTarget "AdoptionCore" */;
+      buildPhases = (
+        A61000000000000000000001 /* Sources */,
+        A61100000000000000000001 /* Frameworks */,
+        A61200000000000000000001 /* Resources */,
+      );
+      buildRules = (
+      );
+      dependencies = (
+      );
+      name = AdoptionCore;
+      productName = AdoptionCore;
+      productReference = A30000000000000000000002 /* AdoptionCore.framework */;
+      productType = "com.apple.product-type.framework";
+    };
+    A50000000000000000000003 /* AdoptionCoreTests */ = {
+      isa = PBXNativeTarget;
+      buildConfigurationList = A83200000000000000000001 /* Build configuration list for PBXNativeTarget "AdoptionCoreTests" */;
+      buildPhases = (
+        A62000000000000000000001 /* Sources */,
+        A62100000000000000000001 /* Frameworks */,
+        A62200000000000000000001 /* Resources */,
+      );
+      buildRules = (
+      );
+      dependencies = (
+        A70000000000000000000001 /* PBXTargetDependency */,
+      );
+      name = AdoptionCoreTests;
+      productName = AdoptionCoreTests;
+      productReference = A30000000000000000000003 /* AdoptionCoreTests.xctest */;
+      productType = "com.apple.product-type.bundle.unit-test";
+    };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+    A00000000000000000000001 /* Project object */ = {
+      isa = PBXProject;
+      attributes = {
+        BuildIndependentTargetsInParallel = 1;
+        LastSwiftUpdateCheck = 2600;
+        LastUpgradeCheck = 2600;
+        TargetAttributes = {
+          A50000000000000000000001 = {
+            CreatedOnToolsVersion = 26.0;
+          };
+          A50000000000000000000002 = {
+            CreatedOnToolsVersion = 26.0;
+          };
+          A50000000000000000000003 = {
+            CreatedOnToolsVersion = 26.0;
+          };
+        };
+      };
+      buildConfigurationList = A80200000000000000000001 /* Build configuration list for PBXProject "AdoptionApp" */;
+      compatibilityVersion = "Xcode 14.0";
+      developmentRegion = en;
+      hasScannedForEncodings = 0;
+      knownRegions = (
+        en,
+        Base,
+      );
+      mainGroup = A10000000000000000000001;
+      productRefGroup = A10100000000000000000001 /* Products */;
+      projectDirPath = "";
+      projectRoot = "";
+      targets = (
+        A50000000000000000000001 /* AdoptionApp */,
+        A50000000000000000000002 /* AdoptionCore */,
+        A50000000000000000000003 /* AdoptionCoreTests */,
+      );
+    };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+    A60200000000000000000001 /* Resources */ = {
+      isa = PBXResourcesBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+    A61200000000000000000001 /* Resources */ = {
+      isa = PBXResourcesBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+    A62200000000000000000001 /* Resources */ = {
+      isa = PBXResourcesBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+    A60000000000000000000001 /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+        A40000000000000000000001 /* main.swift in Sources */,
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+    A61000000000000000000001 /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+        A40000000000000000000002 /* Counter.swift in Sources */,
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+    A62000000000000000000001 /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      buildActionMask = 2147483647;
+      files = (
+        A40000000000000000000003 /* CounterTests.swift in Sources */,
+      );
+      runOnlyForDeploymentPostprocessing = 0;
+    };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+    A70000000000000000000001 /* PBXTargetDependency */ = {
+      isa = PBXTargetDependency;
+      target = A50000000000000000000002 /* AdoptionCore */;
+      targetProxy = A70100000000000000000001 /* PBXContainerItemProxy */;
+    };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+    A80000000000000000000001 /* Debug */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        ALWAYS_SEARCH_USER_PATHS = NO;
+        CLANG_ENABLE_MODULES = YES;
+        MACOSX_DEPLOYMENT_TARGET = 15.0;
+        SDKROOT = macosx;
+        SWIFT_VERSION = 6.0;
+      };
+      name = Debug;
+    };
+    A80100000000000000000001 /* Release */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        ALWAYS_SEARCH_USER_PATHS = NO;
+        CLANG_ENABLE_MODULES = YES;
+        MACOSX_DEPLOYMENT_TARGET = 15.0;
+        SDKROOT = macosx;
+        SWIFT_COMPILATION_MODE = wholemodule;
+        SWIFT_OPTIMIZATION_LEVEL = "-O";
+        SWIFT_VERSION = 6.0;
+      };
+      name = Release;
+    };
+    A81000000000000000000001 /* Debug */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGNING_ALLOWED = NO;
+        CODE_SIGNING_REQUIRED = NO;
+        GENERATE_INFOPLIST_FILE = YES;
+        MACOSX_DEPLOYMENT_TARGET = 15.0;
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.template.AdoptionApp;
+        PRODUCT_NAME = "$(TARGET_NAME)";
+        SWIFT_VERSION = 6.0;
+      };
+      name = Debug;
+    };
+    A81100000000000000000001 /* Release */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGNING_ALLOWED = NO;
+        CODE_SIGNING_REQUIRED = NO;
+        GENERATE_INFOPLIST_FILE = YES;
+        MACOSX_DEPLOYMENT_TARGET = 15.0;
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.template.AdoptionApp;
+        PRODUCT_NAME = "$(TARGET_NAME)";
+        SWIFT_VERSION = 6.0;
+      };
+      name = Release;
+    };
+    A82000000000000000000001 /* Debug */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGNING_ALLOWED = NO;
+        CODE_SIGNING_REQUIRED = NO;
+        DEFINES_MODULE = YES;
+        GENERATE_INFOPLIST_FILE = YES;
+        MACOSX_DEPLOYMENT_TARGET = 15.0;
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.template.AdoptionCore;
+        PRODUCT_MODULE_NAME = AdoptionCore;
+        PRODUCT_NAME = "$(TARGET_NAME)";
+        SKIP_INSTALL = YES;
+        SWIFT_VERSION = 6.0;
+      };
+      name = Debug;
+    };
+    A82100000000000000001 /* Release */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGNING_ALLOWED = NO;
+        CODE_SIGNING_REQUIRED = NO;
+        DEFINES_MODULE = YES;
+        GENERATE_INFOPLIST_FILE = YES;
+        MACOSX_DEPLOYMENT_TARGET = 15.0;
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.template.AdoptionCore;
+        PRODUCT_MODULE_NAME = AdoptionCore;
+        PRODUCT_NAME = "$(TARGET_NAME)";
+        SKIP_INSTALL = YES;
+        SWIFT_VERSION = 6.0;
+      };
+      name = Release;
+    };
+    A83000000000000000000001 /* Debug */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGNING_ALLOWED = NO;
+        CODE_SIGNING_REQUIRED = NO;
+        GENERATE_INFOPLIST_FILE = YES;
+        LD_RUNPATH_SEARCH_PATHS = (
+          "$(inherited)",
+          "@loader_path/../Frameworks",
+          "@executable_path/../Frameworks",
+        );
+        MACOSX_DEPLOYMENT_TARGET = 15.0;
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.template.AdoptionCoreTests;
+        PRODUCT_NAME = "$(TARGET_NAME)";
+        SWIFT_VERSION = 6.0;
+      };
+      name = Debug;
+    };
+    A83100000000000000000001 /* Release */ = {
+      isa = XCBuildConfiguration;
+      buildSettings = {
+        CODE_SIGNING_ALLOWED = NO;
+        CODE_SIGNING_REQUIRED = NO;
+        GENERATE_INFOPLIST_FILE = YES;
+        LD_RUNPATH_SEARCH_PATHS = (
+          "$(inherited)",
+          "@loader_path/../Frameworks",
+          "@executable_path/../Frameworks",
+        );
+        MACOSX_DEPLOYMENT_TARGET = 15.0;
+        PRODUCT_BUNDLE_IDENTIFIER = com.example.template.AdoptionCoreTests;
+        PRODUCT_NAME = "$(TARGET_NAME)";
+        SWIFT_VERSION = 6.0;
+      };
+      name = Release;
+    };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+    A80200000000000000000001 /* Build configuration list for PBXProject "AdoptionApp" */ = {
+      isa = XCConfigurationList;
+      buildConfigurations = (
+        A80000000000000000000001 /* Debug */,
+        A80100000000000000000001 /* Release */,
+      );
+      defaultConfigurationIsVisible = 0;
+      defaultConfigurationName = Release;
+    };
+    A81200000000000000000001 /* Build configuration list for PBXNativeTarget "AdoptionApp" */ = {
+      isa = XCConfigurationList;
+      buildConfigurations = (
+        A81000000000000000000001 /* Debug */,
+        A81100000000000000000001 /* Release */,
+      );
+      defaultConfigurationIsVisible = 0;
+      defaultConfigurationName = Release;
+    };
+    A82200000000000000000001 /* Build configuration list for PBXNativeTarget "AdoptionCore" */ = {
+      isa = XCConfigurationList;
+      buildConfigurations = (
+        A82000000000000000000001 /* Debug */,
+        A82100000000000000000001 /* Release */,
+      );
+      defaultConfigurationIsVisible = 0;
+      defaultConfigurationName = Release;
+    };
+    A83200000000000000000001 /* Build configuration list for PBXNativeTarget "AdoptionCoreTests" */ = {
+      isa = XCConfigurationList;
+      buildConfigurations = (
+        A83000000000000000000001 /* Debug */,
+        A83100000000000000000001 /* Release */,
+      );
+      defaultConfigurationIsVisible = 0;
+      defaultConfigurationName = Release;
+    };
+/* End XCConfigurationList section */
+  };
+  rootObject = A00000000000000000000001 /* Project object */;
+}
