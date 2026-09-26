@@ -7,6 +7,6 @@ let package = Package(
     products: [.library(name: "AdoptionCore", targets: ["AdoptionCore"])],
     targets: [
         .target(name: "AdoptionCore"),
-        .testTarget(name: "AdoptionCoreTests", dependencies: ["AdoptionCore"]),
+        .testTarget(name: "AdoptionCoreTests", dependencies: ["AdoptionCore"])
     ]
 )
