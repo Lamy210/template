@@ -55,6 +55,14 @@ class SwiftPMProfileAdoptionWiringTests(unittest.TestCase):
             workflow,
         )
 
+    def test_actionlint_compatibility_ignore_is_path_scoped(self) -> None:
+        config = (ROOT / ".github/actionlint.yaml").read_text(encoding="utf-8")
+        self.assertIn(".github/workflows/test-profile-adoption.yml:", config)
+        self.assertIn(
+            'reusable workflow call "\\$/\\.github/workflows/reusable-swift-tests\\.yml"',
+            config,
+        )
+
     def test_test_infrastructure_covers_adoption_contract(self) -> None:
         workflow = INFRASTRUCTURE.read_text(encoding="utf-8")
         self.assertEqual(2, workflow.count('"Tests/AdoptionFixtures/**"'))
