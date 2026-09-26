@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 
@@ -66,6 +67,26 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("canonical stable SemVer", result.stderr)
 
+    def test_rejects_existing_evidence_output_before_github_access(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "proof.json"
+            output.write_text("{}\n", encoding="utf-8")
+            result = run_script(
+                "--repository",
+                "example/disposable",
+                "--confirm-disposable",
+                "example/disposable",
+                "--source-ref",
+                "old-main",
+                "--tag",
+                "v0.0.1",
+                "--evidence-output",
+                str(output),
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("must not already exist", result.stderr)
+
     def test_runner_contract_is_fail_closed_and_delegates_final_audit(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
 
@@ -81,6 +102,9 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
             "validated-release-input-",
             "actions/runs/",
             "audit-post-split-runtime-proof.sh",
+            "post_split_proof_evidence.py",
+            "--evidence-output",
+            "publisher_run_attempt",
             "refs/tags/",
         ):
             with self.subTest(token=token):
@@ -90,6 +114,14 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertNotIn("--method DELETE", text)
         self.assertNotIn("contents: write", text)
         self.assertNotIn("secrets.", text)
+        self.assertLess(
+            text.index(
+                'bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh"'
+            ),
+            text.index(
+                'python3 "${repo_root}/scripts/release/post_split_proof_evidence.py"'
+            ),
+        )
 
     def test_runner_retains_proof_tag_as_audit_evidence(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
