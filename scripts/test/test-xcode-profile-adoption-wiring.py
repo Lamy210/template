@@ -55,7 +55,7 @@ class XcodeProfileAdoptionWiringTests(unittest.TestCase):
             "reusable-visual-regression.yml",
             "Tests/AdoptionFixtures/Xcode/VisualRegression/visual-regression.json",
             "adoption-macos-ui-strict-baseline",
-            "bootstrap_rolling: true",
+            "bootstrap_rolling: ${{ needs.prepare-macos-ui-strict.outputs.visual_bootstrap == 'true' }}",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, workflow)

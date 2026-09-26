@@ -95,13 +95,30 @@ jobs:
           --manifest "${MANIFEST_PATH}"
           --repo-root "${GITHUB_WORKSPACE}"
 
+      - name: Resolve visual baseline policy
+        id: baseline_policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/visual/emit-baseline-policy.py \
+            --manifest "${MANIFEST_PATH}" \
+            --github-output "${GITHUB_OUTPUT}"
+
       - name: Resolve trusted rolling baseline
         id: baseline
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REQUIRES_ROLLING: ${{ steps.baseline_policy.outputs.requires_rolling }}
         run: |
           set -euo pipefail
+          if [[ "${REQUIRES_ROLLING}" != "true" ]]; then
+            echo "available=false" >>"${GITHUB_OUTPUT}"
+            echo "run_id=" >>"${GITHUB_OUTPUT}"
+            echo "Git-only visual manifest: rolling baseline lookup skipped." >>"${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
           baseline_root="${RUNNER_TEMP}/visual-baseline"
           baseline_run_file="${RUNNER_TEMP}/visual-baseline-run-id.txt"
 
@@ -221,6 +238,7 @@ jobs:
           CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
           DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
           MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
+          BASELINE_POLICY_OUTCOME: ${{ steps.baseline_policy.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
           COMPARE_OUTCOME: ${{ steps.compare.outcome }}
           COMPARE_RESULT: ${{ steps.compare.outputs.result }}
@@ -232,6 +250,7 @@ jobs:
             "${CHECKOUT_OUTCOME}" \
             "${DOWNLOAD_OUTCOME}" \
             "${MANIFEST_OUTCOME}" \
+            "${BASELINE_POLICY_OUTCOME}" \
             "${BASELINE_OUTCOME}" \
             "${COMPARE_OUTCOME}" \
             "${REPORT_UPLOAD_OUTCOME}"; do

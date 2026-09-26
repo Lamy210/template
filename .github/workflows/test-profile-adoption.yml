@@ -296,7 +296,7 @@ jobs:
       current_artifact_name: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
       current_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       baseline_artifact_name: adoption-macos-ui-strict-baseline
-      bootstrap_rolling: true
+      bootstrap_rolling: ${{ needs.prepare-macos-ui-strict.outputs.visual_bootstrap == 'true' }}
       required: ${{ needs.prepare-macos-ui-strict.outputs.visual_required == 'true' }}
 
   verify-macos-app:
