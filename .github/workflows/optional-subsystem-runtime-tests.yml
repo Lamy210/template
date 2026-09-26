@@ -1,0 +1,61 @@
+name: Optional Subsystem Runtime Tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/reusable-swift-tests.yml"
+      - ".github/workflows/tests.yml"
+      - ".github/workflows/optional-subsystem-runtime-tests.yml"
+      - "scripts/test/fixtures/optional-failure/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  optional-test-failure:
+    name: Optional test failure probe
+    uses: $/.github/workflows/reusable-swift-tests.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      check_name: Optional test runtime contract
+      adapter: swiftpm
+      working_directory: scripts/test/fixtures/optional-failure
+      required: false
+      enable_coverage: false
+      coverage_required: false
+
+  verify-runtime-contract:
+    name: Verify optional runtime contract
+    needs:
+      - optional-test-failure
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OPTIONAL_TEST_JOB_RESULT: ${{ needs.optional-test-failure.result }}
+      OPTIONAL_TEST_RAW_RESULT: ${{ needs.optional-test-failure.outputs.test_result }}
+    steps:
+      - name: Assert optional failure semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ "${OPTIONAL_TEST_JOB_RESULT}" == "success" ]] || {
+            echo "Optional test called workflow must be successful, got ${OPTIONAL_TEST_JOB_RESULT}" >&2
+            exit 1
+          }
+          [[ "${OPTIONAL_TEST_RAW_RESULT}" == "failure" ]] || {
+            echo "Optional test raw result must remain failure, got ${OPTIONAL_TEST_RAW_RESULT:-missing}" >&2
+            exit 1
+          }
+
+          echo "Optional test assertion failure semantics verified."

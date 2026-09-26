@@ -1,0 +1,90 @@
+name: Test Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - "Tools/VisualDiff/**"
+      - "Tests/VisualRegression/**"
+      - "Tests/VisualBaselines/**"
+      - "scripts/ci/**"
+      - "scripts/test/**"
+      - "scripts/visual/**"
+      - ".github/workflows/reusable-swift-tests.yml"
+      - ".github/workflows/reusable-macos-e2e.yml"
+      - ".github/workflows/reusable-visual-regression.yml"
+      - ".github/workflows/test-infrastructure.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Tools/VisualDiff/**"
+      - "Tests/VisualRegression/**"
+      - "Tests/VisualBaselines/**"
+      - "scripts/ci/**"
+      - "scripts/test/**"
+      - "scripts/visual/**"
+      - ".github/workflows/reusable-swift-tests.yml"
+      - ".github/workflows/reusable-macos-e2e.yml"
+      - ".github/workflows/reusable-visual-regression.yml"
+      - ".github/workflows/test-infrastructure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  generic-tooling:
+    name: Generic tooling
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: VisualDiff tests
+        run: swift test --package-path Tools/VisualDiff
+
+      - name: Visual manifest smoke test
+        run: >-
+          swift run --package-path Tools/VisualDiff visual-diff validate-manifest
+          --manifest Tests/VisualRegression/visual-regression.example.json
+          --repo-root "$GITHUB_WORKSPACE"
+
+      - name: Trusted artifact resolver tests
+        run: |
+          bash scripts/ci/test-resolve-trusted-main-artifact.sh
+          bash scripts/ci/test-resolve-trusted-main-artifact-options.sh
+          python3 scripts/ci/test_resolve_trusted_main_artifact_events.py -v
+
+      - name: Visual schedule wiring tests
+        run: python3 scripts/ci/test_visual_schedule_wiring.py -v
+
+      - name: Coverage tooling tests
+        run: python3 -m unittest scripts/test/test-compare-coverage.py -v
+
+      - name: Required gate policy tests
+        run: |
+          python3 -m unittest scripts/test/test-evaluate-required-gate.py -v
+          python3 scripts/test/test-required-gate-workflow.py -v
+
+      - name: Optional subsystem workflow tests
+        run: python3 scripts/test/test-optional-subsystem-workflow.py -v
+
+      - name: Test subsystem classifier tests
+        run: python3 -m unittest scripts/test/test-classify-test-policy.py -v
+
+      - name: Workflow concurrency policy tests
+        run: python3 scripts/test/test-workflow-concurrency.py -v
+
+      - name: macOS E2E tooling tests
+        run: python3 -m unittest scripts/test/test-macos-e2e.py -v
+
+      - name: Visual profile metadata tests
+        run: bash scripts/visual/test-collect-metadata.sh
