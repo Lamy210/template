@@ -185,8 +185,8 @@ if publisher_sha == source_sha:
     raise SystemExit("source and publisher SHAs must differ")
 ' "${source_sha}" "${publisher_sha}" <<<"${compare_json}"
 
-gh api "${api_headers[@]}"   "repos/${repository}/contents/.github/workflows/${release_build_workflow}?ref=${source_sha}" >/dev/null
-gh api "${api_headers[@]}"   "repos/${repository}/contents/.github/workflows/${release_publisher_workflow}?ref=${publisher_sha}" >/dev/null
+gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${release_build_workflow}?ref=${source_sha}" >/dev/null
+gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${release_publisher_workflow}?ref=${publisher_sha}" >/dev/null
 
 if gh api "${api_headers[@]}" "repos/${repository}/git/ref/tags/${tag_name}" >/dev/null 2>&1; then
   echo "Stable proof tag already exists: ${tag_name}" >&2
@@ -196,7 +196,7 @@ fi
 list_runs() {
   local workflow="$1"
   local event="$2"
-  gh run list     --repo "${repository}"     --workflow "${workflow}"     --event "${event}"     --limit 100     --json databaseId,headBranch,headSha,status,conclusion
+  gh run list --repo "${repository}" --workflow "${workflow}" --event "${event}" --limit 100 --json databaseId,headBranch,headSha,status,conclusion
 }
 
 snapshot_run_ids() {
@@ -226,7 +226,7 @@ publisher_baseline="${temp_root}/publisher-baseline.json"
 snapshot_run_ids "${release_build_workflow}" push "${source_baseline}"
 snapshot_run_ids "${release_publisher_workflow}" workflow_run "${publisher_baseline}"
 
-gh api "${api_headers[@]}"   --method POST   "repos/${repository}/git/refs"   -f "ref=refs/tags/${tag_name}"   -f "sha=${source_sha}" >/dev/null
+gh api "${api_headers[@]}" --method POST "repos/${repository}/git/refs" -f "ref=refs/tags/${tag_name}" -f "sha=${source_sha}" >/dev/null
 
 find_source_run_id() {
   local attempt list_json run_id
@@ -389,8 +389,7 @@ matches = [
     and item.get("expired") is False
 ]
 raise SystemExit(0 if len(matches) == 1 else 1)
-' "${candidate_id}" "${run_attempt}" "${source_run_id}" "${source_run_attempt}" <<<"${artifact_json}"
-      then
+' "${candidate_id}" "${run_attempt}" "${source_run_id}" "${source_run_attempt}" <<<"${artifact_json}"; then
         if [[ -n "${matched}" ]]; then
           echo "Multiple fresh Release Publisher runs contain validator artifacts for source run ${source_run_id}." >&2
           return 1
@@ -413,6 +412,6 @@ raise SystemExit(0 if len(matches) == 1 else 1)
 publisher_run_id="$(find_publisher_run_id)"
 wait_for_run_completion "${publisher_run_id}" false >/dev/null
 
-bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh"   "${repository}"   "${source_run_id}"   "${publisher_run_id}"
+bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh" "${repository}" "${source_run_id}" "${publisher_run_id}"
 
-printf 'post-split ancestor proof passed: repository=%s tag=%s source_run_id=%s publisher_run_id=%s\n'   "${repository}" "${tag_name}" "${source_run_id}" "${publisher_run_id}"
+printf 'post-split ancestor proof passed: repository=%s tag=%s source_run_id=%s publisher_run_id=%s\n' "${repository}" "${tag_name}" "${source_run_id}" "${publisher_run_id}"
