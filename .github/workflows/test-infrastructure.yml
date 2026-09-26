@@ -72,6 +72,9 @@ jobs:
       - name: Visual schedule wiring tests
         run: python3 scripts/ci/test_visual_schedule_wiring.py -v
 
+      - name: Visual baseline policy tests
+        run: python3 scripts/visual/test-manifest-baseline-policy.py -v
+
       - name: Coverage tooling tests
         run: python3 -m unittest scripts/test/test-compare-coverage.py -v
 
