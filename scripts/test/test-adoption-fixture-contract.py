@@ -75,7 +75,9 @@ class AdoptionFixtureContractTests(unittest.TestCase):
         )
 
         test_source = tests.read_text(encoding="utf-8")
-        self.assertIn('environment["GITHUB_WORKSPACE"]', test_source)
+        self.assertIn("#filePath", test_source)
+        self.assertIn("deleteLastPathComponent()", test_source)
+        self.assertNotIn('environment["GITHUB_WORKSPACE"]', test_source)
         self.assertIn("artifacts/visual/current", test_source)
         self.assertIn("adoption-counter.png", test_source)
 
