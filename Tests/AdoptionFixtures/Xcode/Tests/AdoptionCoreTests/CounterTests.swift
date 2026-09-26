@@ -1,4 +1,4 @@
-@testable import AdoptionCore
+import AdoptionCore
 import XCTest
 
 final class CounterTests: XCTestCase {
