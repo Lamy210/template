@@ -13,23 +13,31 @@ Lamy210/homebrew-tap
     my-app.rb
 ```
 
-The application release workflow publishes the final notarized DMG first. A second workflow then updates the tap by opening a pull request.
+The application release publisher signs/notarizes and publishes the immutable GitHub Release first. Only after that succeeds does the publisher invoke the Homebrew updater.
 
-## Why a pull request instead of direct push
+## Ordering in the isolated release pipeline
 
-The Cask update should not bypass tap validation. The expected path is:
+The expected path is:
 
 ```text
-notarized GitHub Release
-  -> compute/publish SHA-256
+vX.Y.Z tag
+  -> secret-free Release Build
+  -> default-branch publisher validation
+  -> protected signing/notarization
+  -> immutable GitHub Release + .sha256
+  -> Homebrew updater(source_tag=<validated tag>)
   -> render Cask
   -> push automation branch to tap
   -> open tap PR
-  -> tap CI: style/audit/install checks
+  -> tap CI
   -> merge
 ```
 
-This separates application release credentials from tap write credentials and leaves an auditable review point before package metadata becomes public.
+The Homebrew updater must not infer the release identity from its own `github.ref_name`. In the two-stage design it runs from the default-branch publisher context, so it receives the already-validated stable tag explicitly as `source_tag`.
+
+## Why a pull request instead of direct push
+
+The Cask update should not bypass tap validation. A tap pull request keeps application release credentials separate from tap write credentials and leaves an auditable review point before package metadata becomes public.
 
 ## Cask template
 
@@ -39,11 +47,11 @@ The reusable template lives at:
 templates/homebrew/Cask.rb.template
 ```
 
-It renders the following data:
+It renders:
 
 - Cask token
-- application version
-- SHA-256
+- validated application version
+- release SHA-256
 - GitHub owner/repository
 - DMG filename expression
 - application display name
@@ -59,9 +67,77 @@ scripts/homebrew/render-cask.sh
 
 It escapes values before inserting them into Ruby string literals and fails when an unresolved placeholder remains.
 
+The renderer also requires an explicit trusted `CASK_OUTPUT_ROOT`. Before creating the parent directory and again immediately before writing, it validates that the output stays lexically below that root and that the root, every existing parent component, and any existing target are not symlinks. Existing parents must be directories and an existing target must be a regular file. This prevents a tap-controlled `Casks/` symlink or Cask-file symlink from redirecting the generated output into the trusted publisher checkout or another workspace path.
+
+## Release identity contract
+
+`reusable-homebrew-update.yml` requires a validated `source_tag` input in stable `vX.Y.Z` form.
+
+It does not use:
+
+```text
+github.ref_name
+GITHUB_REF_NAME
+GITHUB_REF_TYPE
+```
+
+to determine the application release version.
+
+The updater downloads `${dmg_name}.sha256` from the immutable GitHub Release for exactly `source_tag`, renders the Cask from that version/checksum, and names the tap automation branch from the same validated identity.
+
+This prevents the default-branch publisher's own ref context from being mistaken for the released application tag.
+
+The Cask filename template is also bound to the exact published DMG identity. Before the Homebrew tap credential is used, the updater expands the single required `#{version}` placeholder in `dmg_basename_template` with the validated `source_tag` version and requires the result to equal `dmg_name` byte-for-byte. A configuration such as:
+
+```text
+source_tag=v1.2.3
+dmg_name=MyApp-v1.2.3.dmg
+dmg_basename_template=Other-v#{version}.dmg
+```
+
+fails before any tap branch write or pull-request operation. This prevents a verified release asset and the generated Cask URL from drifting to different filenames.
+
+The Cask application identity is rebound separately. The publisher validation job exports its validator-owned `appBasename` and `bundleId` only as comparison evidence. Before the tap token is exposed, the Homebrew updater requires:
+
+```text
+app_name + ".app" == validated_app_basename
+bundle_id          == validated_bundle_id
+```
+
+The trusted Homebrew `app_name` and `bundle_id` remain the values used to render the Cask. Validator-owned values are not allowed to silently redefine publisher policy; a disagreement fails closed instead.
+
+## Published checksum contract
+
+The Homebrew updater treats the published `.sha256` asset as structured release metadata, not as an arbitrary text file.
+
+The release producer writes the checksum with `shasum -a 256 <DMG basename>`. The consumer requires exactly one canonical line:
+
+```text
+<64 lowercase hexadecimal characters><two spaces><exact DMG basename>
+```
+
+with one trailing newline and no additional content. The filename embedded in the checksum must exactly equal the validated `dmg_name`. Uppercase digests, alternate prefixes such as `sha256:`, additional lines, missing trailing newline, unexpected spacing, and a checksum for a different asset are rejected before the tap write credential is used.
+
+The parser lives at `scripts/homebrew/parse_release_checksum.py` and is covered independently from the workflow contract.
+
+## Trusted automation checkout
+
+The updater checks out release automation at the publisher workflow SHA with persisted credentials disabled. The release tag artifact does not provide Homebrew scripts or templates to the privileged update path.
+
+The Homebrew job depends on both:
+
+- publisher validation; and
+- successful signing/publication.
+
+A failed or rejected release must not produce a tap update PR.
+
 ## Tap credential
 
-`reusable-homebrew-update.yml` accepts one named secret: `tap_token`.
+`reusable-homebrew-update.yml` accepts one named secret:
+
+```text
+tap_token
+```
 
 Preferred credential:
 
@@ -75,14 +151,31 @@ Temporary fallback:
 - restricted to the tap repository
 - shortest practical lifetime
 
-Do not reuse Apple signing/notarization credentials for this job, and do not pass `secrets: inherit`.
+Do not reuse Apple signing/notarization credentials for this job. Do not use `secrets: inherit`; pass only the narrow named `tap_token` interface.
+
+## Automation branch trust model
+
+The predictable `automation/<cask>-v<version>` branch name is an output location, not trusted input.
+
+On every run, the updater:
+
+1. resolves the tap's canonical GitHub HTTPS/SSH clone URLs and requires exactly one effective `origin` fetch URL and one effective push URL, both canonical; Git URL rewrites, mirrors, or additional push destinations fail closed;
+2. fetches the tap repository and records the current remote automation-branch SHA if that branch already exists;
+3. rebuilds the local automation branch from the trusted tap default branch, never from the existing automation branch;
+4. renders only the intended Cask change;
+5. revalidates canonical repository identity plus the effective origin remote before branch mutation and final acceptance;
+6. updates an existing automation branch with an exact-SHA `--force-with-lease`, so a concurrent or unexpected remote rewrite causes the run to fail instead of being overwritten.
+
+If the existing automation branch contains stale or unrelated commits, those commits are not carried forward. If the desired Cask is already identical, an existing remote automation branch is still reset to the trusted default-branch state using the same lease check.
+
+This limited history rewrite applies only to the dedicated automation branch. Do not use this behavior for the tap default branch or a human-owned feature branch.
 
 ## Tap CI
 
 The tap repository should independently validate generated Casks before merge. At minimum test:
 
 - `brew style`
-- `brew audit --cask` (use strict/online checks where appropriate)
+- `brew audit --cask` (strict/online checks where appropriate)
 - release URL download
 - SHA-256 match
 - Cask installation
@@ -104,13 +197,20 @@ The exact command depends on the tap and Cask token chosen for the application.
 
 For each stable release:
 
-1. merge application changes to `main`
-2. create protected tag `vX.Y.Z`
-3. build unsigned `.app` without secrets
-4. sign/notarize/package DMG
-5. publish GitHub Release + `.sha256`
-6. run Homebrew update workflow
-7. review tap CI
-8. merge tap PR
+1. merge application changes to the trusted default branch;
+2. create protected immutable tag `vX.Y.Z`;
+3. run the secret-free Release Build;
+4. let the default-branch publisher validate the exact build run/artifact and source tag;
+5. sign/notarize/package the DMG in the protected `release` Environment;
+6. publish the immutable GitHub Release + `.sha256`;
+7. invoke Homebrew with the validated `source_tag`;
+8. review tap CI;
+9. merge the tap PR.
 
 After the Cask update is merged, existing Homebrew users can receive the new version through the normal Homebrew upgrade flow.
+
+## Retry behavior
+
+If release publication already exists with byte-identical assets, the release publisher treats publication as an idempotent no-op. A subsequent Homebrew invocation should render the same version/checksum and reuse or produce no change in the existing tap automation branch.
+
+If the release asset differs, publication fails closed and the Homebrew job does not run. Do not update the Cask to a replacement asset under an existing stable version; publish a new version instead.

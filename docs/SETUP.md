@@ -63,9 +63,43 @@ Create a GitHub Environment named exactly:
 release
 ```
 
-The reusable macOS release workflow references this name.
+The reusable macOS release workflow references this name. This Environment is part of the privileged release trust boundary, so its deployment-ref restriction is required rather than optional.
 
-Where supported and useful, configure environment protection such as required reviewers and deployment tag restrictions. Keep privileged release secrets in this Environment rather than exposing them to ordinary PR jobs.
+Configure **Deployment branches and tags** using **Selected branches and tags** and allow only the repository's default branch (normally `main`) as a **Branch** rule. Do not add a `v*` tag rule to this Environment: `workflow_run` publishers execute with `GITHUB_REF` set to the default branch, and the called reusable workflow inherits the caller's ref. The release tag is independently validated as release input; it is not the deployment ref that enters this Environment.
+
+Do not leave the `release` Environment unrestricted. A feature branch, pull-request ref, or arbitrary tag must not be able to enter the privileged Environment merely by calling the reusable release workflow.
+
+Where the repository has an independent release reviewer, required-reviewer protection can be added as defense in depth. Do not create a one-person approval deadlock for a solo-maintainer repository. If the account/plan supports disabling administrator bypass for Environment protections and operational recovery does not require it, prefer disabling that bypass.
+
+Keep privileged release secrets in this Environment rather than exposing them to ordinary PR jobs.
+
+After configuring the Environment, run the read-only doctor:
+
+```bash
+bash scripts/release/audit-release-environment.sh owner/repo
+```
+
+The doctor verifies that the Environment is named `release`, uses custom deployment branch policies rather than unrestricted/protected-branches mode, and has exactly one deployment policy whose name equals the repository default branch. It uses only read endpoints and does not modify Environment settings.
+
+GitHub's deployment-branch-policy list response does not always expose whether a returned policy was originally created as a branch or tag policy. When a `type` field is present the doctor requires `branch`; when GitHub omits it, the doctor cannot prove branch-vs-tag identity from REST output alone. Therefore the first-release runtime policy proof below remains mandatory: the default branch must be able to enter the `release` Environment while a feature/temporary branch and arbitrary tag must not.
+
+For the runtime policy proof, use a **disposable repository** with the same `release` Environment policy. Copy the inert example workflow onto that disposable repository's default branch:
+
+```bash
+mkdir -p .github/workflows
+cp examples/release-environment-proof.yml \
+  .github/workflows/release-environment-proof.yml
+```
+
+Commit/push that workflow in the disposable repository, then run:
+
+```bash
+bash scripts/release/prove-release-environment-policy.sh \
+  --repository owner/disposable-release-proof \
+  --confirm-disposable owner/disposable-release-proof
+```
+
+The proof first dispatches the secret-free workflow from the default branch and requires the `release` Environment job to succeed. It then creates a temporary branch and arbitrary tag at the same commit and requires those two Environment jobs to be denied while their non-Environment baseline jobs still succeed. This positive control prevents an accidentally deny-all Environment from producing a false pass. Temporary refs are removed afterward. The script refuses the current `GITHUB_REPOSITORY`, so do not weaken that guardrail to test the production repository.
 
 ## 6. Release secrets
 
@@ -112,15 +146,15 @@ The repository-level `quality.yml` covers GitHub Actions security with `zizmor` 
 
 After the first pull request runs successfully, select stable check names from GitHub's Ruleset UI. Do not type a guessed check name before it has run at least once.
 
-For this template itself, require at minimum the jobs produced by:
+For this template itself, require the stable aggregate checks observed from a successful pull request:
 
 ```text
-Quality / Repository hygiene
-Quality / GitHub Actions security
-Swift Quality / Swift quality
+Required gate
+Tests / Required Gate
+swift-quality / Swift quality
 ```
 
-The exact UI label can vary with GitHub's workflow/job presentation; select the observed checks from a successful pull request.
+Do not infer these names from YAML alone. Confirm the exact Check Runs emitted by GitHub after the testing and release/governance foundations have landed, then select those observed checks in the Ruleset UI.
 
 Application repositories should additionally require their application build and unit/integration test jobs. If an application does not use Swift, remove or replace the Swift profile rather than keeping a permanently skipped/irrelevant required check.
 
@@ -155,7 +189,8 @@ After creating a project from the template, replace project-specific placeholder
 Before the first production release, run a controlled test release and verify all of the following end to end:
 
 - unsigned application artifact is produced without release secrets
-- release job can access the `release` Environment only on the intended tag path
+- release job can access the `release` Environment only from the intended default-branch publisher path
+- a feature branch or pull-request ref cannot enter the `release` Environment
 - Developer ID certificate imports into the temporary keychain
 - app signature validates
 - DMG builds and validates

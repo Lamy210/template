@@ -3,6 +3,18 @@ name: Reusable Homebrew Update
 on:
   workflow_call:
     inputs:
+      source_tag:
+        description: Validated stable release tag produced by the publisher, for example v1.2.3.
+        required: true
+        type: string
+      validated_app_basename:
+        description: App bundle basename already validated by the publisher, for comparison only.
+        required: true
+        type: string
+      validated_bundle_id:
+        description: Bundle identifier already validated by the publisher, for comparison only.
+        required: true
+        type: string
       tap_repository:
         description: Homebrew tap repository in owner/repo form.
         required: true
@@ -51,16 +63,22 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Validate release context and inputs
+      - name: Validate release identity and inputs
         shell: bash
         env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
           CASK_TOKEN: ${{ inputs.cask_token }}
           TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           DMG_NAME: ${{ inputs.dmg_name }}
+          APP_NAME: ${{ inputs.app_name }}
+          BUNDLE_ID: ${{ inputs.bundle_id }}
+          VALIDATED_APP_BASENAME: ${{ inputs.validated_app_basename }}
+          VALIDATED_BUNDLE_ID: ${{ inputs.validated_bundle_id }}
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF_TYPE}" != "tag" || ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Homebrew update must run from a stable vX.Y.Z release tag." >&2
+          if [[ ! "${SOURCE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "source_tag must use stable SemVer form vX.Y.Z." >&2
             exit 1
           fi
           if [[ ! "${CASK_TOKEN}" =~ ^[a-z0-9][a-z0-9._+-]*$ ]]; then
@@ -71,42 +89,109 @@ jobs:
             echo "tap_repository must use owner/repo form." >&2
             exit 1
           fi
-          if [[ "${DMG_NAME}" == */* || "${DMG_NAME}" != *.dmg ]]; then
-            echo "dmg_name must be a DMG basename, not a path." >&2
+          tap_owner="${TAP_REPOSITORY%%/*}"
+          tap_name="${TAP_REPOSITORY#*/}"
+          if [[ "${tap_owner}" == "." || "${tap_owner}" == ".." || "${tap_name}" == "." || "${tap_name}" == ".." ]]; then
+            echo "tap_repository contains an invalid owner or repository component." >&2
+            exit 1
+          fi
+          if ! git check-ref-format --branch "${TAP_DEFAULT_BRANCH}" >/dev/null 2>&1; then
+            echo "tap_default_branch must be a valid Git branch name." >&2
+            exit 1
+          fi
+          if [[ ! "${DMG_NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*\.dmg$ ]]; then
+            echo "dmg_name must be a literal DMG asset basename." >&2
+            exit 1
+          fi
+          if [[ "${APP_NAME}.app" != "${VALIDATED_APP_BASENAME}" ]]; then
+            echo "Homebrew app_name does not match the publisher-validated application basename." >&2
+            exit 1
+          fi
+          if [[ "${BUNDLE_ID}" != "${VALIDATED_BUNDLE_ID}" ]]; then
+            echo "Homebrew bundle_id does not match the publisher-validated bundle identifier." >&2
             exit 1
           fi
 
-      - name: Checkout release automation
+      - name: Checkout trusted publisher automation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
           path: source
 
-      - name: Download published checksum
+      - name: Bind Cask DMG template to published asset
+        shell: bash
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          DMG_NAME: ${{ inputs.dmg_name }}
+          DMG_BASENAME_TEMPLATE: ${{ inputs.dmg_basename_template }}
+        run: |
+          set -euo pipefail
+          python3 source/scripts/homebrew/validate-cask-asset.py \
+            --source-tag "${SOURCE_TAG}" \
+            --dmg-name "${DMG_NAME}" \
+            --dmg-basename-template "${DMG_BASENAME_TEMPLATE}"
+
+      - name: Download and verify published release assets
+        id: published_assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
           DMG_NAME: ${{ inputs.dmg_name }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_PUBLISHER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          gh release download "${GITHUB_REF_NAME}" \
+          gh release view "${SOURCE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --pattern "${DMG_NAME}.sha256" \
-            --dir release-assets
+            --json assets,isDraft,isPrerelease,tagName \
+            >release-assets/release.json
+          python3 source/scripts/release/verify-release-state.py \
+            --metadata release-assets/release.json \
+            --tag "${SOURCE_TAG}" \
+            --asset "${DMG_NAME}" \
+            --asset "${DMG_NAME}.sha256" \
+            --asset release-provenance.json
 
-          checksum_file="release-assets/${DMG_NAME}.sha256"
-          if [[ ! -f "${checksum_file}" ]]; then
-            echo "Checksum asset not found: ${checksum_file}" >&2
+          for asset_name in "${DMG_NAME}" "${DMG_NAME}.sha256" release-provenance.json; do
+            gh release download "${SOURCE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --pattern "${asset_name}" \
+              --dir release-assets
+          done
+
+          sha256="$(
+            python3 source/scripts/release/verify-published-release-assets.py \
+              --dmg "release-assets/${DMG_NAME}" \
+              --checksum "release-assets/${DMG_NAME}.sha256" \
+              --provenance release-assets/release-provenance.json \
+              --tag "${SOURCE_TAG}" \
+              --repository "${EXPECTED_REPOSITORY}" \
+              --publisher-sha "${EXPECTED_PUBLISHER_SHA}" \
+              --source-sha-output release-assets/source-sha.txt
+          )"
+          source_sha="$(cat release-assets/source-sha.txt)"
+          if [[ ! "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Verified provenance returned an invalid source SHA." >&2
             exit 1
           fi
+          echo "SHA256=${sha256}" >>"${GITHUB_ENV}"
+          echo "source_sha=${source_sha}" >>"${GITHUB_OUTPUT}"
 
-          sha256="$(awk 'NR == 1 { print $1 }' "${checksum_file}")"
-          if [[ ! "${sha256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
-            echo "Invalid SHA-256 value in ${checksum_file}" >&2
-            exit 1
-          fi
-          echo "SHA256=${sha256,,}" >> "${GITHUB_ENV}"
+      - name: Rebind published provenance to live release source
+        shell: bash
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ steps.published_assets.outputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/verify-release-source.sh >/dev/null
 
       - name: Clone tap repository
         shell: bash
@@ -118,15 +203,71 @@ jobs:
           gh auth setup-git
           gh repo clone "${TAP_REPOSITORY}" tap
 
+      - name: Verify cloned tap repository identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
+        run: |
+          set -euo pipefail
+          if ! canonical_identity="$(
+            gh repo view "${TAP_REPOSITORY}" \
+              --json nameWithOwner,defaultBranchRef,url,sshUrl \
+              --jq '.nameWithOwner, .defaultBranchRef.name, .url, .sshUrl'
+          )"; then
+            echo "Failed to resolve canonical tap repository identity." >&2
+            exit 1
+          fi
+
+          mapfile -t canonical_fields <<<"${canonical_identity}"
+          if (("${#canonical_fields[@]}" != 4)); then
+            echo "Canonical tap repository metadata is incomplete." >&2
+            exit 1
+          fi
+          canonical_repository="${canonical_fields[0]}"
+          canonical_default_branch="${canonical_fields[1]}"
+          canonical_https_url="${canonical_fields[2]}"
+          canonical_ssh_url="${canonical_fields[3]}"
+
+          if [[ ! "${canonical_repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "Canonical tap repository identity is malformed." >&2
+            exit 1
+          fi
+          canonical_owner="${canonical_repository%%/*}"
+          canonical_name="${canonical_repository#*/}"
+          if [[ "${canonical_owner}" == "." || "${canonical_owner}" == ".." || "${canonical_name}" == "." || "${canonical_name}" == ".." ]]; then
+            echo "Canonical tap repository identity contains an invalid component." >&2
+            exit 1
+          fi
+          if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
+            echo "Tap repository resolved to a different canonical repository identity." >&2
+            exit 1
+          fi
+          if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+            echo "Configured tap_default_branch does not match the canonical repository default branch." >&2
+            exit 1
+          fi
+
+          fetch_url="$(git -C tap remote get-url --all origin)"
+          push_url="$(git -C tap remote get-url --push --all origin)"
+          python3 source/scripts/homebrew/validate-tap-remote.py \
+            --fetch-url="${fetch_url}" \
+            --push-url="${push_url}" \
+            --canonical-https-url="${canonical_https_url}" \
+            --canonical-ssh-url="${canonical_ssh_url}"
+
       - name: Prepare tap update branch
         id: branch
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.tap_token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           CASK_TOKEN: ${{ inputs.cask_token }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${SOURCE_TAG#v}"
           branch="automation/${CASK_TOKEN}-v${version}"
 
           cd tap
@@ -134,23 +275,59 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin
 
-          if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
-            git fetch origin "${branch}"
-            git switch -C "${branch}" "origin/${branch}"
-          else
-            git switch "${TAP_DEFAULT_BRANCH}"
-            git pull --ff-only origin "${TAP_DEFAULT_BRANCH}"
-            git switch -c "${branch}"
-          fi
+          remote_branch_sha=""
+          set +e
+          remote_line="$(git ls-remote --exit-code --branches origin "refs/heads/${branch}")"
+          ls_remote_status=$?
+          set -e
 
-          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+          case "${ls_remote_status}" in
+            0)
+              remote_line_count="$(printf '%s\n' "${remote_line}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+              if [[ "${remote_line_count}" != "1" ]]; then
+                echo "Existing automation branch lookup must return exactly one ref." >&2
+                exit 1
+              fi
+              remote_branch_sha="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $1 }')"
+              remote_branch_ref="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $2 }')"
+              if [[ ! "${remote_branch_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "Existing automation branch returned an invalid SHA." >&2
+                exit 1
+              fi
+              if [[ "${remote_branch_ref}" != "refs/heads/${branch}" ]]; then
+                echo "Existing automation branch lookup returned an unexpected ref." >&2
+                exit 1
+              fi
+              ;;
+            2)
+              ;;
+            *)
+              echo "Failed to query existing automation branch from tap remote." >&2
+              exit "${ls_remote_status}"
+              ;;
+          esac
+
+          git rev-parse --verify "refs/remotes/origin/${TAP_DEFAULT_BRANCH}^{commit}" >/dev/null
+          base_sha="$(git rev-parse "refs/remotes/origin/${TAP_DEFAULT_BRANCH}^{commit}")"
+          if [[ ! "${base_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Fetched tap default branch returned an invalid commit SHA." >&2
+            exit 1
+          fi
+          git switch -C "${branch}" "origin/${TAP_DEFAULT_BRANCH}"
+
+          {
+            echo "branch=${branch}"
+            echo "remote_branch_sha=${remote_branch_sha}"
+            echo "base_sha=${base_sha}"
+          } >>"${GITHUB_OUTPUT}"
 
       - name: Render Cask
         shell: bash
         env:
           CASK_TEMPLATE: source/templates/homebrew/Cask.rb.template
+          CASK_OUTPUT_ROOT: tap
           CASK_TOKEN: ${{ inputs.cask_token }}
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ inputs.source_tag }}
           SOURCE_REPOSITORY: ${{ github.repository }}
           DMG_BASENAME: ${{ inputs.dmg_basename_template }}
           APP_NAME: ${{ inputs.app_name }}
@@ -165,46 +342,468 @@ jobs:
           GITHUB_REPO="${SOURCE_REPOSITORY#*/}"
           export VERSION GITHUB_OWNER GITHUB_REPO
           bash source/scripts/homebrew/render-cask.sh
+          ruby -c "${OUTPUT_CASK}"
 
       - name: Commit and push Cask branch
         id: push
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.tap_token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
           CASK_TOKEN: ${{ inputs.cask_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
           BRANCH: ${{ steps.branch.outputs.branch }}
+          REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}
+          BASE_SHA: ${{ steps.branch.outputs.base_sha }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${SOURCE_TAG#v}"
           cd tap
+
+          verify_canonical_tap_identity() {
+            local canonical_identity
+            local canonical_fields
+            local canonical_repository
+            local canonical_default_branch
+            local canonical_https_url
+            local canonical_ssh_url
+            local fetch_url
+            local push_url
+
+            if ! canonical_identity="$(
+              gh repo view "${TAP_REPOSITORY}" \
+                --json nameWithOwner,defaultBranchRef,url,sshUrl \
+                --jq '.nameWithOwner, .defaultBranchRef.name, .url, .sshUrl'
+            )"; then
+              echo "Failed to re-resolve canonical tap repository identity before push." >&2
+              return 1
+            fi
+
+            mapfile -t canonical_fields <<<"${canonical_identity}"
+            if (("${#canonical_fields[@]}" != 4)); then
+              echo "Canonical tap repository metadata is incomplete before push." >&2
+              return 1
+            fi
+            canonical_repository="${canonical_fields[0]}"
+            canonical_default_branch="${canonical_fields[1]}"
+            canonical_https_url="${canonical_fields[2]}"
+            canonical_ssh_url="${canonical_fields[3]}"
+            if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
+              echo "Tap repository identity changed before branch push." >&2
+              return 1
+            fi
+            if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+              echo "Tap default branch changed before branch push." >&2
+              return 1
+            fi
+
+            fetch_url="$(git remote get-url --all origin)"
+            push_url="$(git remote get-url --push --all origin)"
+            python3 ../source/scripts/homebrew/validate-tap-remote.py \
+              --fetch-url="${fetch_url}" \
+              --push-url="${push_url}" \
+              --canonical-https-url="${canonical_https_url}" \
+              --canonical-ssh-url="${canonical_ssh_url}"
+          }
           git add "Casks/${CASK_TOKEN}.rb"
 
+          verify_remote_default_branch() {
+            local remote_line
+            local remote_status
+            local remote_count
+            local remote_sha
+            local remote_ref
+
+            if [[ ! "${BASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "BASE_SHA must be the exact fetched tap default-branch commit." >&2
+              return 1
+            fi
+
+            set +e
+            remote_line="$(git ls-remote --exit-code --heads origin "refs/heads/${TAP_DEFAULT_BRANCH}")"
+            remote_status=$?
+            set -e
+            if ((remote_status != 0)); then
+              echo "Failed to re-query the tap default branch before branch push." >&2
+              return 1
+            fi
+
+            remote_count="$(printf '%s\n' "${remote_line}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+            if [[ "${remote_count}" != "1" ]]; then
+              echo "Tap default branch lookup must return exactly one ref before branch push." >&2
+              return 1
+            fi
+
+            remote_sha="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $1 }')"
+            remote_ref="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $2 }')"
+            if [[ "${remote_ref}" != "refs/heads/${TAP_DEFAULT_BRANCH}" ]]; then
+              echo "Tap default branch lookup returned an unexpected ref before branch push." >&2
+              return 1
+            fi
+            if [[ ! "${remote_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Tap default branch lookup returned an invalid commit SHA before branch push." >&2
+              return 1
+            fi
+            if [[ "${remote_sha}" != "${BASE_SHA}" ]]; then
+              echo "Tap default branch moved after the automation branch was prepared." >&2
+              return 1
+            fi
+          }
+
+          push_automation_branch() {
+            verify_canonical_tap_identity
+            verify_remote_default_branch
+            if [[ -n "${REMOTE_BRANCH_SHA}" ]]; then
+              if [[ ! "${REMOTE_BRANCH_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "REMOTE_BRANCH_SHA must be a canonical commit SHA when present." >&2
+                return 1
+              fi
+              git push --set-upstream origin "HEAD:${BRANCH}" \
+                --force-with-lease="refs/heads/${BRANCH}:${REMOTE_BRANCH_SHA}"
+            else
+              git push --set-upstream origin "HEAD:${BRANCH}" \
+                --force-with-lease="refs/heads/${BRANCH}:"
+            fi
+          }
+
           if git diff --cached --quiet; then
-            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            if [[ -n "${REMOTE_BRANCH_SHA}" ]]; then
+              cleanup_sha="$(git rev-parse HEAD)"
+              if [[ ! "${cleanup_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "No-op cleanup returned an invalid local commit SHA." >&2
+                exit 1
+              fi
+              if [[ "${cleanup_sha}" != "${BASE_SHA}" ]]; then
+                echo "No-op cleanup is not based on the observed tap default-branch commit." >&2
+                exit 1
+              fi
+              push_automation_branch
+              {
+                echo "cleanup_performed=true"
+                echo "cleanup_sha=${cleanup_sha}"
+                echo "changed=false"
+              } >>"${GITHUB_OUTPUT}"
+            else
+              {
+                echo "cleanup_performed=false"
+                echo "changed=false"
+              } >>"${GITHUB_OUTPUT}"
+            fi
           else
             git commit -m "chore(cask): update ${CASK_TOKEN} to ${version}"
-            git push --set-upstream origin "${BRANCH}"
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            pushed_sha="$(git rev-parse HEAD)"
+            if [[ ! "${pushed_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Local automation branch returned an invalid commit SHA." >&2
+              exit 1
+            fi
+            push_automation_branch
+            {
+              echo "cleanup_performed=false"
+              echo "changed=true"
+              echo "pushed_sha=${pushed_sha}"
+            } >>"${GITHUB_OUTPUT}"
           fi
 
       - name: Open or reuse tap pull request
+        id: pull_request
+        if: ${{ steps.push.outputs.changed == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap_token }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
+          CASK_TOKEN: ${{ inputs.cask_token }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}
+        run: |
+          set -euo pipefail
+          version="${SOURCE_TAG#v}"
+          pr_metadata="${RUNNER_TEMP}/tap-open-prs.json"
+          if [[ ! "${PUSHED_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "PUSHED_SHA must be the exact pushed automation commit." >&2
+            exit 1
+          fi
+
+          query_open_pr_number() {
+            if ! gh pr list \
+              --repo "${TAP_REPOSITORY}" \
+              --state open \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --limit 100 \
+              --json number,headRefName,baseRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository \
+              >"${pr_metadata}"; then
+              echo "Failed to query existing tap pull requests." >&2
+              return 1
+            fi
+
+            python3 source/scripts/homebrew/select-tap-pull-request.py \
+              --metadata "${pr_metadata}" \
+              --repository "${TAP_REPOSITORY}" \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --head-sha "${PUSHED_SHA}"
+          }
+
+          if ! open_pr_number="$(query_open_pr_number)"; then
+            echo "Tap pull request query result failed identity validation." >&2
+            exit 1
+          fi
+
+          if [[ -z "${open_pr_number}" ]]; then
+            create_status=0
+            gh pr create \
+              --repo "${TAP_REPOSITORY}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --head "${BRANCH}" \
+              --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
+              --body "Automated Cask update for ${GITHUB_REPOSITORY}@${SOURCE_TAG}. Verify tap CI before merging." \
+              >/dev/null || create_status=$?
+
+            if ! open_pr_number="$(query_open_pr_number)"; then
+              echo "Tap pull request post-create identity validation failed." >&2
+              exit 1
+            fi
+            if [[ -z "${open_pr_number}" ]]; then
+              if ((create_status == 0)); then
+                echo "Created tap pull request is not observable with the expected head commit." >&2
+              else
+                echo "Tap pull request creation failed and no concurrent matching pull request is available." >&2
+              fi
+              exit 1
+            fi
+          fi
+
+          echo "number=${open_pr_number}" >>"${GITHUB_OUTPUT}"
+
+      - name: Reverify tap branch and pull request identity
         if: ${{ steps.push.outputs.changed == 'true' }}
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.tap_token }}
           TAP_REPOSITORY: ${{ inputs.tap_repository }}
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
-          CASK_TOKEN: ${{ inputs.cask_token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
+          PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}
+          PR_NUMBER: ${{ steps.pull_request.outputs.number }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          if gh pr view "${BRANCH}" --repo "${TAP_REPOSITORY}" >/dev/null 2>&1; then
-            gh pr view "${BRANCH}" --repo "${TAP_REPOSITORY}" --web=false
-          else
-            gh pr create \
-              --repo "${TAP_REPOSITORY}" \
-              --base "${TAP_DEFAULT_BRANCH}" \
-              --head "${BRANCH}" \
-              --title "chore(cask): update ${CASK_TOKEN} to ${version}" \
-              --body "Automated Cask update for ${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}. Verify tap CI before merging."
+          if [[ ! "${PUSHED_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "PUSHED_SHA must be the exact pushed automation commit." >&2
+            exit 1
           fi
+          if [[ ! "${PR_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "PR_NUMBER must be a positive pull request number." >&2
+            exit 1
+          fi
+
+          verify_canonical_tap_identity() {
+            local canonical_identity
+            local canonical_fields
+            local canonical_repository
+            local canonical_default_branch
+            local canonical_https_url
+            local canonical_ssh_url
+            local fetch_url
+            local push_url
+
+            if ! canonical_identity="$(
+              gh repo view "${TAP_REPOSITORY}" \
+                --json nameWithOwner,defaultBranchRef,url,sshUrl \
+                --jq '.nameWithOwner, .defaultBranchRef.name, .url, .sshUrl'
+            )"; then
+              echo "Failed to re-resolve canonical tap repository identity during final verification." >&2
+              return 1
+            fi
+
+            mapfile -t canonical_fields <<<"${canonical_identity}"
+            if (("${#canonical_fields[@]}" != 4)); then
+              echo "Canonical tap repository metadata is incomplete during final verification." >&2
+              return 1
+            fi
+            canonical_repository="${canonical_fields[0]}"
+            canonical_default_branch="${canonical_fields[1]}"
+            canonical_https_url="${canonical_fields[2]}"
+            canonical_ssh_url="${canonical_fields[3]}"
+            if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
+              echo "Tap repository identity changed before final verification." >&2
+              return 1
+            fi
+            if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+              echo "Tap default branch changed before final verification." >&2
+              return 1
+            fi
+
+            fetch_url="$(git -C tap remote get-url --all origin)"
+            push_url="$(git -C tap remote get-url --push --all origin)"
+            python3 source/scripts/homebrew/validate-tap-remote.py \
+              --fetch-url="${fetch_url}" \
+              --push-url="${push_url}" \
+              --canonical-https-url="${canonical_https_url}" \
+              --canonical-ssh-url="${canonical_ssh_url}"
+          }
+
+          verify_remote_branch() {
+            local remote_line
+            local remote_status
+            local remote_count
+            local remote_sha
+            local remote_ref
+
+            set +e
+            remote_line="$(cd tap && git ls-remote --exit-code --branches origin "refs/heads/${BRANCH}")"
+            remote_status=$?
+            set -e
+
+            if ((remote_status != 0)); then
+              echo "Failed to re-query the pushed automation branch." >&2
+              return 1
+            fi
+
+            remote_count="$(printf '%s\n' "${remote_line}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+            if [[ "${remote_count}" != "1" ]]; then
+              echo "Final automation branch lookup must return exactly one ref." >&2
+              return 1
+            fi
+
+            remote_sha="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $1 }')"
+            remote_ref="$(printf '%s\n' "${remote_line}" | awk 'NR == 1 { print $2 }')"
+            if [[ "${remote_ref}" != "refs/heads/${BRANCH}" ]]; then
+              echo "Final automation branch lookup returned an unexpected ref." >&2
+              return 1
+            fi
+            if [[ "${remote_sha}" != "${PUSHED_SHA}" ]]; then
+              echo "Automation branch moved after the trusted push." >&2
+              return 1
+            fi
+          }
+
+          query_final_pr_number() {
+            local pr_metadata="${RUNNER_TEMP}/tap-final-open-prs.json"
+            if ! gh pr list \
+              --repo "${TAP_REPOSITORY}" \
+              --state open \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --limit 100 \
+              --json number,headRefName,baseRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository \
+              >"${pr_metadata}"; then
+              echo "Failed to re-query the selected tap pull request." >&2
+              return 1
+            fi
+
+            python3 source/scripts/homebrew/select-tap-pull-request.py \
+              --metadata "${pr_metadata}" \
+              --repository "${TAP_REPOSITORY}" \
+              --head "${BRANCH}" \
+              --base "${TAP_DEFAULT_BRANCH}" \
+              --head-sha "${PUSHED_SHA}"
+          }
+
+          verify_canonical_tap_identity
+          verify_remote_branch
+          if ! final_pr_number="$(query_final_pr_number)"; then
+            echo "Final tap pull request identity validation failed." >&2
+            exit 1
+          fi
+          if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]; then
+            echo "Selected tap pull request changed before final verification." >&2
+            exit 1
+          fi
+          verify_remote_branch
+          verify_canonical_tap_identity
+          if ! final_pr_number="$(query_final_pr_number)"; then
+            echo "Final tap pull request identity validation failed after remote rebind." >&2
+            exit 1
+          fi
+          if [[ "${final_pr_number}" != "${PR_NUMBER}" ]]; then
+            echo "Selected tap pull request changed after remote rebind." >&2
+            exit 1
+          fi
+          printf 'Verified open tap pull request #%s at %s.\n' "${PR_NUMBER}" "${PUSHED_SHA}"
+
+      - name: Reverify no-op tap branch cleanup
+        if: ${{ steps.push.outputs.changed == 'false' && steps.push.outputs.cleanup_performed == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.tap_token }}
+          TAP_REPOSITORY: ${{ inputs.tap_repository }}
+          TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          CLEANUP_SHA: ${{ steps.push.outputs.cleanup_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${CLEANUP_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "CLEANUP_SHA must be the exact no-op cleanup commit." >&2
+            exit 1
+          fi
+
+          if ! canonical_identity="$(
+            gh repo view "${TAP_REPOSITORY}" \
+              --json nameWithOwner,defaultBranchRef,url,sshUrl \
+              --jq '.nameWithOwner, .defaultBranchRef.name, .url, .sshUrl'
+          )"; then
+            echo "Failed to re-resolve canonical tap repository identity after no-op cleanup." >&2
+            exit 1
+          fi
+          mapfile -t canonical_fields <<<"${canonical_identity}"
+          if (("${#canonical_fields[@]}" != 4)); then
+            echo "Canonical tap repository metadata is incomplete after no-op cleanup." >&2
+            exit 1
+          fi
+          if [[ "${canonical_fields[0],,}" != "${TAP_REPOSITORY,,}" ]]; then
+            echo "Tap repository identity changed after no-op cleanup." >&2
+            exit 1
+          fi
+          if [[ "${canonical_fields[1]}" != "${TAP_DEFAULT_BRANCH}" ]]; then
+            echo "Tap default branch changed after no-op cleanup." >&2
+            exit 1
+          fi
+
+          fetch_url="$(git -C tap remote get-url --all origin)"
+          push_url="$(git -C tap remote get-url --push --all origin)"
+          python3 source/scripts/homebrew/validate-tap-remote.py \
+            --fetch-url="${fetch_url}" \
+            --push-url="${push_url}" \
+            --canonical-https-url="${canonical_fields[2]}" \
+            --canonical-ssh-url="${canonical_fields[3]}"
+
+          set +e
+          remote_lines="$(
+            cd tap &&
+              git ls-remote --exit-code --heads origin \
+                "refs/heads/${TAP_DEFAULT_BRANCH}" \
+                "refs/heads/${BRANCH}"
+          )"
+          remote_status=$?
+          set -e
+          if ((remote_status != 0)); then
+            echo "Failed to re-query tap refs after no-op cleanup." >&2
+            exit 1
+          fi
+
+          remote_count="$(printf '%s\n' "${remote_lines}" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          if [[ "${remote_count}" != "2" ]]; then
+            echo "No-op cleanup verification must return exactly the default and automation refs." >&2
+            exit 1
+          fi
+
+          default_ref="refs/heads/${TAP_DEFAULT_BRANCH}"
+          automation_ref="refs/heads/${BRANCH}"
+          default_sha="$(printf '%s\n' "${remote_lines}" | awk -v ref="${default_ref}" '$2 == ref {print $1}')"
+          automation_sha="$(printf '%s\n' "${remote_lines}" | awk -v ref="${automation_ref}" '$2 == ref {print $1}')"
+          if [[ ! "${default_sha}" =~ ^[0-9a-f]{40}$ || ! "${automation_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "No-op cleanup verification returned malformed ref identity." >&2
+            exit 1
+          fi
+          if [[ "${default_sha}" != "${CLEANUP_SHA}" ]]; then
+            echo "Tap default branch moved during no-op cleanup." >&2
+            exit 1
+          fi
+          if [[ "${automation_sha}" != "${CLEANUP_SHA}" ]]; then
+            echo "Automation branch moved after no-op cleanup." >&2
+            exit 1
+          fi
+          printf 'Verified no-op tap branch cleanup at %s.\n' "${CLEANUP_SHA}"

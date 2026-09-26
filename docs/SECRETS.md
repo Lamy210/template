@@ -2,11 +2,66 @@
 
 ## Threat model
 
-Release credentials are more sensitive than ordinary CI configuration. A malicious or accidentally modified build script must not gain access to Developer ID certificates, App Store Connect private keys, or cross-repository write credentials.
+Release credentials are more sensitive than ordinary CI configuration. A malicious or accidentally modified build script, old release-tag commit, downloaded artifact, or pull-request change must not gain access to Developer ID certificates, App Store Connect private keys, or cross-repository write credentials.
 
 The core rule is:
 
-> Build untrusted/application-controlled code without release secrets. Only pass the resulting artifact into the privileged signing/release stage.
+> Build application-controlled source without release secrets. Validate its exact provenance and artifact identity in a separate secret-free publisher job. Only the trusted default-branch publisher may enter the protected release Environment.
+
+## Three release trust zones
+
+### 1. Tag-triggered Release Build
+
+The release build runs from the `vX.Y.Z` application source commit.
+
+It must have:
+
+- no Apple secrets;
+- no Homebrew tap token;
+- no `release` Environment;
+- no repository write permission;
+- no call to the privileged reusable macOS release workflow.
+
+Its only release output is an unsigned application archive plus strict provenance, uploaded under an artifact name bound to the exact run ID and attempt.
+
+### 2. Default-branch publisher validation
+
+`release-publisher.yml` is a `workflow_run` workflow that must exist on the repository default branch. Its validation job uses current trusted publisher code rather than the release-tag commit.
+
+The validation job has only:
+
+```yaml
+permissions:
+  actions: read
+  contents: read
+```
+
+It has no Environment and no secrets. It resolves one exact upstream workflow run/artifact, validates provenance/tag/source/history/digests/archive/app metadata, and creates a new validator-owned handoff artifact inside the publisher run.
+
+### 3. Privileged signing/publication
+
+Inside the called `reusable-macos-release.yml`, signing and repository publication are separate jobs.
+
+The signing/notarization job declares:
+
+```yaml
+environment: release
+permissions:
+  actions: read
+  contents: read
+```
+
+It revalidates the validator-owned metadata and archive before importing a certificate. Apple credentials are read directly from the fixed protected Environment. After verification it uploads a current-run/current-attempt verified release Artifact.
+
+A later publication job declares no Environment, receives no Apple secrets, independently verifies the exact signer-produced Artifact identity/digest, and alone receives:
+
+```yaml
+permissions:
+  actions: read
+  contents: write
+```
+
+The publisher caller deliberately does **not** use `secrets: inherit` and does not map Apple secrets through `workflow_call`.
 
 ## Secret classes
 
@@ -19,6 +74,7 @@ Safe to commit:
 - minimum supported macOS version
 - Homebrew Cask token
 - release channel names
+- expected upstream workflow path
 
 ### Sensitive but non-secret configuration
 
@@ -41,15 +97,9 @@ Store only in GitHub Secrets / protected Environments:
 
 ## Required `release` Environment
 
-Create a GitHub Environment named exactly `release` and place all Apple signing/notarization secrets there. The reusable macOS release workflow declares:
+Create a GitHub Environment named exactly `release` and place all Apple signing/notarization secrets there. The reusable macOS release workflow declares `environment: release`; no upstream tag-build or publisher-validation job does.
 
-```yaml
-environment: release
-```
-
-The release job therefore receives these secrets from that Environment only after the Environment's protection rules are satisfied.
-
-Where account features permit, add deployment protection/reviewer requirements and restrict which protected tags may deploy to the Environment.
+Where account features permit, add deployment protection/reviewer requirements and restrict deployments to the intended release policy. Environment protection is an additional control, not a replacement for publisher provenance validation.
 
 ## Required Apple secret names
 
@@ -61,32 +111,37 @@ The reusable release workflow reads the following names directly from the `relea
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
 
-Do not also create repository-level copies of these Apple release credentials. Keeping one protected source avoids accidentally making the credentials available to ordinary repository jobs.
+Do not also create repository-level copies of these Apple release credentials. Keeping one protected source avoids accidentally making them available to ordinary repository jobs.
 
 Do not use broad names such as `PASSWORD`, `KEY`, or `TOKEN` when a narrower name is possible.
 
-## GitHub Actions permissions
+## Why the caller does not pass Apple secrets
 
-Set workflow-level permissions to read-only or empty and grant write permission at the smallest possible job scope.
+GitHub reusable workflows can use an Environment declared in the called job. This template uses that boundary intentionally.
 
-Example baseline:
+The publisher calls the privileged reusable workflow with validated non-secret inputs only. It does not use:
 
 ```yaml
-permissions:
-  contents: read
+secrets: inherit
 ```
 
-Only a release-publishing job should receive `contents: write`. Artifact attestation additionally requires its documented attestation/OIDC permissions.
+and it does not map Apple secret names explicitly.
 
-## Reusable workflow and Environment caveat
+The Apple secrets are resolved only when the called job enters `environment: release`. This keeps unrelated repository/organization secrets out of the privileged workflow interface and prevents the secret-free validation job from gaining access to them.
 
-GitHub does not allow Environment secrets to be passed from a caller via `on.workflow_call`. If the called workflow declares an Environment at job level, that Environment's secrets are used instead of same-named caller-passed secrets.
+## GitHub Actions permissions
 
-For that reason this template deliberately does **not** pass Apple credentials through the reusable workflow's `secrets:` interface. The privileged job references the fixed Environment secret names directly.
+Use `permissions: {}` or read-only workflow defaults and grant capabilities at the smallest possible job scope.
 
-Do not work around this by moving the Apple keys to repository secrets or by using `secrets: inherit`.
+Expected release permissions are:
 
-A different reusable workflow that handles non-Environment credentials, such as the Homebrew tap updater, may use a narrow named-secret interface because it is a separate privilege domain.
+- Release Build: `contents: read`
+- Publisher validation: `actions: read`, `contents: read`
+- Signing/notarization: `actions: read`, `contents: read`, protected `release` Environment
+- GitHub Release publication: `actions: read`, `contents: write`, no Apple Environment/secrets
+- Homebrew updater: source repository read access plus one narrow named tap credential
+
+Do not grant release write permission to the tag build, validation job, or Apple-signing job.
 
 ## Fork pull requests
 
@@ -98,43 +153,66 @@ Never work around fork secret restrictions by giving untrusted pull-request code
 
 Do not use `pull_request_target` to check out and execute contributor-controlled code. If the event is ever required for metadata-only automation, that job must not execute pull-request code or scripts from the pull-request branch.
 
+## Artifact input is not trusted because CI produced it
+
+The privileged publisher treats the upstream build artifact as untrusted input even when the upstream workflow succeeded.
+
+Before release secrets are available, validate:
+
+- exact source repository/workflow/run/attempt;
+- exact artifact ID/name/digest;
+- Actions Artifact ZIP confinement;
+- build provenance;
+- stable tag and source SHA binding;
+- source reachability from trusted default-branch history;
+- tar archive digest and confinement;
+- application bundle ID/version/executable contract.
+
+The secret-free validator then re-handoffs only the validated archive plus validator-owned metadata. The privileged job rechecks both before certificate import.
+
 ## Certificate handling
 
-The release scripts create a temporary keychain, import the certificate, use it for signing, then delete the keychain in cleanup. Do not install release certificates into the login keychain on a shared or self-hosted runner.
+The release scripts create a temporary keychain, import the certificate, use it for signing, then delete the keychain in an `always()` cleanup step. Do not install release certificates into the login keychain on a shared or self-hosted runner.
 
-Prefer ephemeral GitHub-hosted macOS runners for the privileged release job unless a self-hosted runner has been intentionally hardened for signing.
+Prefer ephemeral GitHub-hosted macOS runners unless a self-hosted signing runner has been intentionally hardened.
 
-## Release-script trust
+## Release-control code trust
 
-The privileged release job executes the repository's shared release scripts, so changes to these paths are security-sensitive:
+The privileged release job executes control code from the current default-branch publisher checkout. Changes to these paths are security-sensitive:
 
 ```text
 .github/workflows/reusable-macos-release.yml
+examples/app-release-publisher.yml
 scripts/release/**
 *.entitlements
 ```
 
-Protect them through PR-only changes and CODEOWNERS review in multi-maintainer repositories. A contributor-controlled PR must never be able to modify and execute these files with release credentials before the change is reviewed and merged into the trusted release ref.
+The tag commit may select application source, but it must not select the privileged publisher implementation. Do not reintroduce a same-tag-context call to `./.github/workflows/reusable-macos-release.yml`.
+
+Entitlements used by the privileged job should come from the trusted publisher/default-branch checkout, not from the downloaded release artifact.
 
 ## Log safety
 
 - never enable shell tracing (`set -x`) in secret-handling scripts
 - never echo private key/certificate contents
-- mask dynamically derived credentials with GitHub's masking command when applicable
+- mask dynamically derived credentials when applicable
 - avoid passing secrets on command lines when a tool supports files or environment variables
 - remove temporary key/keychain files in an `always()` cleanup step
+- do not expand potentially attacker-controlled workflow values directly into shell source; bind them through step `env:` and quote shell variables
 
 ## Cross-repository Homebrew writes
 
-The repository-scoped `GITHUB_TOKEN` must not be treated as a general cross-repository credential.
+Homebrew is a separate privilege domain. `reusable-homebrew-update.yml` accepts only the narrow named secret `tap_token` and receives the already-validated `source_tag` as a non-secret input after signing/publication succeeds.
 
-Preferred design:
+Preferred credential:
 
-1. a GitHub App has minimal write permission to the Homebrew tap repository
-2. the Homebrew update workflow obtains a short-lived installation token
-3. only the Homebrew update job receives that token
+1. a GitHub App with minimal permission to the tap repository;
+2. a short-lived installation token;
+3. access only to the Homebrew update job.
 
-A fine-grained PAT may be used as a temporary fallback, but should be scoped only to the tap repository and required permissions.
+A fine-grained PAT is a temporary fallback and should be scoped only to the tap repository and required permissions.
+
+Do not use `secrets: inherit` for Homebrew either.
 
 ## Secret scanning
 

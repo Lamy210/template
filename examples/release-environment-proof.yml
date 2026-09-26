@@ -1,0 +1,35 @@
+name: Release Environment Negative Proof
+
+run-name: Release Environment Negative Proof / ${{ inputs.nonce }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      nonce:
+        description: Correlation token for disposable runtime proof
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  baseline:
+    name: Baseline runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Confirm workflow execution
+        shell: bash
+        run: echo "baseline runner reached"
+
+  environment-probe:
+    name: Release environment probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment: release
+
+    steps:
+      - name: Unexpected environment entry
+        shell: bash
+        run: echo "release Environment admitted this ref"

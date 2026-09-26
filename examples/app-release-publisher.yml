@@ -1,0 +1,241 @@
+# Copy/adapt this file to .github/workflows/release-publisher.yml in an application repository.
+# This workflow must live on the default branch. GitHub loads workflow_run workflows
+# from the default branch, which keeps publisher control code independent of the tag commit.
+
+name: Release Publisher
+
+on:
+  workflow_run:
+    workflows:
+      - "Release Build"
+    types:
+      - completed
+
+permissions: {}
+
+concurrency:
+  group: release-publisher-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release input without secrets
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      validated_artifact_name: ${{ steps.release_outputs.outputs.validated_artifact_name }}
+      validated_artifact_id: ${{ steps.validated_identity.outputs.id }}
+      validated_artifact_digest: ${{ steps.validated_identity.outputs.digest }}
+      source_tag: ${{ steps.release_outputs.outputs.source_tag }}
+      source_sha: ${{ steps.release_outputs.outputs.source_sha }}
+      source_version: ${{ steps.release_outputs.outputs.source_version }}
+      source_run_id: ${{ steps.release_outputs.outputs.source_run_id }}
+      source_run_attempt: ${{ steps.release_outputs.outputs.source_run_attempt }}
+      source_artifact_id: ${{ steps.release_outputs.outputs.source_artifact_id }}
+      source_artifact_digest: ${{ steps.release_outputs.outputs.source_artifact_digest }}
+      archive_sha256: ${{ steps.release_outputs.outputs.archive_sha256 }}
+      validated_app_basename: ${{ steps.release_outputs.outputs.validated_app_basename }}
+      validated_bundle_id: ${{ steps.release_outputs.outputs.validated_bundle_id }}
+
+    steps:
+      - name: Checkout trusted publisher control code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve exact triggering build artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/resolve-release-build-artifact.sh \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow-path .github/workflows/release-build.yml \
+            --run-id "${SOURCE_RUN_ID}" \
+            --run-attempt "${SOURCE_RUN_ATTEMPT}" \
+            --output source-artifact
+
+      - name: Rebind source artifact repository identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/verify-source-artifact-repository.sh \
+            --repository "${GITHUB_REPOSITORY}" \
+            --repository-id "${EXPECTED_REPOSITORY_ID}" \
+            --source-metadata source-artifact/source-artifact-metadata.json
+
+      - name: Read candidate tag and validated source SHA
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >>"${GITHUB_OUTPUT}"
+          import json
+          import re
+
+          with open("source-artifact/source-artifact-metadata.json", encoding="utf-8") as handle:
+              metadata = json.load(handle)
+
+          tag = metadata.get("sourceTag")
+          source_sha = metadata.get("sourceSHA")
+          if not isinstance(tag, str) or re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", tag) is None:
+              raise SystemExit("candidate tag is not a stable release tag")
+          if not isinstance(source_sha, str) or re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
+              raise SystemExit("resolved source metadata contains an invalid SHA")
+          print(f"tag={tag}")
+          print(f"source_sha={source_sha}")
+          PY
+
+      - name: Independently bind tag to source and trusted history
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ steps.candidate.outputs.tag }}
+          SOURCE_SHA: ${{ steps.candidate.outputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          resolved_sha="$(bash scripts/release/verify-release-source.sh)"
+          printf 'resolved_sha=%s\n' "${resolved_sha}" >>"${GITHUB_OUTPUT}"
+
+      - name: Validate archive provenance and application identity
+        shell: bash
+        env:
+          RESOLVED_TAG_SHA: ${{ steps.source.outputs.resolved_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p validated-release-input
+          python3 scripts/release/validate-release-input.py \
+            --provenance source-artifact/release-input/build-provenance.json \
+            --source-metadata source-artifact/source-artifact-metadata.json \
+            --archive source-artifact/release-input/unsigned-macos-app.tar.gz \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow-path .github/workflows/release-build.yml \
+            --app-basename MyApp.app \
+            --bundle-id com.example.MyApp \
+            --resolved-tag-sha "${RESOLVED_TAG_SHA}" \
+            --source-is-ancestor true \
+            --publisher-sha "${GITHUB_SHA}" \
+            --publisher-run-id "${GITHUB_RUN_ID}" \
+            --publisher-run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --output validated-release-input/validated-release-metadata.json
+          cp source-artifact/release-input/unsigned-macos-app.tar.gz \
+            validated-release-input/unsigned-macos-app.tar.gz
+
+      - name: Export validated release identity
+        id: release_outputs
+        shell: bash
+        env:
+          VALIDATED_ARTIFACT_NAME: validated-release-input-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >>"${GITHUB_OUTPUT}"
+          import json
+          import os
+
+          with open("validated-release-input/validated-release-metadata.json", encoding="utf-8") as handle:
+              metadata = json.load(handle)
+
+          output_values = {
+              "validated_artifact_name": os.environ["VALIDATED_ARTIFACT_NAME"],
+              "source_tag": metadata["tag"],
+              "source_sha": metadata["sourceSHA"],
+              "source_version": metadata["version"],
+              "source_run_id": metadata["sourceRunId"],
+              "source_run_attempt": metadata["sourceRunAttempt"],
+              "source_artifact_id": metadata["sourceArtifactId"],
+              "source_artifact_digest": metadata["sourceArtifactDigest"],
+              "archive_sha256": metadata["archiveSha256"],
+              "validated_app_basename": metadata["appBasename"],
+              "validated_bundle_id": metadata["bundleId"],
+          }
+          for key, value in output_values.items():
+              print(f"{key}={value}")
+          PY
+
+      - name: Re-handoff validated release input inside publisher run
+        id: validated_upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: validated-release-input-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: |
+            validated-release-input/unsigned-macos-app.tar.gz
+            validated-release-input/validated-release-metadata.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Normalize validated artifact identity
+        id: validated_identity
+        shell: bash
+        env:
+          RAW_ARTIFACT_ID: ${{ steps.validated_upload.outputs.artifact-id }}
+          RAW_ARTIFACT_DIGEST: ${{ steps.validated_upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/normalize-validated-artifact-identity.py \
+            --artifact-id "${RAW_ARTIFACT_ID}" \
+            --artifact-digest "${RAW_ARTIFACT_DIGEST}" \
+            >>"${GITHUB_OUTPUT}"
+
+  sign-and-publish:
+    name: Sign and publish validated release
+    needs: validate
+    if: ${{ needs.validate.result == 'success' }}
+    permissions:
+      actions: read
+      contents: write
+    uses: ./.github/workflows/reusable-macos-release.yml
+    with:
+      validated_artifact_name: ${{ needs.validate.outputs.validated_artifact_name }}
+      validated_artifact_id: ${{ needs.validate.outputs.validated_artifact_id }}
+      validated_artifact_digest: ${{ needs.validate.outputs.validated_artifact_digest }}
+      source_tag: ${{ needs.validate.outputs.source_tag }}
+      source_sha: ${{ needs.validate.outputs.source_sha }}
+      source_version: ${{ needs.validate.outputs.source_version }}
+      source_run_id: ${{ needs.validate.outputs.source_run_id }}
+      source_run_attempt: ${{ needs.validate.outputs.source_run_attempt }}
+      source_artifact_id: ${{ needs.validate.outputs.source_artifact_id }}
+      source_artifact_digest: ${{ needs.validate.outputs.source_artifact_digest }}
+      archive_sha256: ${{ needs.validate.outputs.archive_sha256 }}
+      app_name: MyApp
+      app_path: MyApp.app
+      bundle_id: com.example.MyApp
+      dmg_name: MyApp-${{ needs.validate.outputs.source_version }}.dmg
+      signing_identity: "Developer ID Application: Example Developer (TEAMID)"
+      entitlements_path: ""
+      publish_github_release: true
+
+  homebrew:
+    name: Propose Homebrew Cask update
+    needs: [validate, sign-and-publish]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-homebrew-update.yml
+    with:
+      source_tag: ${{ needs.validate.outputs.source_tag }}
+      validated_app_basename: ${{ needs.validate.outputs.validated_app_basename }}
+      validated_bundle_id: ${{ needs.validate.outputs.validated_bundle_id }}
+      tap_repository: Lamy210/homebrew-tap
+      tap_default_branch: main
+      cask_token: my-app
+      app_name: MyApp
+      bundle_id: com.example.MyApp
+      description: Example macOS application
+      homepage: https://github.com/example/MyApp
+      dmg_name: MyApp-${{ needs.validate.outputs.source_version }}.dmg
+      dmg_basename_template: MyApp-v#{version}.dmg
+    secrets:
+      tap_token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

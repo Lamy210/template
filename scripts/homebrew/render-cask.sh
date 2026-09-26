@@ -12,6 +12,7 @@ set -euo pipefail
 : "${HOMEPAGE:?HOMEPAGE is required}"
 : "${BUNDLE_ID:?BUNDLE_ID is required}"
 : "${OUTPUT_CASK:?OUTPUT_CASK is required}"
+: "${CASK_OUTPUT_ROOT:?CASK_OUTPUT_ROOT is required}"
 
 TEMPLATE_PATH="${CASK_TEMPLATE:-templates/homebrew/Cask.rb.template}"
 
@@ -20,11 +21,20 @@ if [[ ! -f "${TEMPLATE_PATH}" ]]; then
   exit 1
 fi
 
+validate_output_path() {
+  python3 "$(dirname "${BASH_SOURCE[0]}")/validate-cask-output-path.py" \
+    --root "${CASK_OUTPUT_ROOT}" \
+    --output "${OUTPUT_CASK}"
+}
+
+validate_output_path
 mkdir -p "$(dirname "${OUTPUT_CASK}")"
+validate_output_path
 
 python3 - "${TEMPLATE_PATH}" "${OUTPUT_CASK}" <<'PY'
 import os
 import pathlib
+import re
 import sys
 
 source = pathlib.Path(sys.argv[1])
@@ -51,11 +61,26 @@ def ruby_string(value: str) -> str:
         .replace('"', '\\"')
         .replace("\r", "\\r")
         .replace("\n", "\\n")
+        .replace("#{", "\\#{")
     )
 
 
+dmg_basename = os.environ["DMG_BASENAME"]
+if re.fullmatch(
+    r"[A-Za-z0-9._+-]*#\{version\}[A-Za-z0-9._+-]*\.dmg",
+    dmg_basename,
+) is None:
+    raise SystemExit(
+        "DMG_BASENAME must be a literal DMG basename with exactly one #{version} placeholder"
+    )
+
 for key in keys:
-    text = text.replace("{{" + key + "}}", ruby_string(os.environ[key]))
+    value = os.environ[key]
+    if key == "DMG_BASENAME":
+        rendered = ruby_string(value).replace(r"\#{version}", "#{version}")
+    else:
+        rendered = ruby_string(value)
+    text = text.replace("{{" + key + "}}", rendered)
 
 if "{{" in text or "}}" in text:
     raise SystemExit("Unresolved placeholder remains in rendered Cask")
