@@ -132,6 +132,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 metadata(),
                 "sha256:" + "b" * 64,
                 compare(),
+                final_default_commit=default_commit(),
             ),
         )
 
@@ -168,6 +169,34 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             repository(), head, source_run(), publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("current default-branch head" in error for error in errors))
+
+    def test_rejects_default_head_drift_during_collection(self) -> None:
+        final_head = default_commit()
+        final_head["sha"] = "2" * 40
+
+        errors = validate_post_split_runtime_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            metadata(),
+            "sha256:" + "b" * 64,
+            compare(),
+            final_default_commit=final_head,
+        )
+
+        self.assertTrue(
+            any(
+                "default-branch head changed during runtime proof collection" in error
+                for error in errors
+            ),
+            errors,
+        )
+        self.assertTrue(
+            any("final snapshot" in error for error in errors),
+            errors,
+        )
 
     def test_rejects_wrong_source_or_publisher_workflow_identity(self) -> None:
         bad_source = source_run()
@@ -334,6 +363,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             fixtures = {
                 "repository.json": repository(),
                 "default-commit.json": default_commit(),
+                "final-default-commit.json": default_commit(),
                 "source-run.json": source_run(),
                 "publisher-run.json": publisher_run(),
                 "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
@@ -351,6 +381,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     str(root / "repository.json"),
                     "--default-commit",
                     str(root / "default-commit.json"),
+                    "--final-default-commit",
+                    str(root / "final-default-commit.json"),
                     "--source-run",
                     str(root / "source-run.json"),
                     "--publisher-run",
@@ -386,10 +418,20 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             "compare/",
             "validated-release-input-",
             "audit-post-split-runtime-proof.py",
+            "--final-default-commit",
+            "final-default-commit.json",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, text)
         self.assertNotIn("gh run download", text)
+        self.assertEqual(
+            2,
+            text.count('repos/${repository}/commits/${encoded_default_branch}'),
+        )
+        self.assertLess(
+            text.index('repos/${repository}/compare/${source_sha}...${publisher_sha}'),
+            text.index('>"${temp_root}/final-default-commit.json"'),
+        )
 
         for mutation in (
             "--method POST",
