@@ -447,6 +447,20 @@ This proof does not access Apple credentials and does not replace the read-only 
 
 ## Disposable post-split ancestor runtime proof
 
+The preferred operator path is the guarded runner below. It requires an explicit disposable-repository confirmation, verifies that the selected source ref is a strict ancestor of the current default-branch publisher, confirms both workflow files exist at the expected commits, snapshots pre-existing workflow runs, creates one previously unused stable SemVer tag, discovers the exact Release Build/Release Publisher pair through the validator Artifact identity, and then delegates to the read-only auditor.
+
+```bash
+bash scripts/release/prove-post-split-ancestor-runtime.sh \
+  --repository owner/disposable-repo \
+  --confirm-disposable owner/disposable-repo \
+  --source-ref POST_SPLIT_ANCESTOR_REF \
+  --tag v0.0.1
+```
+
+The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
+
+The manual procedure remains useful for incident analysis or when the tag/run pair already exists:
+
 Before enabling the two-stage publisher for production, prove the architecture with a **disposable repository**. This proof is specifically about control-code selection; it is separate from Apple signing/notarization and from the immutable-tag Ruleset proof.
 
 1. Put the current two-stage publisher on the disposable repository default branch.
