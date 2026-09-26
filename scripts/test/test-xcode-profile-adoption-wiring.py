@@ -45,6 +45,34 @@ class XcodeProfileAdoptionWiringTests(unittest.TestCase):
             with self.subTest(assertion=assertion):
                 self.assertIn(assertion, workflow)
 
+    def test_macos_ui_strict_profile_runs_required_visual_comparison(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        for token in (
+            '"profile": "macos-ui-strict"',
+            "prepare-macos-ui-strict:",
+            "macos-ui-strict-visual:",
+            "Verify macos-ui-strict profile adoption",
+            "reusable-visual-regression.yml",
+            "Tests/AdoptionFixtures/Xcode/VisualRegression/visual-regression.json",
+            "adoption-macos-ui-strict-baseline",
+            "bootstrap_rolling: true",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, workflow)
+
+        for assertion in (
+            '[[ "${COVERAGE_ENABLED}" == true ]]',
+            '[[ "${COVERAGE_REQUIRED}" == true ]]',
+            '[[ "${E2E_ENABLED}" == true ]]',
+            '[[ "${E2E_REQUIRED}" == true ]]',
+            '[[ "${VISUAL_ENABLED}" == true ]]',
+            '[[ "${VISUAL_REQUIRED}" == true ]]',
+            '[[ "${VISUAL_BOOTSTRAP}" == false ]]',
+            '[[ "${VISUAL_RESULT}" == success ]]',
+        ):
+            with self.subTest(assertion=assertion):
+                self.assertIn(assertion, workflow)
+
     def test_adoption_workflow_remains_read_only_and_secret_free(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("permissions:\n  contents: read", workflow)
@@ -53,13 +81,18 @@ class XcodeProfileAdoptionWiringTests(unittest.TestCase):
         self.assertNotIn("secrets: inherit", workflow)
         self.assertNotIn("environment: release", workflow)
 
-    def test_actionlint_ignore_for_e2e_call_is_path_scoped(self) -> None:
+    def test_actionlint_ignores_for_self_reusable_calls_are_path_scoped(self) -> None:
         config = ACTIONLINT.read_text(encoding="utf-8")
         self.assertIn(".github/workflows/test-profile-adoption.yml:", config)
-        self.assertIn(
-            'reusable workflow call "\\$/\\.github/workflows/reusable-macos-e2e\\.yml"',
-            config,
-        )
+        for reusable in (
+            "reusable-macos-e2e",
+            "reusable-visual-regression",
+        ):
+            with self.subTest(reusable=reusable):
+                self.assertIn(
+                    f'reusable workflow call "\\\\$/\\\\.github/workflows/{reusable}\\\\.yml"',
+                    config,
+                )
 
     def test_test_infrastructure_runs_xcode_adoption_contract(self) -> None:
         workflow = INFRASTRUCTURE.read_text(encoding="utf-8")

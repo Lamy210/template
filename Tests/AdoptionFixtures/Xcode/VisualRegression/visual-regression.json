@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "adoption-macos-app-xcode-26.6",
+  "cases": [
+    {
+      "id": "adoption-counter",
+      "baseline": "git",
+      "current": "artifacts/visual/current/adoption-counter.png",
+      "expected": "Tests/AdoptionFixtures/Xcode/VisualBaselines/adoption-counter.png",
+      "maxChangedPixelRatio": 0.0,
+      "maxChannelDelta": 0
+    }
+  ]
+}

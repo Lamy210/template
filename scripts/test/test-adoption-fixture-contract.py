@@ -51,6 +51,34 @@ class AdoptionFixtureContractTests(unittest.TestCase):
         self.assertNotIn("DevelopmentTeam", project)
         self.assertNotIn("PROVISIONING_PROFILE", project)
 
+    def test_xcode_fixture_has_deterministic_visual_capture_contract(self) -> None:
+        fixture = ROOT / "Tests/AdoptionFixtures/Xcode"
+        manifest = fixture / "VisualRegression/visual-regression.json"
+        baseline = fixture / "VisualBaselines/adoption-counter.png"
+        tests = fixture / "Tests/AdoptionCoreTests/CounterTests.swift"
+
+        for path in (manifest, baseline):
+            with self.subTest(path=path.relative_to(ROOT)):
+                self.assertTrue(path.is_file())
+                self.assertFalse(path.is_symlink())
+
+        self.assertEqual(b"\\x89PNG\\r\\n\\x1a\\n", baseline.read_bytes()[:8])
+        manifest_text = manifest.read_text(encoding="utf-8")
+        self.assertIn('"profile": "adoption-macos-app-xcode-26.6"', manifest_text)
+        self.assertIn(
+            '"current": "artifacts/visual/current/adoption-counter.png"',
+            manifest_text,
+        )
+        self.assertIn(
+            '"expected": "Tests/AdoptionFixtures/Xcode/VisualBaselines/adoption-counter.png"',
+            manifest_text,
+        )
+
+        test_source = tests.read_text(encoding="utf-8")
+        self.assertIn('environment["GITHUB_WORKSPACE"]', test_source)
+        self.assertIn("artifacts/visual/current", test_source)
+        self.assertIn("adoption-counter.png", test_source)
+
     def test_swiftpm_fixture_has_no_external_packages(self) -> None:
         package = (FIXTURE / "Package.swift").read_text(encoding="utf-8")
         self.assertIn('name: "AdoptionCore"', package)
