@@ -1,0 +1,186 @@
+name: Test Profile Adoption
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/test-profile-adoption.yml"
+      - ".github/workflows/reusable-swift-tests.yml"
+      - ".github/workflows/tests.yml"
+      - "Tests/AdoptionFixtures/SwiftPM/**"
+      - "scripts/test/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  prepare-minimal:
+    name: Prepare minimal profile
+    runs-on: ubuntu-latest
+    outputs:
+      adapter: ${{ steps.runtime.outputs.adapter }}
+      coverage_enabled: ${{ steps.runtime.outputs.coverage_enabled }}
+      coverage_required: ${{ steps.runtime.outputs.coverage_required }}
+      e2e_enabled: ${{ steps.runtime.outputs.e2e_enabled }}
+      visual_enabled: ${{ steps.runtime.outputs.visual_enabled }}
+    steps:
+      - name: Checkout policy code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve and classify minimal profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >"${RUNNER_TEMP}/profile-input.json" <<'JSON'
+          {
+            "profile": "minimal",
+            "adapter": "swiftpm",
+            "integrationEnabled": null,
+            "integrationRequired": null,
+            "coverageEnabled": null,
+            "coverageRequired": null,
+            "e2eEnabled": null,
+            "e2eRequired": null,
+            "visualEnabled": null,
+            "visualRequired": null,
+            "visualBootstrap": null
+          }
+          JSON
+          python3 scripts/test/resolve-test-profile.py             --input "${RUNNER_TEMP}/profile-input.json"             --output "${RUNNER_TEMP}/resolved.json"
+          python3 scripts/test/classify-test-policy.py             --input "${RUNNER_TEMP}/resolved.json"             >"${RUNNER_TEMP}/classified.json"
+
+      - name: Export minimal runtime policy
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/test/emit-profile-adoption-outputs.py             --resolved "${RUNNER_TEMP}/resolved.json"             --classified "${RUNNER_TEMP}/classified.json"             --github-output "${GITHUB_OUTPUT}"
+
+  prepare-standard:
+    name: Prepare standard profile
+    runs-on: ubuntu-latest
+    outputs:
+      adapter: ${{ steps.runtime.outputs.adapter }}
+      coverage_enabled: ${{ steps.runtime.outputs.coverage_enabled }}
+      coverage_required: ${{ steps.runtime.outputs.coverage_required }}
+      e2e_enabled: ${{ steps.runtime.outputs.e2e_enabled }}
+      visual_enabled: ${{ steps.runtime.outputs.visual_enabled }}
+    steps:
+      - name: Checkout policy code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve and classify standard profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >"${RUNNER_TEMP}/profile-input.json" <<'JSON'
+          {
+            "profile": "standard",
+            "adapter": "swiftpm",
+            "integrationEnabled": null,
+            "integrationRequired": null,
+            "coverageEnabled": null,
+            "coverageRequired": null,
+            "e2eEnabled": null,
+            "e2eRequired": null,
+            "visualEnabled": null,
+            "visualRequired": null,
+            "visualBootstrap": null
+          }
+          JSON
+          python3 scripts/test/resolve-test-profile.py             --input "${RUNNER_TEMP}/profile-input.json"             --output "${RUNNER_TEMP}/resolved.json"
+          python3 scripts/test/classify-test-policy.py             --input "${RUNNER_TEMP}/resolved.json"             >"${RUNNER_TEMP}/classified.json"
+
+      - name: Export standard runtime policy
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/test/emit-profile-adoption-outputs.py             --resolved "${RUNNER_TEMP}/resolved.json"             --classified "${RUNNER_TEMP}/classified.json"             --github-output "${GITHUB_OUTPUT}"
+
+  minimal-swiftpm:
+    name: minimal / SwiftPM runtime
+    needs: prepare-minimal
+    permissions:
+      contents: read
+      actions: read
+    uses: $/.github/workflows/reusable-swift-tests.yml
+    with:
+      check_name: Adoption / minimal
+      adapter: ${{ needs.prepare-minimal.outputs.adapter }}
+      working_directory: Tests/AdoptionFixtures/SwiftPM
+      required: true
+      enable_coverage: ${{ needs.prepare-minimal.outputs.coverage_enabled == 'true' }}
+      coverage_required: ${{ needs.prepare-minimal.outputs.coverage_required == 'true' }}
+      bootstrap_coverage: false
+      coverage_artifact_name: adoption-minimal-coverage-baseline
+
+  standard-swiftpm:
+    name: standard / SwiftPM runtime
+    needs: prepare-standard
+    permissions:
+      contents: read
+      actions: read
+    uses: $/.github/workflows/reusable-swift-tests.yml
+    with:
+      check_name: Adoption / standard
+      adapter: ${{ needs.prepare-standard.outputs.adapter }}
+      working_directory: Tests/AdoptionFixtures/SwiftPM
+      required: true
+      enable_coverage: ${{ needs.prepare-standard.outputs.coverage_enabled == 'true' }}
+      coverage_required: ${{ needs.prepare-standard.outputs.coverage_required == 'true' }}
+      bootstrap_coverage: true
+      coverage_artifact_name: adoption-standard-coverage-baseline
+
+  verify:
+    name: Verify SwiftPM profile adoption
+    if: ${{ always() }}
+    needs:
+      - prepare-minimal
+      - prepare-standard
+      - minimal-swiftpm
+      - standard-swiftpm
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require exact profile and runtime results
+        shell: bash
+        env:
+          PREPARE_MINIMAL: ${{ needs.prepare-minimal.result }}
+          PREPARE_STANDARD: ${{ needs.prepare-standard.result }}
+          MINIMAL_JOB: ${{ needs.minimal-swiftpm.result }}
+          STANDARD_JOB: ${{ needs.standard-swiftpm.result }}
+          MINIMAL_TEST: ${{ needs.minimal-swiftpm.outputs.test_result }}
+          MINIMAL_COVERAGE_ENABLED: ${{ needs.prepare-minimal.outputs.coverage_enabled }}
+          MINIMAL_E2E_ENABLED: ${{ needs.prepare-minimal.outputs.e2e_enabled }}
+          MINIMAL_VISUAL_ENABLED: ${{ needs.prepare-minimal.outputs.visual_enabled }}
+          STANDARD_TEST: ${{ needs.standard-swiftpm.outputs.test_result }}
+          STANDARD_COVERAGE: ${{ needs.standard-swiftpm.outputs.coverage_result }}
+          STANDARD_COVERAGE_ENABLED: ${{ needs.prepare-standard.outputs.coverage_enabled }}
+          STANDARD_COVERAGE_REQUIRED: ${{ needs.prepare-standard.outputs.coverage_required }}
+          STANDARD_E2E_ENABLED: ${{ needs.prepare-standard.outputs.e2e_enabled }}
+          STANDARD_VISUAL_ENABLED: ${{ needs.prepare-standard.outputs.visual_enabled }}
+        run: |
+          set -euo pipefail
+          [[ "${PREPARE_MINIMAL}" == success ]]
+          [[ "${PREPARE_STANDARD}" == success ]]
+          [[ "${MINIMAL_JOB}" == success ]]
+          [[ "${STANDARD_JOB}" == success ]]
+          [[ "${MINIMAL_TEST}" == success ]]
+          [[ "${MINIMAL_COVERAGE_ENABLED}" == false ]]
+          [[ "${MINIMAL_E2E_ENABLED}" == false ]]
+          [[ "${MINIMAL_VISUAL_ENABLED}" == false ]]
+          [[ "${STANDARD_TEST}" == success ]]
+          [[ "${STANDARD_COVERAGE}" == success ]]
+          [[ "${STANDARD_COVERAGE_ENABLED}" == true ]]
+          [[ "${STANDARD_COVERAGE_REQUIRED}" == true ]]
+          [[ "${STANDARD_E2E_ENABLED}" == false ]]
+          [[ "${STANDARD_VISUAL_ENABLED}" == false ]]
