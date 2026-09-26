@@ -125,18 +125,20 @@ The thresholds and exception policy are documented in [`docs/CODING_STANDARDS.md
 
 1. Create a repository from this template or copy the relevant files into an existing macOS app.
 2. Apply the one-time GitHub settings in [`docs/SETUP.md`](docs/SETUP.md), including the protected `release` Environment and repository Rulesets.
-3. Review [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md) and adapt thresholds only through an intentional policy change.
-4. Copy/adapt [`examples/app-release-build.yml`](examples/app-release-build.yml) to `.github/workflows/release-build.yml`. Keep this tag-triggered workflow secret-free and read-only.
-5. Copy/adapt [`examples/app-release-publisher.yml`](examples/app-release-publisher.yml) to `.github/workflows/release-publisher.yml` **on the default branch**.
-6. Package the unsigned `.app` into the tar archive produced by `scripts/release/package-app-artifact.sh`; do not upload a raw `.app` directory as the release handoff.
-7. Keep Apple signing/notarization credentials only in the protected `release` Environment. The called privileged macOS workflow reads them there; the publisher caller does not use `secrets: inherit`.
-8. If Homebrew distribution is enabled, pass only the narrow `tap_token` secret to `reusable-homebrew-update.yml` after release publication succeeds.
-9. Configure branch/tag policy according to [`docs/BRANCHING.md`](docs/BRANCHING.md) and review credential handling in [`docs/SECRETS.md`](docs/SECRETS.md).
-10. Run the release-isolation contract tests before creating a real release tag.
+3. Choose a test policy profile from [`docs/TEST_PROFILES.md`](docs/TEST_PROFILES.md). For example, a SwiftPM project can start with `MACOS_TEST_PROFILE=standard` and `MACOS_TEST_ADAPTER=swiftpm`; a macOS Xcode app can start with `MACOS_TEST_PROFILE=macos-app` and `MACOS_TEST_ADAPTER=xcode`.
+4. Configure repository-specific test topology such as working directory, Xcode project/workspace, scheme, plans, destination, and visual manifest. Existing `MACOS_*` policy variables remain supported as the advanced/manual interface and override profile defaults independently.
+5. Review [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md) and adapt thresholds only through an intentional policy change.
+6. Copy/adapt [`examples/app-release-build.yml`](examples/app-release-build.yml) to `.github/workflows/release-build.yml`. Keep this tag-triggered workflow secret-free and read-only.
+7. Copy/adapt [`examples/app-release-publisher.yml`](examples/app-release-publisher.yml) to `.github/workflows/release-publisher.yml` **on the default branch**.
+8. Package the unsigned `.app` into the tar archive produced by `scripts/release/package-app-artifact.sh`; do not upload a raw `.app` directory as the release handoff.
+9. Keep Apple signing/notarization credentials only in the protected `release` Environment. The called privileged macOS workflow reads them there; the publisher caller does not use `secrets: inherit`.
+10. If Homebrew distribution is enabled, pass only the narrow `tap_token` secret to `reusable-homebrew-update.yml` after release publication succeeds.
+11. Configure branch/tag policy according to [`docs/BRANCHING.md`](docs/BRANCHING.md) and review credential handling in [`docs/SECRETS.md`](docs/SECRETS.md).
+12. Run the test-policy/Test Infrastructure suites and release-isolation contract tests before the first production release.
 
 [`examples/app-release.yml`](examples/app-release.yml) is **migration documentation only**. It intentionally does not contain an executable monolithic release workflow.
 
-Operational details are in [`docs/RELEASE.md`](docs/RELEASE.md), and Homebrew-specific operation is in [`docs/HOMEBREW.md`](docs/HOMEBREW.md).
+Operational details are in [`docs/RELEASE.md`](docs/RELEASE.md), Homebrew-specific operation is in [`docs/HOMEBREW.md`](docs/HOMEBREW.md), and test-profile semantics are in [`docs/TEST_PROFILES.md`](docs/TEST_PROFILES.md).
 
 ## Security invariants
 

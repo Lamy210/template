@@ -142,7 +142,50 @@ For a public OSS repository, enable where available:
 
 The repository-level `quality.yml` covers GitHub Actions security with `zizmor` and workflow/shell correctness with `actionlint`, ShellCheck, and shfmt. The `swift-quality.yml` workflow enforces Swift formatting, coding standards, and complexity limits.
 
-## 9. Required status checks
+## 9. Test policy profile variables
+
+For a new adopter, prefer the named profile interface documented in [`TEST_PROFILES.md`](TEST_PROFILES.md). Configure repository variables rather than secrets.
+
+SwiftPM baseline:
+
+```text
+MACOS_TEST_PROFILE=standard
+MACOS_TEST_ADAPTER=swiftpm
+```
+
+Xcode macOS application baseline:
+
+```text
+MACOS_TEST_PROFILE=macos-app
+MACOS_TEST_ADAPTER=xcode
+MACOS_TEST_WORKING_DIRECTORY=.
+MACOS_TEST_PROJECT_PATH=MyApp.xcodeproj
+MACOS_TEST_SCHEME=MyApp
+```
+
+Use `MACOS_TEST_WORKSPACE_PATH` instead of `MACOS_TEST_PROJECT_PATH` when the application builds from a workspace. Configure only repository-specific values that apply; do not invent placeholder paths merely to satisfy the workflow.
+
+The four supported profiles are `minimal`, `standard`, `macos-app`, and `macos-ui-strict`. `macos-app` and `macos-ui-strict` require the Xcode adapter.
+
+Existing low-level policy variables remain supported:
+
+```text
+MACOS_INTEGRATION_ENABLED
+MACOS_INTEGRATION_REQUIRED
+MACOS_COVERAGE_ENABLED
+MACOS_COVERAGE_REQUIRED
+MACOS_E2E_ENABLED
+MACOS_E2E_REQUIRED
+MACOS_VISUAL_ENABLED
+MACOS_VISUAL_REQUIRED
+MACOS_VISUAL_BOOTSTRAP
+```
+
+They override profile defaults independently. An override never silently weakens another field. For example, setting only `MACOS_E2E_ENABLED=false` under `macos-app` remains invalid because that profile still requires E2E; set both enabled and required to false when intentionally disabling the subsystem.
+
+Leave `MACOS_TEST_PROFILE` empty to retain the legacy low-level behavior exactly. Boolean policy variables accept only empty, `true`, or `false`; malformed values fail closed.
+
+## 10. Required status checks
 
 After the first pull request runs successfully, select stable check names from GitHub's Ruleset UI. Do not type a guessed check name before it has run at least once.
 
@@ -167,7 +210,7 @@ The Swift quality job includes:
 
 Avoid renaming required workflow/job names casually because Rulesets refer to the resulting status-check names.
 
-## 10. Coding and complexity policy
+## 11. Coding and complexity policy
 
 Review these files before the first application PR:
 
@@ -178,13 +221,13 @@ Review these files before the first application PR:
 
 The default complexity limits are intentionally moderate and CI runs SwiftLint with `--strict`, so warning thresholds are blocking. Do not raise thresholds merely to get the first feature merged. For an existing codebase with known debt, define an explicit baseline/ratchet migration instead.
 
-## 11. Template repository setting
+## 12. Template repository setting
 
 For the central reusable starter repository, enable GitHub's **Template repository** setting. New applications can then be created from the template while keeping their own independent history.
 
 After creating a project from the template, replace project-specific placeholders and review/remove files that do not apply to that application.
 
-## 12. First-release verification
+## 13. First-release verification
 
 Before the first production release, run a controlled test release and verify all of the following end to end:
 
