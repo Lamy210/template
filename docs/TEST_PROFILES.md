@@ -124,4 +124,6 @@ Unknown profile names, malformed boolean values, incompatible adapters, and inva
 
 The template self-validates all four named profiles with committed adopter fixtures on GitHub-hosted runners. `minimal` and `standard` exercise the production SwiftPM path, `macos-app` exercises production Xcode unit/coverage/E2E paths, and `macos-ui-strict` adds the production Visual comparison path over the deterministic Xcode E2E capture artifact. The strict profile runtime check reuses the same Xcode unit/E2E results because its additional policy surface is Visual; it does not spend extra macOS jobs rerunning identical unit/E2E commands.
 
+For Visual manifests that contain only `git` baselines, the reusable Visual workflow skips trusted rolling-baseline discovery entirely. A `rolling-main` case is the condition that makes a trusted rolling artifact mandatory; this keeps `macos-ui-strict` compatible with its default `MACOS_VISUAL_BOOTSTRAP=false` policy when an adopter intentionally uses only committed baselines.
+
 Profile adoption validation remains secret-free and read-only. It does not introduce repository writes or privileged release behavior.
