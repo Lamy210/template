@@ -115,16 +115,16 @@ api_headers=(
 )
 
 urlencode() {
-  python3 - "$1" <<'PY'
+  python3 -c '
 import sys
 from urllib.parse import quote
 
 print(quote(sys.argv[1], safe=""))
-PY
+' "$1"
 }
 
 extract_sha() {
-  python3 - <<'PY'
+  python3 -c '
 import json
 import re
 import sys
@@ -134,12 +134,12 @@ sha = document.get("sha")
 if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{40}", sha) is None:
     raise SystemExit("GitHub commit response has no canonical SHA")
 print(sha)
-PY
+'
 }
 
 repo_json="$(gh api "${api_headers[@]}" "repos/${repository}")"
 default_branch="$(
-  python3 - <<'PY' <<<"${repo_json}"
+  python3 -c '
 import json
 import sys
 
@@ -148,7 +148,7 @@ branch = document.get("default_branch")
 if not isinstance(branch, str) or not branch:
     raise SystemExit("repository response has no default_branch")
 print(branch)
-PY
+' <<<"${repo_json}"
 )"
 
 encoded_default_branch="$(urlencode "${default_branch}")"
@@ -166,7 +166,7 @@ if [[ "${source_sha}" == "${publisher_sha}" ]]; then
 fi
 
 compare_json="$(gh api "${api_headers[@]}" "repos/${repository}/compare/${source_sha}...${publisher_sha}")"
-python3 - "${source_sha}" "${publisher_sha}" <<'PY' <<<"${compare_json}"
+python3 -c '
 import json
 import sys
 
@@ -183,7 +183,7 @@ if not isinstance(merge_base, dict) or merge_base.get("sha") != source_sha:
     raise SystemExit("source SHA is not the merge base of the current default branch")
 if publisher_sha == source_sha:
     raise SystemExit("source and publisher SHAs must differ")
-PY
+' "${source_sha}" "${publisher_sha}" <<<"${compare_json}"
 
 gh api "${api_headers[@]}"   "repos/${repository}/contents/.github/workflows/${release_build_workflow}?ref=${source_sha}" >/dev/null
 gh api "${api_headers[@]}"   "repos/${repository}/contents/.github/workflows/${release_publisher_workflow}?ref=${publisher_sha}" >/dev/null
@@ -233,7 +233,7 @@ find_source_run_id() {
   for ((attempt = 1; attempt <= poll_attempts; attempt++)); do
     list_json="$(list_runs "${release_build_workflow}" push)"
     run_id="$(
-      python3 - "${tag_name}" "${source_sha}" "${source_baseline}" <<'PY' <<<"${list_json}"
+      python3 -c '
 import json
 import sys
 
@@ -256,7 +256,7 @@ if len(matches) == 1:
     print(matches[0])
 elif len(matches) > 1:
     raise SystemExit(f"multiple fresh Release Build runs matched the proof tag: {matches!r}")
-PY
+' "${tag_name}" "${source_sha}" "${source_baseline}" <<<"${list_json}"
     )" || return 1
     if [[ "${run_id}" =~ ^[1-9][0-9]*$ ]]; then
       printf '%s\n' "${run_id}"
@@ -275,7 +275,7 @@ wait_for_run_completion() {
   for ((attempt = 1; attempt <= poll_attempts; attempt++)); do
     run_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${run_id}")"
     read -r status conclusion < <(
-      python3 - <<'PY' <<<"${run_json}"
+      python3 -c '
 import json
 import sys
 
@@ -286,7 +286,7 @@ print(
     status if isinstance(status, str) else "",
     conclusion if isinstance(conclusion, str) else "",
 )
-PY
+' <<<"${run_json}"
     )
     if [[ "${status}" == completed ]]; then
       if [[ "${require_success}" == true && "${conclusion}" != success ]]; then
@@ -307,7 +307,7 @@ wait_for_run_completion "${source_run_id}" true >/dev/null
 
 source_run_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${source_run_id}")"
 source_run_attempt="$(
-  python3 - <<'PY' <<<"${source_run_json}"
+  python3 -c '
 import json
 import sys
 
@@ -316,7 +316,7 @@ attempt = document.get("run_attempt")
 if type(attempt) is not int or attempt <= 0:
     raise SystemExit("Release Build run_attempt is missing or malformed")
 print(attempt)
-PY
+' <<<"${source_run_json}"
 )"
 
 find_publisher_run_id() {
@@ -324,7 +324,7 @@ find_publisher_run_id() {
   for ((attempt = 1; attempt <= poll_attempts; attempt++)); do
     list_json="$(list_runs "${release_publisher_workflow}" workflow_run)"
     candidate_ids="$(
-      python3 - "${default_branch}" "${publisher_sha}" "${publisher_baseline}" <<'PY' <<<"${list_json}"
+      python3 -c '
 import json
 import sys
 
@@ -344,7 +344,7 @@ matches = [
     and item.get("databaseId") not in baseline
 ]
 print("\n".join(str(item) for item in matches))
-PY
+' "${default_branch}" "${publisher_sha}" "${publisher_baseline}" <<<"${list_json}"
     )"
 
     matched=""
@@ -352,7 +352,7 @@ PY
       [[ -n "${candidate_id}" ]] || continue
       run_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${candidate_id}")"
       run_attempt="$(
-        python3 - <<'PY' <<<"${run_json}"
+        python3 -c '
 import json
 import sys
 
@@ -364,11 +364,11 @@ if event != "workflow_run":
 if type(attempt) is not int or attempt <= 0:
     raise SystemExit(1)
 print(attempt)
-PY
+' <<<"${run_json}"
       )" || continue
 
       artifact_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${candidate_id}/artifacts?per_page=100")"
-      if python3 - "${candidate_id}" "${run_attempt}" "${source_run_id}" "${source_run_attempt}" <<'PY' <<<"${artifact_json}"
+      if python3 -c '
 import json
 import sys
 
@@ -389,7 +389,7 @@ matches = [
     and item.get("expired") is False
 ]
 raise SystemExit(0 if len(matches) == 1 else 1)
-PY
+' "${candidate_id}" "${run_attempt}" "${source_run_id}" "${source_run_attempt}" <<<"${artifact_json}"
       then
         if [[ -n "${matched}" ]]; then
           echo "Multiple fresh Release Publisher runs contain validator artifacts for source run ${source_run_id}." >&2
