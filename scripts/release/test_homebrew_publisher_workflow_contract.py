@@ -215,8 +215,8 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("--json nameWithOwner,defaultBranchRef,url,sshUrl", block)
         self.assertIn(".nameWithOwner, .defaultBranchRef.name, .url, .sshUrl", block)
         self.assertIn("source/scripts/homebrew/validate-tap-remote.py", block)
-        self.assertIn("git -C tap remote get-url origin", block)
-        self.assertIn("git -C tap remote get-url --push origin", block)
+        self.assertIn("git -C tap remote get-url --all origin", block)
+        self.assertIn("git -C tap remote get-url --push --all origin", block)
         self.assertIn(
             'if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]',
             block,
@@ -227,6 +227,20 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         )
         self.assertNotIn("git push", block)
         self.assertNotIn("gh pr create", block)
+
+    def test_homebrew_validates_all_effective_tap_remote_urls(self) -> None:
+        text = self.homebrew_text()
+        for step_name in (
+            "Verify cloned tap repository identity",
+            "Commit and push Cask branch",
+            "Reverify tap branch and pull request identity",
+            "Reverify no-op tap branch cleanup",
+        ):
+            with self.subTest(step_name=step_name):
+                block = step_block(text, step_name)
+                self.assertTrue(block, f"missing step: {step_name}")
+                self.assertIn("remote get-url --all origin", block)
+                self.assertIn("remote get-url --push --all origin", block)
 
     def test_homebrew_binds_configured_tap_default_to_canonical_repository_default(self) -> None:
         block = step_block(self.homebrew_text(), "Verify cloned tap repository identity")
@@ -362,7 +376,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('gh repo view "${TAP_REPOSITORY}"', cleanup)
         self.assertIn("--json nameWithOwner,defaultBranchRef,url,sshUrl", cleanup)
         self.assertIn("source/scripts/homebrew/validate-tap-remote.py", cleanup)
-        self.assertIn("git -C tap remote get-url --push origin", cleanup)
+        self.assertIn("git -C tap remote get-url --push --all origin", cleanup)
         self.assertIn('git ls-remote --exit-code --heads origin \\', cleanup)
         self.assertIn('"refs/heads/${TAP_DEFAULT_BRANCH}"', cleanup)
         self.assertIn('"refs/heads/${BRANCH}"', cleanup)

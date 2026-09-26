@@ -249,8 +249,8 @@ jobs:
             exit 1
           fi
 
-          fetch_url="$(git -C tap remote get-url origin)"
-          push_url="$(git -C tap remote get-url --push origin)"
+          fetch_url="$(git -C tap remote get-url --all origin)"
+          push_url="$(git -C tap remote get-url --push --all origin)"
           python3 source/scripts/homebrew/validate-tap-remote.py \
             --fetch-url="${fetch_url}" \
             --push-url="${push_url}" \
@@ -398,8 +398,8 @@ jobs:
               return 1
             fi
 
-            fetch_url="$(git remote get-url origin)"
-            push_url="$(git remote get-url --push origin)"
+            fetch_url="$(git remote get-url --all origin)"
+            push_url="$(git remote get-url --push --all origin)"
             python3 ../source/scripts/homebrew/validate-tap-remote.py \
               --fetch-url="${fetch_url}" \
               --push-url="${push_url}" \
@@ -636,8 +636,8 @@ jobs:
               return 1
             fi
 
-            fetch_url="$(git -C tap remote get-url origin)"
-            push_url="$(git -C tap remote get-url --push origin)"
+            fetch_url="$(git -C tap remote get-url --all origin)"
+            push_url="$(git -C tap remote get-url --push --all origin)"
             python3 source/scripts/homebrew/validate-tap-remote.py \
               --fetch-url="${fetch_url}" \
               --push-url="${push_url}" \
@@ -762,8 +762,8 @@ jobs:
             exit 1
           fi
 
-          fetch_url="$(git -C tap remote get-url origin)"
-          push_url="$(git -C tap remote get-url --push origin)"
+          fetch_url="$(git -C tap remote get-url --all origin)"
+          push_url="$(git -C tap remote get-url --push --all origin)"
           python3 source/scripts/homebrew/validate-tap-remote.py \
             --fetch-url="${fetch_url}" \
             --push-url="${push_url}" \
