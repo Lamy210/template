@@ -16,13 +16,15 @@ SWIFTLINT_ZIP="${TOOLS_ROOT}/swiftlint.zip"
 rm -rf "${TOOLS_ROOT}"
 mkdir -p "${SWIFTFORMAT_DIR}" "${SWIFTLINT_DIR}"
 
-curl --fail --silent --show-error --location --retry 3 \
+curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+  --retry-max-time 60 \
   --output "${SWIFTFORMAT_ZIP}" \
   "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat.zip"
 printf '%s  %s\n' "${SWIFTFORMAT_SHA256}" "${SWIFTFORMAT_ZIP}" | shasum -a 256 --check
 unzip -q -j "${SWIFTFORMAT_ZIP}" -d "${SWIFTFORMAT_DIR}"
 
-curl --fail --silent --show-error --location --retry 3 \
+curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+  --retry-max-time 60 \
   --output "${SWIFTLINT_ZIP}" \
   "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip"
 printf '%s  %s\n' "${SWIFTLINT_SHA256}" "${SWIFTLINT_ZIP}" | shasum -a 256 --check
