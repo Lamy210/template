@@ -6,12 +6,14 @@ on:
       - "Tools/VisualDiff/**"
       - "Tests/VisualRegression/**"
       - "Tests/VisualBaselines/**"
+      - "Tests/AdoptionFixtures/**"
       - "scripts/ci/**"
       - "scripts/test/**"
       - "scripts/visual/**"
       - ".github/workflows/reusable-swift-tests.yml"
       - ".github/workflows/reusable-macos-e2e.yml"
       - ".github/workflows/reusable-visual-regression.yml"
+      - ".github/workflows/test-profile-adoption.yml"
       - ".github/workflows/tests.yml"
       - ".github/workflows/test-infrastructure.yml"
   push:
@@ -21,12 +23,14 @@ on:
       - "Tools/VisualDiff/**"
       - "Tests/VisualRegression/**"
       - "Tests/VisualBaselines/**"
+      - "Tests/AdoptionFixtures/**"
       - "scripts/ci/**"
       - "scripts/test/**"
       - "scripts/visual/**"
       - ".github/workflows/reusable-swift-tests.yml"
       - ".github/workflows/reusable-macos-e2e.yml"
       - ".github/workflows/reusable-visual-regression.yml"
+      - ".github/workflows/test-profile-adoption.yml"
       - ".github/workflows/tests.yml"
       - ".github/workflows/test-infrastructure.yml"
   workflow_dispatch:
@@ -85,6 +89,14 @@ jobs:
             scripts/test/test-resolve-test-profile.py \
             scripts/test/test-classify-test-policy.py \
             scripts/test/test-test-profile-wiring.py \
+            -v
+
+      - name: Profile adoption contract tests
+        run: |
+          python3 -m unittest \
+            scripts/test/test-adoption-fixture-contract.py \
+            scripts/test/test-emit-profile-adoption-outputs.py \
+            scripts/test/test-swiftpm-profile-adoption-wiring.py \
             -v
 
       - name: Workflow concurrency policy tests
