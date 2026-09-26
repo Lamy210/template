@@ -39,8 +39,9 @@ class AdoptionFixtureContractTests(unittest.TestCase):
         )
         self.assertIn("func increment", source)
         self.assertIn("func isEven", source)
-        self.assertIn("incrementAddsOne", tests)
-        self.assertIn("parityIsDeterministic", tests)
+        self.assertIn("#expect(Counter().increment(41) == 42)", tests)
+        self.assertIn("#expect(Counter().isEven(42))", tests)
+        self.assertIn("#expect(!Counter().isEven(41))", tests)
 
 
 if __name__ == "__main__":
