@@ -36,6 +36,28 @@ class VisualScheduleWiringTests(unittest.TestCase):
         self.assertIn("needs.visual-run.result == 'success'", condition)
         self.assertIn("needs.required-gate.result == 'success'", condition)
 
+    def test_git_only_manifest_skips_rolling_baseline_lookup(self):
+        self.assertIn("id: baseline_policy", self.reusable_visual)
+        self.assertIn(
+            "python3 scripts/visual/emit-baseline-policy.py",
+            self.reusable_visual,
+        )
+        self.assertIn(
+            "REQUIRES_ROLLING: ${{ steps.baseline_policy.outputs.requires_rolling }}",
+            self.reusable_visual,
+        )
+        policy_guard = 'if [[ "${REQUIRES_ROLLING}" != "true" ]]; then'
+        resolver = 'bash scripts/ci/resolve-trusted-main-artifact.sh'
+        self.assertIn(policy_guard, self.reusable_visual)
+        self.assertLess(
+            self.reusable_visual.index(policy_guard),
+            self.reusable_visual.index(resolver),
+        )
+        self.assertIn(
+            "BASELINE_POLICY_OUTCOME: ${{ steps.baseline_policy.outcome }}",
+            self.reusable_visual,
+        )
+
     def test_reusable_visual_defaults_to_push_only_and_forwards_policy(self):
         self.assertRegex(
             self.reusable_visual,

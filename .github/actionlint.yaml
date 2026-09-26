@@ -13,3 +13,4 @@ paths:
     ignore:
       - 'reusable workflow call "\$/\.github/workflows/reusable-swift-tests\.yml" at "uses" is not following the format'
       - 'reusable workflow call "\$/\.github/workflows/reusable-macos-e2e\.yml" at "uses" is not following the format'
+      - 'reusable workflow call "\$/\.github/workflows/reusable-visual-regression\.yml" at "uses" is not following the format'
