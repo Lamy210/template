@@ -13,13 +13,12 @@ final class CounterTests: XCTestCase {
     }
 
     func testWritesDeterministicVisualFixtureWhenCaptureDirectoryExists() throws {
-        guard
-            let workspace = ProcessInfo.processInfo.environment["GITHUB_WORKSPACE"]
-        else {
-            return
+        var repositoryRoot = URL(fileURLWithPath: #filePath)
+        for _ in 0 ..< 6 {
+            repositoryRoot.deleteLastPathComponent()
         }
 
-        let outputDirectory = URL(fileURLWithPath: workspace, isDirectory: true)
+        let outputDirectory = repositoryRoot
             .appendingPathComponent("artifacts/visual/current", isDirectory: true)
         var isDirectory: ObjCBool = false
         guard
