@@ -178,4 +178,6 @@ publisher_sha="${shas[1]}"
 
 gh api "${api_headers[@]}" "repos/${repository}/compare/${source_sha}...${publisher_sha}" >"${temp_root}/compare.json"
 
-python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py" --repository "${temp_root}/repository.json" --default-commit "${temp_root}/default-commit.json" --source-run "${temp_root}/source-run.json" --publisher-run "${temp_root}/publisher-run.json" --artifacts "${temp_root}/artifacts.json" --metadata "${temp_root}/metadata.json" --archive-digest "${unsigned_archive_digest}" --compare "${temp_root}/compare.json"
+gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch}" >"${temp_root}/final-default-commit.json"
+
+python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py" --repository "${temp_root}/repository.json" --default-commit "${temp_root}/default-commit.json" --final-default-commit "${temp_root}/final-default-commit.json" --source-run "${temp_root}/source-run.json" --publisher-run "${temp_root}/publisher-run.json" --artifacts "${temp_root}/artifacts.json" --metadata "${temp_root}/metadata.json" --archive-digest "${unsigned_archive_digest}" --compare "${temp_root}/compare.json"
