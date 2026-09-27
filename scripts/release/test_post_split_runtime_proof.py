@@ -459,6 +459,35 @@ class RuntimeProofLiveTagTests(unittest.TestCase):
             errors,
         )
 
+    def test_rejects_outer_annotated_tag_name_drift(self) -> None:
+        first = "4" * 40
+        document = annotated_tag_object(
+            first,
+            target_type="commit",
+            target_sha=SOURCE_SHA,
+        )
+        document["tag"] = "v9.9.9"
+        errors = validate_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            metadata(),
+            "sha256:" + "b" * 64,
+            compare(),
+            tag_ref=tag_ref(object_type="tag", object_sha=first),
+            tag_objects=[document],
+        )
+        self.assertTrue(
+            any(
+                "outer annotated release tag object name does not match source run tag"
+                in error
+                for error in errors
+            ),
+            errors,
+        )
+
     def test_rejects_wrong_tag_ref_name(self) -> None:
         document = tag_ref()
         document["ref"] = "refs/tags/v9.9.9"
@@ -952,7 +981,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
 
         self.assertEqual(2, second.returncode)
         self.assertIn("already exists", second.stderr)
-        self.assertEqual(3, document["schemaVersion"])
+        self.assertEqual(4, document["schemaVersion"])
         self.assertEqual(
             "sha256:" + "c" * 64,
             document["publisher"]["validatorArtifactDigest"],
@@ -973,6 +1002,15 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         )
         self.assertEqual("sha256:" + "a" * 64, document["source"]["artifactDigest"])
         self.assertEqual("sha256:" + "b" * 64, document["source"]["archiveDigest"])
+        self.assertEqual(
+            {
+                "annotatedChain": [],
+                "ref": "refs/tags/v1.2.3",
+                "refTarget": {"sha": SOURCE_SHA, "type": "commit"},
+                "resolvedSHA": SOURCE_SHA,
+            },
+            document["source"]["liveTag"],
+        )
 
     def test_cli_does_not_write_evidence_when_validation_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

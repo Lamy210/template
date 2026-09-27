@@ -460,7 +460,7 @@ bash scripts/release/prove-post-split-ancestor-runtime.sh \
 
 The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
 
-When `--evidence-output` is supplied, the runner delegates evidence creation to the read-only auditor. The auditor writes schema-v3 JSON **only after** the complete runtime proof succeeds. The record captures the audited repository ID/name/default branch, initial and final default-head SHAs, strict-ancestor compare result, source and publisher workflow/run identity, the exact successful secret-free publisher validation job identity, the independently re-fetched and byte-verified source Artifact ID/digest, validator Artifact ID/digest, unsigned archive digest, and validated application identity. It contains no operator timestamp or credentials. The output path must not already exist, so a previous proof record is never silently overwritten.
+When `--evidence-output` is supplied, the runner delegates evidence creation to the read-only auditor. The auditor writes schema-v4 JSON **only after** the complete runtime proof succeeds. The record captures the audited repository ID/name/default branch, initial and final default-head SHAs, strict-ancestor compare result, source and publisher workflow/run identity, the exact successful secret-free publisher validation job identity, the live release-tag ref target plus bounded annotated-tag chain and resolved source SHA, the independently re-fetched and byte-verified source Artifact ID/digest, validator Artifact ID/digest, unsigned archive digest, and validated application identity. It contains no operator timestamp or credentials. The output path must not already exist, so a previous proof record is never silently overwritten.
 
 The same evidence option is available when auditing an already-known run pair directly:
 
@@ -474,13 +474,13 @@ bash scripts/release/audit-post-split-runtime-proof.sh \
 
 Because the evidence is emitted by the validator path rather than reconstructed by the orchestration runner, a failed proof produces no evidence file. Preserve the resulting JSON together with the retained proof tag and GitHub Actions run URLs as the rollout audit record.
 
-Preserved schema-v2 and schema-v3 evidence files can be checked later without GitHub access. New proofs emit schema v3; schema v2 remains accepted for previously saved evidence:
+Preserved schema-v2, schema-v3, and schema-v4 evidence files can be checked later without GitHub access. New proofs emit schema v4; schema v2/v3 remain accepted for previously saved evidence:
 
 ```bash
 python3 scripts/release/verify-post-split-proof-evidence.py post-split-proof.json
 ```
 
-The offline verifier requires the exact versioned closed schema and checks internal bindings such as source/publisher SHA separation, default-head equality, strict-ancestor facts, workflow identity, Artifact IDs/digests, tag/version consistency, and for schema v3 the secret-free publisher validation job's run/attempt/SHA/default-branch binding. This check detects malformed, truncated, or internally inconsistent evidence, but it does **not** recreate the original GitHub API observations or prove that an edited but internally consistent JSON file is authentic. The live runtime audit remains the source of the evidence.
+The offline verifier requires the exact versioned closed schema and checks internal bindings such as source/publisher SHA separation, default-head equality, strict-ancestor facts, workflow identity, Artifact IDs/digests, tag/version consistency, for schema v3+ the secret-free publisher validation job's run/attempt/SHA/default-branch binding, and for schema v4 the complete recorded live-tag target chain through the resolved source SHA. This check detects malformed, truncated, or internally inconsistent evidence, but it does **not** recreate the original GitHub API observations or prove that an edited but internally consistent JSON file is authentic. The live runtime audit remains the source of the evidence.
 
 The manual procedure remains useful for incident analysis or when the tag/run pair already exists:
 
@@ -542,7 +542,7 @@ For an adopter moving from the old monolithic example:
 10. verify the effective `refs/tags/v*` Ruleset allows initial creation and rejects update/deletion;
 11. run release-isolation tests before creating a real release tag;
 12. use a disposable repository for destructive tag/ruleset tests;
-13. before enabling the production publisher, perform the disposable post-split ancestor proof above, require `audit-post-split-runtime-proof.sh` to pass, save its schema-v3 evidence JSON, and confirm the downstream run used the **current default-branch publisher** control code;
+13. before enabling the production publisher, perform the disposable post-split ancestor proof above, require `audit-post-split-runtime-proof.sh` to pass, save its schema-v4 evidence JSON, and confirm the downstream run used the **current default-branch publisher** control code;
 14. retain the proof tag, run URLs, and evidence JSON together as rollout audit evidence, and verify the saved JSON with `verify-post-split-proof-evidence.py`;
 15. remove/ignore any copied legacy monolithic release workflow.
 

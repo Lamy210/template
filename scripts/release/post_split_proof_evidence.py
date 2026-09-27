@@ -49,7 +49,7 @@ VALIDATION_JOB_FIELDS = {
     "workflowName",
 }
 REPOSITORY_FIELDS = {"defaultBranch", "fullName", "id"}
-SOURCE_FIELDS = {
+SOURCE_FIELDS_V2_V3 = {
     "archiveDigest",
     "artifactDigest",
     "artifactId",
@@ -60,6 +60,10 @@ SOURCE_FIELDS = {
     "workflowName",
     "workflowPath",
 }
+SOURCE_FIELDS_V4 = SOURCE_FIELDS_V2_V3 | {"liveTag"}
+LIVE_TAG_FIELDS = {"annotatedChain", "ref", "refTarget", "resolvedSHA"}
+GIT_TARGET_FIELDS = {"sha", "type"}
+ANNOTATED_TAG_FIELDS = {"sha", "tag", "target"}
 
 SOURCE_WORKFLOW_NAME = "Release Build"
 SOURCE_WORKFLOW_PATH = ".github/workflows/release-build.yml"
@@ -118,6 +122,107 @@ def _source_artifact(
             f"expected exactly one source artifact named {expected_name!r}"
         )
     return matches[0]
+
+
+def _git_target(value: object, label: str) -> dict[str, str]:
+    target = _object(value, label)
+    target_type = target.get("type")
+    if target_type not in {"commit", "tag"}:
+        raise EvidenceError(f"{label} type must be 'commit' or 'tag'")
+    target_sha = _sha(target.get("sha"), f"{label} SHA")
+    return {"sha": target_sha, "type": target_type}
+
+
+def _live_tag_binding(
+    tag_ref: object,
+    tag_objects: object,
+    *,
+    source_tag: str,
+    source_sha: str,
+) -> dict[str, object]:
+    ref = _object(tag_ref, "live release tag ref")
+    expected_ref = f"refs/tags/{source_tag}"
+    if ref.get("ref") != expected_ref:
+        raise EvidenceError("live release tag ref does not match source tag")
+
+    ref_target = _git_target(ref.get("object"), "live release tag target")
+    if not isinstance(tag_objects, list) or any(
+        not isinstance(item, dict) for item in tag_objects
+    ):
+        raise EvidenceError("annotated release tag objects must be an array of objects")
+
+    objects_by_sha: dict[str, dict[str, Any]] = {}
+    for index, document in enumerate(tag_objects):
+        document_sha = _sha(
+            document.get("sha"), f"annotated release tag object {index} SHA"
+        )
+        if document_sha in objects_by_sha:
+            raise EvidenceError(
+                f"duplicate annotated release tag object SHA: {document_sha}"
+            )
+        objects_by_sha[document_sha] = document
+
+    current = ref_target
+    chain: list[dict[str, object]] = []
+    seen: set[str] = set()
+
+    for depth in range(8):
+        if current["type"] == "commit":
+            if current["sha"] != source_sha:
+                raise EvidenceError(
+                    "live release tag resolves to a different SHA than source SHA"
+                )
+            if set(objects_by_sha) != seen:
+                unexpected = sorted(set(objects_by_sha) - seen)
+                raise EvidenceError(
+                    "unexpected annotated release tag objects were collected: "
+                    f"{unexpected!r}"
+                )
+            return {
+                "annotatedChain": chain,
+                "ref": expected_ref,
+                "refTarget": ref_target,
+                "resolvedSHA": source_sha,
+            }
+
+        current_sha = current["sha"]
+        if current_sha in seen:
+            raise EvidenceError(
+                f"annotated release tag chain contains a cycle at {current_sha}"
+            )
+        seen.add(current_sha)
+
+        document = objects_by_sha.get(current_sha)
+        if document is None:
+            raise EvidenceError(
+                f"annotated release tag object is missing for target SHA {current_sha}"
+            )
+
+        tag_name = _string(
+            document.get("tag"),
+            f"annotated release tag object {current_sha} tag",
+        )
+        if "\n" in tag_name or "\r" in tag_name:
+            raise EvidenceError("annotated release tag object tag must be single-line")
+        if depth == 0 and tag_name != source_tag:
+            raise EvidenceError(
+                "outer annotated release tag object name does not match source tag"
+            )
+
+        target = _git_target(
+            document.get("object"),
+            f"annotated release tag object {current_sha} target",
+        )
+        chain.append(
+            {
+                "sha": current_sha,
+                "tag": tag_name,
+                "target": target,
+            }
+        )
+        current = target
+
+    raise EvidenceError("live release tag exceeded maximum annotated-tag dereference depth")
 
 
 def _publisher_validation_job(
@@ -203,6 +308,8 @@ def build_evidence(
     source_run: object,
     publisher_run: object,
     publisher_jobs: object,
+    tag_ref: object,
+    tag_objects: object,
     source_artifacts: object,
     artifacts: object,
     metadata: object,
@@ -229,6 +336,13 @@ def build_evidence(
     source_tag = _string(source.get("head_branch"), "source tag")
     if TAG_RE.fullmatch(source_tag) is None:
         raise EvidenceError("source tag must be canonical stable SemVer")
+
+    live_tag = _live_tag_binding(
+        tag_ref,
+        tag_objects,
+        source_tag=source_tag,
+        source_sha=source_sha,
+    )
 
     publisher_run_id = _positive_int(publisher.get("id"), "publisher run id")
     publisher_run_attempt = _positive_int(
@@ -330,11 +444,12 @@ def build_evidence(
             "fullName": repository_full_name,
             "id": repository_id,
         },
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "source": {
             "archiveDigest": unsigned_archive_digest,
             "artifactDigest": source_artifact_digest,
             "artifactId": source_artifact_id,
+            "liveTag": live_tag,
             "runAttempt": source_run_attempt,
             "runId": source_run_id,
             "sha": source_sha,
@@ -390,8 +505,8 @@ def validate_evidence_document(document: object) -> list[str]:
         return errors
 
     schema_version = root.get("schemaVersion")
-    if type(schema_version) is not int or schema_version not in {2, 3}:
-        errors.append("schemaVersion must equal integer 2 or 3")
+    if type(schema_version) is not int or schema_version not in {2, 3, 4}:
+        errors.append("schemaVersion must equal integer 2, 3, or 4")
     if root.get("proofType") != "post-split-ancestor-runtime":
         errors.append("proofType must equal 'post-split-ancestor-runtime'")
 
@@ -430,10 +545,11 @@ def validate_evidence_document(document: object) -> list[str]:
                     f"defaultHead.{field} must be 40 lowercase hexadecimal characters"
                 )
 
+    source_fields = SOURCE_FIELDS_V4 if schema_version == 4 else SOURCE_FIELDS_V2_V3
     source_errors, source = _closed_object_errors(
         root.get("source"),
         label="source",
-        expected_fields=SOURCE_FIELDS,
+        expected_fields=source_fields,
     )
     errors.extend(source_errors)
     if source is not None:
@@ -455,8 +571,166 @@ def validate_evidence_document(document: object) -> list[str]:
         if source.get("workflowPath") != SOURCE_WORKFLOW_PATH:
             errors.append(f"source.workflowPath must equal {SOURCE_WORKFLOW_PATH!r}")
 
+        if schema_version == 4:
+            live_tag_errors, live_tag = _closed_object_errors(
+                source.get("liveTag"),
+                label="source.liveTag",
+                expected_fields=LIVE_TAG_FIELDS,
+            )
+            errors.extend(live_tag_errors)
+            if live_tag is not None:
+                expected_ref = (
+                    f"refs/tags/{source_tag}"
+                    if isinstance(source_tag, str)
+                    and TAG_RE.fullmatch(source_tag) is not None
+                    else None
+                )
+                if expected_ref is not None and live_tag.get("ref") != expected_ref:
+                    errors.append("source.liveTag.ref must match source.tag")
+
+                ref_target_errors, ref_target = _closed_object_errors(
+                    live_tag.get("refTarget"),
+                    label="source.liveTag.refTarget",
+                    expected_fields=GIT_TARGET_FIELDS,
+                )
+                errors.extend(ref_target_errors)
+
+                resolved_sha = live_tag.get("resolvedSHA")
+                if (
+                    not isinstance(resolved_sha, str)
+                    or SHA_RE.fullmatch(resolved_sha) is None
+                ):
+                    errors.append(
+                        "source.liveTag.resolvedSHA must be 40 lowercase hexadecimal characters"
+                    )
+
+                chain = live_tag.get("annotatedChain")
+                if not isinstance(chain, list):
+                    errors.append("source.liveTag.annotatedChain must be an array")
+                    chain = []
+                elif len(chain) > 8:
+                    errors.append(
+                        "source.liveTag.annotatedChain must contain at most 8 objects"
+                    )
+
+                current_target = ref_target
+                seen_chain_shas: set[str] = set()
+                for index, item in enumerate(chain):
+                    item_errors, tag_object = _closed_object_errors(
+                        item,
+                        label=f"source.liveTag.annotatedChain[{index}]",
+                        expected_fields=ANNOTATED_TAG_FIELDS,
+                    )
+                    errors.extend(item_errors)
+                    if tag_object is None:
+                        current_target = None
+                        continue
+
+                    tag_object_sha = tag_object.get("sha")
+                    if (
+                        not isinstance(tag_object_sha, str)
+                        or SHA_RE.fullmatch(tag_object_sha) is None
+                    ):
+                        errors.append(
+                            f"source.liveTag.annotatedChain[{index}].sha must be 40 lowercase hexadecimal characters"
+                        )
+                    elif tag_object_sha in seen_chain_shas:
+                        errors.append(
+                            "source.liveTag.annotatedChain must not repeat tag object SHAs"
+                        )
+                    else:
+                        seen_chain_shas.add(tag_object_sha)
+
+                    tag_name = tag_object.get("tag")
+                    if (
+                        not isinstance(tag_name, str)
+                        or not tag_name
+                        or "\n" in tag_name
+                        or "\r" in tag_name
+                    ):
+                        errors.append(
+                            f"source.liveTag.annotatedChain[{index}].tag must be a non-empty single-line string"
+                        )
+                    elif index == 0 and isinstance(source_tag, str) and tag_name != source_tag:
+                        errors.append(
+                            "source.liveTag outer annotated tag name must equal source.tag"
+                        )
+
+                    target_errors, next_target = _closed_object_errors(
+                        tag_object.get("target"),
+                        label=f"source.liveTag.annotatedChain[{index}].target",
+                        expected_fields=GIT_TARGET_FIELDS,
+                    )
+                    errors.extend(target_errors)
+                    if next_target is not None:
+                        target_type = next_target.get("type")
+                        target_sha = next_target.get("sha")
+                        if target_type not in {"commit", "tag"}:
+                            errors.append(
+                                f"source.liveTag.annotatedChain[{index}].target.type must be 'commit' or 'tag'"
+                            )
+                        if (
+                            not isinstance(target_sha, str)
+                            or SHA_RE.fullmatch(target_sha) is None
+                        ):
+                            errors.append(
+                                f"source.liveTag.annotatedChain[{index}].target.sha must be 40 lowercase hexadecimal characters"
+                            )
+
+                    if current_target is not None:
+                        if current_target.get("type") != "tag":
+                            errors.append(
+                                "source.liveTag annotated chain must be empty after a commit target"
+                            )
+                        elif (
+                            isinstance(tag_object_sha, str)
+                            and SHA_RE.fullmatch(tag_object_sha) is not None
+                            and current_target.get("sha") != tag_object_sha
+                        ):
+                            errors.append(
+                                "source.liveTag annotated chain does not follow ref/tag targets"
+                            )
+                    current_target = next_target
+
+                if ref_target is not None:
+                    ref_type = ref_target.get("type")
+                    ref_sha = ref_target.get("sha")
+                    if ref_type not in {"commit", "tag"}:
+                        errors.append(
+                            "source.liveTag.refTarget.type must be 'commit' or 'tag'"
+                        )
+                    if not isinstance(ref_sha, str) or SHA_RE.fullmatch(ref_sha) is None:
+                        errors.append(
+                            "source.liveTag.refTarget.sha must be 40 lowercase hexadecimal characters"
+                        )
+
+                if current_target is not None:
+                    if current_target.get("type") != "commit":
+                        errors.append(
+                            "source.liveTag annotated chain must resolve to a commit"
+                        )
+                    elif (
+                        isinstance(resolved_sha, str)
+                        and SHA_RE.fullmatch(resolved_sha) is not None
+                        and current_target.get("sha") != resolved_sha
+                    ):
+                        errors.append(
+                            "source.liveTag final target must equal source.liveTag.resolvedSHA"
+                        )
+
+                if (
+                    isinstance(source_sha, str)
+                    and SHA_RE.fullmatch(source_sha) is not None
+                    and isinstance(resolved_sha, str)
+                    and SHA_RE.fullmatch(resolved_sha) is not None
+                    and resolved_sha != source_sha
+                ):
+                    errors.append(
+                        "source.liveTag.resolvedSHA must equal source.sha"
+                    )
+
     publisher_fields = (
-        PUBLISHER_FIELDS_V3 if schema_version == 3 else PUBLISHER_FIELDS_V2
+        PUBLISHER_FIELDS_V3 if schema_version in {3, 4} else PUBLISHER_FIELDS_V2
     )
     publisher_errors, publisher = _closed_object_errors(
         root.get("publisher"),
@@ -485,7 +759,7 @@ def validate_evidence_document(document: object) -> list[str]:
                 f"publisher.workflowPath must equal {PUBLISHER_WORKFLOW_PATH!r}"
             )
 
-        if schema_version == 3:
+        if schema_version in {3, 4}:
             validation_job_errors, validation_job = _closed_object_errors(
                 publisher.get("validationJob"),
                 label="publisher.validationJob",
@@ -532,7 +806,7 @@ def validate_evidence_document(document: object) -> list[str]:
                         "publisher.validationJob.conclusion must equal 'success'"
                     )
 
-    if schema_version == 3 and publisher is not None and repository is not None:
+    if schema_version in {3, 4} and publisher is not None and repository is not None:
         validation_job = publisher.get("validationJob")
         if isinstance(validation_job, dict):
             if (

@@ -167,6 +167,8 @@ def main() -> int:
                 source_run=source_run,
                 publisher_run=publisher_run,
                 publisher_jobs=publisher_jobs,
+                tag_ref=tag_ref,
+                tag_objects=tag_objects,
                 source_artifacts=source_artifacts,
                 artifacts=artifacts,
                 metadata=metadata,

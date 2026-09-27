@@ -308,6 +308,12 @@ def _tag_binding_errors(
             break
         consumed.add(object_sha)
 
+        if len(consumed) == 1 and document.get("tag") != source_tag:
+            errors.append(
+                "outer annotated release tag object name does not match source run tag"
+            )
+            break
+
         object_type, object_sha, object_errors = _git_object(
             document.get("object"),
             f"annotated release tag object {document.get('sha')} target",
