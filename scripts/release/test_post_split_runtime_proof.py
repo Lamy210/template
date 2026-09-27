@@ -939,6 +939,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 str(root / "source-run.json"),
                 "--publisher-run",
                 str(root / "publisher-run.json"),
+                "--publisher-jobs",
+                str(root / "publisher-jobs.json"),
                 "--source-artifacts",
                 str(root / "source-artifacts.json"),
                 "--tag-ref",
