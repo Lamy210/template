@@ -432,7 +432,9 @@ The example workflow contains two jobs and no secret references:
 - `Baseline runner` does **not** reference an Environment and must succeed;
 - `Release environment probe` references `environment: release` and contains only a trivial echo step.
 
-The proof first dispatches the workflow from the repository default branch and requires both `Baseline runner` and `Release environment probe` to succeed. This positive control proves that the Environment is not accidentally configured to deny every ref.
+Before creating any temporary ref or dispatching the workflow, the proof fetches `.github/workflows/release-environment-proof.yml` from the target repository default branch and requires its bytes to exactly match the current trusted `examples/release-environment-proof.yml`. A same-named workflow with extra steps, permissions, secret access, or any other modification is rejected before execution.
+
+The proof then dispatches the workflow from the repository default branch and requires both `Baseline runner` and `Release environment probe` to succeed. This positive control proves that the Environment is not accidentally configured to deny every ref.
 
 It then creates a temporary branch and arbitrary tag at the same default-branch SHA and dispatches the same workflow from each unauthorized ref. For both refs it requires:
 
