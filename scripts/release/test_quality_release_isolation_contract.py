@@ -28,6 +28,7 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
             "scripts.release.test_release_publisher_workflow_contract",
             "scripts.release.test_privileged_release_workflow_contract",
             "scripts.release.test_homebrew_publisher_workflow_contract",
+            "scripts.homebrew.test_tap_repository_identity",
             "scripts.release.test_unprivileged_release_build_workflow",
             "scripts.release.test_verify_validated_release_metadata",
         ):
@@ -35,6 +36,10 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
                 self.assertIn(module, text)
         self.assertIn("scripts/release/test-resolve-release-build-artifact.sh", text)
         self.assertIn("scripts/release/test-verify-release-source.sh", text)
+
+    def test_dedicated_release_isolation_runs_tap_repository_identity_contract(self) -> None:
+        text = RELEASE_ISOLATION_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("scripts.homebrew.test_tap_repository_identity", text)
 
     def test_release_isolation_runs_on_pull_requests_and_post_merge_main(self) -> None:
         text = RELEASE_ISOLATION_WORKFLOW.read_text(encoding="utf-8")
