@@ -465,6 +465,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PUBLISHER_SHA: ${{ github.sha }}
           DMG_PATH: release-output/${{ inputs.dmg_name }}
           RELEASE_PROVENANCE_PATH: release-output/release-provenance.json
         run: bash scripts/release/publish-github-release.sh

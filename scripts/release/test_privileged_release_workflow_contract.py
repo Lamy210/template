@@ -10,6 +10,7 @@ REUSABLE_RELEASE = REPO_ROOT / ".github/workflows/reusable-macos-release.yml"
 PUBLISHER_EXAMPLE = REPO_ROOT / "examples/app-release-publisher.yml"
 RELEASE_DOC = REPO_ROOT / "docs/RELEASE.md"
 SETUP_DOC = REPO_ROOT / "docs/SETUP.md"
+PUBLISH_SCRIPT = REPO_ROOT / "scripts/release/publish-github-release.sh"
 
 
 def job_block(text: str, job_id: str) -> str:
@@ -147,6 +148,49 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertGreaterEqual(text.count("SOURCE_TAG: ${{ inputs.source_tag }}"), 2)
         self.assertGreaterEqual(text.count("SOURCE_SHA: ${{ inputs.source_sha }}"), 2)
         self.assertGreaterEqual(text.count("PUBLISHER_SHA: ${{ github.sha }}"), 2)
+
+    def test_publication_step_passes_source_binding_identity(self) -> None:
+        text = self.release_text()
+        start = text.index("- name: Publish immutable GitHub Release")
+        publication = text[start : start + 700]
+        self.assertIn("GH_TOKEN: ${{ github.token }}", publication)
+        self.assertIn("TAG_NAME: ${{ inputs.source_tag }}", publication)
+        self.assertIn("SOURCE_SHA: ${{ inputs.source_sha }}", publication)
+        self.assertIn("PUBLISHER_SHA: ${{ github.sha }}", publication)
+        self.assertIn(
+            "run: bash scripts/release/publish-github-release.sh",
+            publication,
+        )
+
+    def test_publication_script_rebinds_source_before_and_after_remote_verification(self) -> None:
+        text = PUBLISH_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn(': "${GH_TOKEN:?GH_TOKEN is required}"', text)
+        self.assertIn(': "${SOURCE_SHA:?SOURCE_SHA is required}"', text)
+        self.assertIn(': "${PUBLISHER_SHA:?PUBLISHER_SHA is required}"', text)
+
+        binding_calls = [
+            match.start()
+            for match in re.finditer(
+                r"(?m)^if ! verify_publication_source_binding; then$",
+                text,
+            )
+        ]
+        self.assertEqual(2, len(binding_calls))
+
+        release_probe = text.index("release_exists() {")
+        remote_verification = text.index(
+            'remote_digest="$(shasum -a 256 "${remote_path}"'
+        )
+        success = text.index(
+            'if [[ "${release_created}" == true ]]; then'
+        )
+        self.assertLess(binding_calls[0], release_probe)
+        self.assertLess(remote_verification, binding_calls[1])
+        self.assertLess(binding_calls[1], success)
+        self.assertIn(
+            'SOURCE_TAG="${TAG_NAME}"',
+            text,
+        )
 
     def test_verified_release_artifact_is_bound_to_publisher_attempt(self) -> None:
         text = self.release_text()
