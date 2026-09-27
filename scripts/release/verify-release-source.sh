@@ -59,10 +59,11 @@ except (json.JSONDecodeError, UnicodeDecodeError) as error:
     raise SystemExit(f"invalid GitHub Git ref JSON: {error}")
 if not isinstance(document, dict):
     raise SystemExit("GitHub Git ref response must be an object")
-if document.get("ref") != expected_ref:
+actual_ref = document.get("ref")
+if actual_ref != expected_ref:
     raise SystemExit(
         f"GitHub Git ref identity mismatch: expected {expected_ref!r}, "
-        f"got {document.get('ref')!r}"
+        f"got {actual_ref!r}"
     )
 obj = document.get("object")
 if not isinstance(obj, dict):
