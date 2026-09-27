@@ -185,6 +185,21 @@ class HistoricalReleaseBuildWorkflowTests(unittest.TestCase):
                     errors,
                 )
 
+    def test_comments_cannot_satisfy_proof_contract_tokens(self) -> None:
+        expected = "unsigned-macos-release-${{ github.run_id }}-${{ github.run_attempt }}"
+        text = workflow_text().replace(
+            expected,
+            "unsigned-macos-release # " + expected,
+            1,
+        )
+
+        errors = validate_unprivileged_release_build_workflow(text)
+
+        self.assertTrue(
+            any("missing proof contract token" in error for error in errors),
+            errors,
+        )
+
     def test_allows_application_specific_read_only_job_without_permissions_override(self) -> None:
         text = workflow_text().replace(
             "jobs:\n  build:",
