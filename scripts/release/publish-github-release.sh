@@ -5,6 +5,9 @@ set -euo pipefail
 : "${DMG_PATH:?DMG_PATH is required}"
 : "${RELEASE_PROVENANCE_PATH:?RELEASE_PROVENANCE_PATH is required}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+: "${GH_TOKEN:?GH_TOKEN is required}"
+: "${SOURCE_SHA:?SOURCE_SHA is required}"
+: "${PUBLISHER_SHA:?PUBLISHER_SHA is required}"
 
 if [[ ! "${GITHUB_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   echo "GITHUB_REPOSITORY must be in owner/repo form." >&2
@@ -70,6 +73,22 @@ fi
 dmg_digest="$(shasum -a 256 "${DMG_PATH}" | awk '{print $1}')"
 if [[ "${checksum_digest}" != "${dmg_digest}" ]]; then
   echo "Release checksum does not match DMG payload: ${DMG_PATH}" >&2
+  exit 1
+fi
+
+verify_publication_source_binding() {
+  local verifier
+  verifier="$(dirname "${BASH_SOURCE[0]}")/verify-release-source.sh"
+  if ! SOURCE_TAG="${TAG_NAME}" \
+    SOURCE_SHA="${SOURCE_SHA}" \
+    PUBLISHER_SHA="${PUBLISHER_SHA}" \
+    bash "${verifier}" >/dev/null; then
+    echo "Release source binding failed during GitHub Release publication." >&2
+    return 1
+  fi
+}
+
+if ! verify_publication_source_binding; then
   exit 1
 fi
 
@@ -167,6 +186,11 @@ for local_path in "${assets[@]}"; do
     exit 1
   fi
 done
+
+if ! verify_publication_source_binding; then
+  echo "Release source binding changed during GitHub Release publication." >&2
+  exit 1
+fi
 
 if [[ "${release_created}" == true ]]; then
   printf 'GitHub Release %s was created and verified with identical remote assets.\n' "${TAG_NAME}"
