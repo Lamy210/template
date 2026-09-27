@@ -16,6 +16,7 @@ EXPECTED_ARTIFACT_NAME = (
 )
 EXPECTED_ARCHIVE_PATH = "artifact-payload/release-input/unsigned-macos-app.tar.gz"
 EXPECTED_PROVENANCE_PATH = "artifact-payload/release-input/build-provenance.json"
+EXPECTED_UPLOAD_PATH = "artifact-payload/"
 PRIVILEGED_TOKENS = (
     "MACOS_CERTIFICATE_P12_BASE64",
     "MACOS_CERTIFICATE_PASSWORD",
@@ -336,17 +337,52 @@ def validate_unprivileged_release_build_workflow(text: str) -> list[str]:
 
     errors.extend(_step_uses_errors(lines))
 
-    active_text = "\n".join(stripped for _, _, stripped in lines)
-    required_tokens = (
-        "scripts/release/write-build-provenance.py",
-        EXPECTED_ARTIFACT_NAME,
-        EXPECTED_ARCHIVE_PATH,
-        EXPECTED_PROVENANCE_PATH,
-        "actions/upload-artifact@",
+    active_lines = [stripped for _, _, stripped in lines]
+    shell_lines = [line[:-1].rstrip() if line.endswith("\\") else line for line in active_lines]
+
+    exact_contract_lines = (
+        f"name: {EXPECTED_ARTIFACT_NAME}",
+        f"OUTPUT_ARCHIVE: {EXPECTED_ARCHIVE_PATH}",
+        f"path: {EXPECTED_UPLOAD_PATH}",
+        '--repository "${GITHUB_REPOSITORY}"',
+        '--workflow-name "Release Build"',
+        '--workflow-path ".github/workflows/release-build.yml"',
+        '--run-id "${GITHUB_RUN_ID}"',
+        '--run-attempt "${GITHUB_RUN_ATTEMPT}"',
+        '--source-event "${GITHUB_EVENT_NAME}"',
+        '--source-sha "${GITHUB_SHA}"',
+        '--source-ref "${GITHUB_REF}"',
+        '--tag "${GITHUB_REF_NAME}"',
+        f"--archive-path {EXPECTED_ARCHIVE_PATH}",
+        f"--output {EXPECTED_PROVENANCE_PATH}",
     )
-    for token in required_tokens:
-        if token not in active_text:
-            errors.append(f"release build workflow is missing proof contract token: {token}")
+    for expected in exact_contract_lines:
+        if expected not in shell_lines:
+            errors.append(
+                f"release build workflow is missing proof contract line: {expected}"
+            )
+
+    if not any(
+        re.fullmatch(
+            r"python3 scripts/release/write-build-provenance\.py",
+            line,
+        )
+        for line in shell_lines
+    ):
+        errors.append(
+            "release build workflow must invoke scripts/release/write-build-provenance.py"
+        )
+
+    if not any(
+        re.fullmatch(
+            r"uses:\s*actions/upload-artifact@[0-9a-f]{40}(?:\s+#.*)?",
+            line,
+        )
+        for line in active_lines
+    ):
+        errors.append(
+            "release build workflow must use a full-SHA-pinned actions/upload-artifact"
+        )
 
     return errors
 
