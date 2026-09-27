@@ -187,6 +187,114 @@ def _artifact_errors(
     return errors
 
 
+def _git_object(value: object, label: str) -> tuple[str | None, str | None, list[str]]:
+    if not isinstance(value, dict):
+        return None, None, [f"{label} must be an object"]
+    object_type = value.get("type")
+    object_sha = value.get("sha")
+    errors: list[str] = []
+    if object_type not in {"commit", "tag"}:
+        errors.append(f"{label} type must be 'commit' or 'tag'")
+    if not _sha(object_sha):
+        errors.append(f"{label} SHA must be 40 lowercase hexadecimal characters")
+    return (
+        object_type if object_type in {"commit", "tag"} else None,
+        object_sha if _sha(object_sha) else None,
+        errors,
+    )
+
+
+def _tag_binding_errors(
+    tag_ref: object,
+    tag_objects: object,
+    *,
+    source_tag: str,
+    source_sha: str,
+) -> list[str]:
+    if not isinstance(tag_ref, dict):
+        return ["live release tag ref must be a JSON object"]
+    if not isinstance(tag_objects, list) or any(
+        not isinstance(item, dict) for item in tag_objects
+    ):
+        return ["annotated release tag objects must be an array of objects"]
+
+    errors: list[str] = []
+    expected_ref = f"refs/tags/{source_tag}"
+    if tag_ref.get("ref") != expected_ref:
+        errors.append("live release tag ref does not match source run tag")
+
+    object_type, object_sha, object_errors = _git_object(
+        tag_ref.get("object"), "live release tag target"
+    )
+    errors.extend(object_errors)
+
+    objects_by_sha: dict[str, dict[str, Any]] = {}
+    for index, document in enumerate(tag_objects):
+        document_sha = document.get("sha")
+        if not _sha(document_sha):
+            errors.append(
+                f"annotated release tag object {index} SHA must be 40 lowercase hexadecimal characters"
+            )
+            continue
+        assert isinstance(document_sha, str)
+        if document_sha in objects_by_sha:
+            errors.append(f"duplicate annotated release tag object SHA: {document_sha}")
+            continue
+        objects_by_sha[document_sha] = document
+
+    if errors:
+        return errors
+
+    assert object_type is not None
+    assert object_sha is not None
+    seen: set[str] = set()
+    consumed: set[str] = set()
+    resolved_sha: str | None = None
+
+    for _ in range(8):
+        if object_type == "commit":
+            resolved_sha = object_sha
+            break
+
+        if object_sha in seen:
+            errors.append(f"annotated release tag chain contains a cycle at {object_sha}")
+            break
+        seen.add(object_sha)
+
+        document = objects_by_sha.get(object_sha)
+        if document is None:
+            errors.append(
+                f"annotated release tag object is missing for target SHA {object_sha}"
+            )
+            break
+        consumed.add(object_sha)
+
+        object_type, object_sha, object_errors = _git_object(
+            document.get("object"),
+            f"annotated release tag object {document.get('sha')} target",
+        )
+        errors.extend(object_errors)
+        if object_errors:
+            break
+        assert object_type is not None
+        assert object_sha is not None
+    else:
+        errors.append("live release tag exceeded maximum annotated-tag dereference depth")
+
+    unexpected_objects = sorted(set(objects_by_sha) - consumed)
+    if unexpected_objects:
+        errors.append(
+            f"unexpected annotated release tag objects were collected: {unexpected_objects!r}"
+        )
+
+    if resolved_sha is not None and resolved_sha != source_sha:
+        errors.append(
+            "live release tag resolves to a different SHA than the source run"
+        )
+
+    return errors
+
+
 def _ancestor_errors(
     comparison: object,
     *,
@@ -227,6 +335,8 @@ def validate_post_split_runtime_proof(
     comparison: object,
     *,
     source_artifacts: object | None = None,
+    tag_ref: object | None = None,
+    tag_objects: object | None = None,
     final_default_commit: object | None = None,
 ) -> list[str]:
     errors: list[str] = []
@@ -344,6 +454,20 @@ def validate_post_split_runtime_proof(
         errors.append("unsigned app archive digest must use sha256:<64 lowercase hex>")
     elif isinstance(metadata, dict) and metadata.get("archiveSha256") != archive_digest:
         errors.append("unsigned app archive digest does not match validator metadata")
+
+    if (
+        _sha(source_sha)
+        and isinstance(source_tag, str)
+        and TAG_RE.fullmatch(source_tag) is not None
+    ):
+        errors.extend(
+            _tag_binding_errors(
+                tag_ref,
+                tag_objects,
+                source_tag=source_tag,
+                source_sha=source_sha,
+            )
+        )
 
     if (
         _positive_int(repository_id)
