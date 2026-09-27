@@ -69,6 +69,14 @@ def inputs() -> dict[str, object]:
                 "conclusion": "success",
             }
         ],
+        "tag_ref": {
+            "ref": "refs/tags/v1.2.3",
+            "object": {
+                "type": "commit",
+                "sha": SOURCE_SHA,
+            },
+        },
+        "tag_objects": [],
         "source_artifacts": [
             {
                 "id": SOURCE_ARTIFACT_ID,
@@ -158,11 +166,20 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                     "fullName": REPOSITORY,
                     "id": REPO_ID,
                 },
-                "schemaVersion": 3,
+                "schemaVersion": 4,
                 "source": {
                     "archiveDigest": ARCHIVE_DIGEST,
                     "artifactDigest": SOURCE_ARTIFACT_DIGEST,
                     "artifactId": SOURCE_ARTIFACT_ID,
+                    "liveTag": {
+                        "annotatedChain": [],
+                        "ref": "refs/tags/v1.2.3",
+                        "refTarget": {
+                            "sha": SOURCE_SHA,
+                            "type": "commit",
+                        },
+                        "resolvedSHA": SOURCE_SHA,
+                    },
                     "runAttempt": SOURCE_RUN_ATTEMPT,
                     "runId": SOURCE_RUN_ID,
                     "sha": SOURCE_SHA,
@@ -212,6 +229,12 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                 "publisher validation job conclusion",
                 lambda data: data["publisher_jobs"][0].__setitem__(
                     "conclusion", "failure"
+                ),
+            ),
+            (
+                "live tag moved",
+                lambda data: data["tag_ref"]["object"].__setitem__(
+                    "sha", "4" * 40
                 ),
             ),
             (
@@ -291,6 +314,20 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                 "publisher.validationJob.headBranch must equal repository.defaultBranch",
             ),
             (
+                "live tag ref drift",
+                lambda document: document["source"]["liveTag"].__setitem__(
+                    "ref", "refs/tags/v9.9.9"
+                ),
+                "source.liveTag.ref must match source.tag",
+            ),
+            (
+                "live tag resolved SHA drift",
+                lambda document: document["source"]["liveTag"].__setitem__(
+                    "resolvedSHA", "5" * 40
+                ),
+                "source.liveTag.resolvedSHA must equal source.sha",
+            ),
+            (
                 "default-head drift",
                 lambda document: document["defaultHead"].__setitem__(
                     "finalSHA", "2" * 40
@@ -346,8 +383,27 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
         document = json.loads(json.dumps(valid_evidence()))
         document["schemaVersion"] = 2
         document["publisher"].pop("validationJob")
+        document["source"].pop("liveTag")
 
         self.assertEqual([], validate_evidence_document(document))
+
+    def test_accepts_legacy_schema_v3_evidence(self) -> None:
+        document = json.loads(json.dumps(valid_evidence()))
+        document["schemaVersion"] = 3
+        document["source"].pop("liveTag")
+
+        self.assertEqual([], validate_evidence_document(document))
+
+    def test_rejects_live_tag_in_legacy_schema_v3(self) -> None:
+        document = json.loads(json.dumps(valid_evidence()))
+        document["schemaVersion"] = 3
+
+        errors = validate_evidence_document(document)
+
+        self.assertTrue(
+            any("source unexpected fields" in error for error in errors),
+            errors,
+        )
 
     def test_rejects_validation_job_in_legacy_schema_v2(self) -> None:
         document = json.loads(json.dumps(valid_evidence()))
