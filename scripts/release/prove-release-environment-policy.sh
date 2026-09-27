@@ -134,7 +134,7 @@ if [[ -n "${origin_url}" ]]; then
   fi
 fi
 
-nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$}"
+nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$$}"
 if [[ ! "${nonce}" =~ ^[A-Za-z0-9._-]+$ ]]; then
   echo "PROOF_NONCE must contain only letters, numbers, dot, underscore, or hyphen." >&2
   exit 2
@@ -224,16 +224,45 @@ tag_name="environment-proof-${nonce}"
 branch_created=false
 tag_created=false
 
-cleanup() {
+cleanup_best_effort() {
   rm -rf "${temp_root}"
   if [[ "${branch_created}" == true ]]; then
-    gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/heads/${branch_name}" >/dev/null 2>&1 || true
+    if gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/heads/${branch_name}" >/dev/null 2>&1; then
+      branch_created=false
+    fi
   fi
   if [[ "${tag_created}" == true ]]; then
-    gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/tags/${tag_name}" >/dev/null 2>&1 || true
+    if gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/tags/${tag_name}" >/dev/null 2>&1; then
+      tag_created=false
+    fi
   fi
 }
-trap cleanup EXIT
+
+cleanup_refs_strict() {
+  local failed=false
+
+  if [[ "${branch_created}" == true ]]; then
+    if gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/heads/${branch_name}" >/dev/null; then
+      branch_created=false
+    else
+      echo "Failed to delete temporary proof branch: ${branch_name}" >&2
+      failed=true
+    fi
+  fi
+
+  if [[ "${tag_created}" == true ]]; then
+    if gh api "${api_headers[@]}" --method DELETE "repos/${repository}/git/refs/tags/${tag_name}" >/dev/null; then
+      tag_created=false
+    else
+      echo "Failed to delete temporary proof tag: ${tag_name}" >&2
+      failed=true
+    fi
+  fi
+
+  [[ "${failed}" == false ]]
+}
+
+trap cleanup_best_effort EXIT
 
 if gh api "${api_headers[@]}" "repos/${repository}/git/ref/heads/${branch_name}" >/dev/null 2>&1; then
   echo "Temporary branch already exists: ${branch_name}" >&2
@@ -651,5 +680,13 @@ if not isinstance(final_sha, str) or re.fullmatch(r"[0-9a-f]{40}", final_sha) is
 if final_sha != expected_sha:
     raise SystemExit("default branch head changed during Environment proof")
 PY
+
+if ! cleanup_refs_strict; then
+  echo "Release Environment proof checks passed, but temporary ref cleanup failed." >&2
+  exit 4
+fi
+
+rm -rf "${temp_root}"
+trap - EXIT
 
 echo "release Environment negative runtime proof passed for ${repository}"

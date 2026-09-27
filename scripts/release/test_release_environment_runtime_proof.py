@@ -69,7 +69,7 @@ def write_fake_gh(root: Path) -> Path:
               local run_id="$1"
               local probe_conclusion
               case "${GH_STUB_SCENARIO}" in
-                success | repository-drift | final-head-drift)
+                success | repository-drift | final-head-drift | cleanup-failure)
                   if [[ "${run_id}" == 100 ]]; then
                     probe_conclusion="success"
                   else
@@ -101,7 +101,7 @@ def write_fake_gh(root: Path) -> Path:
               local run_id="$1"
               local conclusion
               case "${GH_STUB_SCENARIO}" in
-                success | repository-drift | final-head-drift)
+                success | repository-drift | final-head-drift | cleanup-failure)
                   if [[ "${run_id}" == 100 ]]; then
                     conclusion="success"
                   else
@@ -184,6 +184,10 @@ def write_fake_gh(root: Path) -> Path:
             fi
 
             if [[ "${args}" == *"--method DELETE"* ]]; then
+              if [[ "${GH_STUB_SCENARIO}" == "cleanup-failure" &&
+                    "${args}" == *"git/refs/tags/environment-proof-proof"* ]]; then
+                exit 96
+              fi
               exit 0
             fi
 
@@ -302,8 +306,16 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
             text.index("--method POST"),
         )
         self.assertIn(
-            'nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$}"',
+            'nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$$}"',
             text,
+        )
+        self.assertIn("cleanup_best_effort", text)
+        self.assertIn("cleanup_refs_strict", text)
+        self.assertIn("trap cleanup_best_effort EXIT", text)
+        self.assertIn("trap - EXIT", text)
+        self.assertLess(
+            text.index("if ! cleanup_refs_strict; then"),
+            text.index("release Environment negative runtime proof passed"),
         )
 
     def test_run_and_job_discovery_is_fully_paginated(self) -> None:
@@ -426,6 +438,32 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn(
             "default branch head changed during Environment proof",
+            result.stderr,
+        )
+        self.assertNotIn(
+            "release Environment negative runtime proof passed",
+            result.stdout,
+        )
+
+    def test_fails_if_temporary_ref_cleanup_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            write_fake_gh(root)
+            result = run_script(
+                "--repository",
+                "example/disposable",
+                "--confirm-disposable",
+                "example/disposable",
+                env=fake_env(root, "cleanup-failure"),
+            )
+
+        self.assertEqual(4, result.returncode)
+        self.assertIn(
+            "Failed to delete temporary proof tag",
+            result.stderr,
+        )
+        self.assertIn(
+            "temporary ref cleanup failed",
             result.stderr,
         )
         self.assertNotIn(
