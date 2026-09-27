@@ -13,7 +13,10 @@ SCRIPT = REPO_ROOT / "scripts/release/prove-release-environment-policy.sh"
 WORKFLOW = REPO_ROOT / "examples/release-environment-proof.yml"
 
 
-def run_script(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run_script(
+    *args: str,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
     if env:
         merged.update(env)
@@ -27,6 +30,178 @@ def run_script(*args: str, env: dict[str, str] | None = None) -> subprocess.Comp
     )
 
 
+def write_fake_gh(root: Path) -> Path:
+    fake_gh = root / "gh"
+    fake_gh.write_text(
+        textwrap.dedent(
+            r'''#!/usr/bin/env bash
+            set -euo pipefail
+            args="$*"
+
+            : "${GH_STUB_STATE:?GH_STUB_STATE is required}"
+            : "${GH_STUB_SCENARIO:?GH_STUB_SCENARIO is required}"
+
+            emit_runs() {
+              local count
+              count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+              case "${count}" in
+                0)
+                  printf '%s\n' '[{"total_count":0,"workflow_runs":[]}]'
+                  ;;
+                1)
+                  printf '%s\n' '[{"total_count":1,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","event":"workflow_dispatch"}]}]'
+                  ;;
+                2)
+                  printf '%s\n' '[{"total_count":2,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","event":"workflow_dispatch"}]},{"total_count":2,"workflow_runs":[{"id":101,"display_title":"Release Environment Negative Proof / proof-branch","head_branch":"environment-proof/proof","event":"workflow_dispatch"}]}]'
+                  ;;
+                *)
+                  printf '%s\n' '[{"total_count":3,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","event":"workflow_dispatch"},{"id":101,"display_title":"Release Environment Negative Proof / proof-branch","head_branch":"environment-proof/proof","event":"workflow_dispatch"}]},{"total_count":3,"workflow_runs":[{"id":102,"display_title":"Release Environment Negative Proof / proof-tag","head_branch":"environment-proof-proof","event":"workflow_dispatch"}]}]'
+                  ;;
+              esac
+            }
+
+            emit_jobs() {
+              local run_id="$1"
+              local probe_conclusion
+              case "${GH_STUB_SCENARIO}" in
+                success)
+                  if [[ "${run_id}" == 100 ]]; then
+                    probe_conclusion="success"
+                  else
+                    probe_conclusion="failure"
+                  fi
+                  ;;
+                default-denied)
+                  probe_conclusion="failure"
+                  ;;
+                unauthorized-enters)
+                  if [[ "${run_id}" == 100 || "${run_id}" == 101 ]]; then
+                    probe_conclusion="success"
+                  else
+                    probe_conclusion="failure"
+                  fi
+                  ;;
+                *)
+                  exit 93
+                  ;;
+              esac
+
+              printf '[{"total_count":2,"jobs":[{"id":%s1,"name":"Baseline runner","status":"completed","conclusion":"success"}]},' \
+                "${run_id}"
+              printf '{"total_count":2,"jobs":[{"id":%s2,"name":"Release environment probe","status":"completed","conclusion":"%s"}]}]\n' \
+                "${run_id}" "${probe_conclusion}"
+            }
+
+            emit_run() {
+              local run_id="$1"
+              local conclusion
+              case "${GH_STUB_SCENARIO}" in
+                success)
+                  if [[ "${run_id}" == 100 ]]; then
+                    conclusion="success"
+                  else
+                    conclusion="failure"
+                  fi
+                  ;;
+                default-denied)
+                  conclusion="failure"
+                  ;;
+                unauthorized-enters)
+                  if [[ "${run_id}" == 100 || "${run_id}" == 101 ]]; then
+                    conclusion="success"
+                  else
+                    conclusion="failure"
+                  fi
+                  ;;
+                *)
+                  exit 93
+                  ;;
+              esac
+              printf '{"status":"completed","conclusion":"%s"}\n' "${conclusion}"
+            }
+
+            if [[ "$1" == "workflow" && "$2" == "run" ]]; then
+              count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+              count=$((count + 1))
+              printf '%s\n' "${count}" >"${GH_STUB_STATE}"
+              exit 0
+            fi
+
+            if [[ "$1" != "api" ]]; then
+              exit 90
+            fi
+
+            if [[ "${args}" == *"/actions/workflows/"*"/runs?event=workflow_dispatch&per_page=100"* ]]; then
+              if [[ "${args}" != *"--paginate"* || "${args}" != *"--slurp"* ]]; then
+                exit 94
+              fi
+              emit_runs
+              exit 0
+            fi
+
+            if [[ "${args}" =~ actions/runs/([0-9]+)/jobs\?per_page=100 ]]; then
+              if [[ "${args}" != *"--paginate"* || "${args}" != *"--slurp"* ]]; then
+                exit 95
+              fi
+              emit_jobs "${BASH_REMATCH[1]}"
+              exit 0
+            fi
+
+            if [[ "${args}" =~ actions/runs/([0-9]+)$ ]]; then
+              emit_run "${BASH_REMATCH[1]}"
+              exit 0
+            fi
+
+            if [[ "${args}" == *"contents/.github/workflows/release-environment-proof.yml"* ]]; then
+              printf '%s\n' '{"type":"file"}'
+              exit 0
+            fi
+
+            if [[ "${args}" == *"commits/main"* ]]; then
+              printf '%s\n' '{"sha":"1111111111111111111111111111111111111111"}'
+              exit 0
+            fi
+
+            if [[ "${args}" == *"git/ref/heads/environment-proof/proof"* ]] ||
+               [[ "${args}" == *"git/ref/tags/environment-proof-proof"* ]]; then
+              exit 1
+            fi
+
+            if [[ "${args}" == *"--method POST"* && "${args}" == *"/git/refs"* ]]; then
+              printf '%s\n' '{"ref":"created"}'
+              exit 0
+            fi
+
+            if [[ "${args}" == *"--method DELETE"* ]]; then
+              exit 0
+            fi
+
+            if [[ "${args}" == *"repos/example/disposable"* ]]; then
+              printf '%s\n' '{"default_branch":"main"}'
+              exit 0
+            fi
+
+            exit 91
+            '''
+        ),
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+    return fake_gh
+
+
+def fake_env(root: Path, scenario: str) -> dict[str, str]:
+    return {
+        "PATH": f"{root}:{os.environ['PATH']}",
+        "GITHUB_REPOSITORY": "example/template",
+        "GH_STUB_STATE": str(root / "dispatch-state"),
+        "GH_STUB_SCENARIO": scenario,
+        "PROOF_NONCE": "proof",
+        "PROOF_POLL_ATTEMPTS": "1",
+        "PROOF_POLL_SECONDS": "0",
+    }
+
+
 class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
     def test_example_workflow_is_manual_secret_free_and_targets_release(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
@@ -35,7 +210,10 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertNotIn("\n  push:", text)
         self.assertIn("permissions: {}", text)
         self.assertIn("environment: release", text)
-        self.assertIn("Release Environment Negative Proof / ${{ inputs.nonce }}", text)
+        self.assertIn(
+            "Release Environment Negative Proof / ${{ inputs.nonce }}",
+            text,
+        )
         self.assertIn("Baseline runner", text)
         self.assertIn("Release environment probe", text)
         self.assertNotIn("secrets.", text)
@@ -69,124 +247,43 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("probe job must fail", text)
         self.assertIn("--method DELETE", text)
 
+    def test_run_and_job_discovery_is_fully_paginated(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn("gh run list", text)
+        self.assertIn("runs?event=workflow_dispatch&per_page=100", text)
+        self.assertIn("--paginate --slurp", text)
+        self.assertIn("workflow-run pages disagree on total_count", text)
+        self.assertIn(
+            "workflow-run total_count={declared_total} does not match",
+            text,
+        )
+        self.assertIn("workflow-run response contains duplicate id", text)
+        self.assertIn('event != "workflow_dispatch"', text)
+        self.assertIn("workflow jobs pages disagree on total_count", text)
+        self.assertIn(
+            "workflow jobs total_count={declared_total} does not match",
+            text,
+        )
+        self.assertIn("workflow jobs response contains duplicate id", text)
+
     def test_contract_binds_dispatched_run_to_new_id_and_expected_ref(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("baseline_run_ids", text)
         self.assertIn("headBranch", text)
         self.assertIn("expected_ref", text)
-        self.assertIn("databaseId,displayTitle,headBranch", text)
+        self.assertIn('"databaseId": run_id', text)
+        self.assertIn('"displayTitle": title', text)
 
-    def test_fake_github_proves_branch_and_tag_are_denied(self) -> None:
+    def test_fake_github_proves_branch_and_tag_are_denied_across_pages(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            fake_gh = root / "gh"
-            fake_gh.write_text(
-                textwrap.dedent(
-                    """                    #!/usr/bin/env bash
-                    set -euo pipefail
-                    args="$*"
-
-                    : "${GH_STUB_STATE:?GH_STUB_STATE is required}"
-
-                    if [[ "$1" == "workflow" && "$2" == "run" ]]; then
-                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
-                      count=$((count + 1))
-                      printf '%s\n' "${count}" >"${GH_STUB_STATE}"
-                      exit 0
-                    fi
-
-                    if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
-                      case "${count}" in
-                        0)
-                          printf '%s\n' '[]'
-                          ;;
-                        1)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"}]'
-                          ;;
-                        2)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"}]'
-                          ;;
-                        *)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag","headBranch":"environment-proof-proof"}]'
-                          ;;
-                      esac
-                      exit 0
-                    fi
-
-                    if [[ "$1" != "api" ]]; then
-                      exit 90
-                    fi
-
-                    if [[ "$args" == *"repos/example/disposable/actions/runs/100/jobs"* ]]; then
-                      printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"success"}]}'
-                      exit 0
-                    fi
-                    if [[ "$args" == *"repos/example/disposable/actions/runs/101/jobs"* ]] ||
-                       [[ "$args" == *"repos/example/disposable/actions/runs/102/jobs"* ]]; then
-                      printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"failure"}]}'
-                      exit 0
-                    fi
-
-                    if [[ "$args" == *"repos/example/disposable/actions/runs/100"* ]]; then
-                      printf '%s\n' '{"status":"completed","conclusion":"success"}'
-                      exit 0
-                    fi
-                    if [[ "$args" == *"repos/example/disposable/actions/runs/101"* ]] ||
-                       [[ "$args" == *"repos/example/disposable/actions/runs/102"* ]]; then
-                      printf '%s\n' '{"status":"completed","conclusion":"failure"}'
-                      exit 0
-                    fi
-
-                    if [[ "$args" == *"repos/example/disposable/contents/.github/workflows/release-environment-proof.yml"* ]]; then
-                      printf '%s\n' '{"type":"file"}'
-                      exit 0
-                    fi
-
-                    if [[ "$args" == *"repos/example/disposable/commits/main"* ]]; then
-                      printf '%s\n' '{"sha":"1111111111111111111111111111111111111111"}'
-                      exit 0
-                    fi
-
-                    if [[ "$args" == *"repos/example/disposable/git/ref/heads/environment-proof/proof"* ]] ||
-                       [[ "$args" == *"repos/example/disposable/git/ref/tags/environment-proof-proof"* ]]; then
-                      exit 1
-                    fi
-
-                    if [[ "$args" == *"--method POST"* && "$args" == *"repos/example/disposable/git/refs"* ]]; then
-                      printf '%s\n' '{"ref":"created"}'
-                      exit 0
-                    fi
-
-                    if [[ "$args" == *"--method DELETE"* ]]; then
-                      exit 0
-                    fi
-
-                    if [[ "$args" == *"repos/example/disposable"* ]]; then
-                      printf '%s\n' '{"default_branch":"main"}'
-                      exit 0
-                    fi
-
-                    exit 91
-                    """
-                ),
-                encoding="utf-8",
-            )
-            fake_gh.chmod(0o755)
-
+            write_fake_gh(root)
             result = run_script(
                 "--repository",
                 "example/disposable",
                 "--confirm-disposable",
                 "example/disposable",
-                env={
-                    "PATH": f"{root}:{os.environ['PATH']}",
-                    "GITHUB_REPOSITORY": "example/template",
-                    "GH_STUB_STATE": str(root / "dispatch-state"),
-                    "PROOF_NONCE": "proof",
-                    "PROOF_POLL_ATTEMPTS": "1",
-                    "PROOF_POLL_SECONDS": "0",
-                },
+                env=fake_env(root, "success"),
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
@@ -198,97 +295,13 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
     def test_fake_github_fails_if_default_branch_cannot_enter_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            fake_gh = root / "gh"
-            fake_gh.write_text(
-                textwrap.dedent(
-                    """                    #!/usr/bin/env bash
-                    set -euo pipefail
-                    args="$*"
-
-                    : "${GH_STUB_STATE:?GH_STUB_STATE is required}"
-
-                    if [[ "$1" == "workflow" && "$2" == "run" ]]; then
-                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
-                      count=$((count + 1))
-                      printf '%s\n' "${count}" >"${GH_STUB_STATE}"
-                      exit 0
-                    fi
-
-                    if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
-                      case "${count}" in
-                        0)
-                          printf '%s\n' '[]'
-                          ;;
-                        1)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"}]'
-                          ;;
-                        2)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"}]'
-                          ;;
-                        *)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag","headBranch":"environment-proof-proof"}]'
-                          ;;
-                      esac
-                      exit 0
-                    fi
-
-                    if [[ "$1" != "api" ]]; then
-                      exit 90
-                    fi
-
-                    if [[ "$args" == *"actions/runs/100/jobs"* ]] ||
-                       [[ "$args" == *"actions/runs/101/jobs"* ]] ||
-                       [[ "$args" == *"actions/runs/102/jobs"* ]]; then
-                      printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"failure"}]}'
-                      exit 0
-                    fi
-
-                    if [[ "$args" == *"actions/runs/100"* ]] ||
-                       [[ "$args" == *"actions/runs/101"* ]] ||
-                       [[ "$args" == *"actions/runs/102"* ]]; then
-                      printf '%s\n' '{"status":"completed","conclusion":"failure"}'
-                      exit 0
-                    fi
-
-                    if [[ "$args" == *"contents/.github/workflows/release-environment-proof.yml"* ]]; then
-                      printf '%s\n' '{"type":"file"}'
-                      exit 0
-                    fi
-                    if [[ "$args" == *"commits/main"* ]]; then
-                      printf '%s\n' '{"sha":"1111111111111111111111111111111111111111"}'
-                      exit 0
-                    fi
-                    if [[ "$args" == *"git/ref/heads/environment-proof/proof"* ]] ||
-                       [[ "$args" == *"git/ref/tags/environment-proof-proof"* ]]; then
-                      exit 1
-                    fi
-                    if [[ "$args" == *"--method POST"* ]]; then exit 0; fi
-                    if [[ "$args" == *"--method DELETE"* ]]; then exit 0; fi
-                    if [[ "$args" == *"repos/example/disposable"* ]]; then
-                      printf '%s\n' '{"default_branch":"main"}'
-                      exit 0
-                    fi
-                    exit 91
-                    """
-                ),
-                encoding="utf-8",
-            )
-            fake_gh.chmod(0o755)
-
+            write_fake_gh(root)
             result = run_script(
                 "--repository",
                 "example/disposable",
                 "--confirm-disposable",
                 "example/disposable",
-                env={
-                    "PATH": f"{root}:{os.environ['PATH']}",
-                    "GITHUB_REPOSITORY": "example/template",
-                    "GH_STUB_STATE": str(root / "dispatch-state"),
-                    "PROOF_NONCE": "proof",
-                    "PROOF_POLL_ATTEMPTS": "1",
-                    "PROOF_POLL_SECONDS": "0",
-                },
+                env=fake_env(root, "default-denied"),
             )
 
         self.assertNotEqual(0, result.returncode)
@@ -297,89 +310,13 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
     def test_fake_github_fails_if_probe_enters_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            fake_gh = root / "gh"
-            fake_gh.write_text(
-                textwrap.dedent(
-                    """                    #!/usr/bin/env bash
-                    set -euo pipefail
-                    args="$*"
-
-                    : "${GH_STUB_STATE:?GH_STUB_STATE is required}"
-
-                    if [[ "$1" == "workflow" && "$2" == "run" ]]; then
-                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
-                      count=$((count + 1))
-                      printf '%s\n' "${count}" >"${GH_STUB_STATE}"
-                      exit 0
-                    fi
-
-                    if [[ "$1" == "run" && "$2" == "list" ]]; then
-                      count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
-                      case "${count}" in
-                        0)
-                          printf '%s\n' '[]'
-                          ;;
-                        1)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"}]'
-                          ;;
-                        2)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"}]'
-                          ;;
-                        *)
-                          printf '%s\n' '[{"databaseId":100,"displayTitle":"Release Environment Negative Proof / proof-default","headBranch":"main"},{"databaseId":101,"displayTitle":"Release Environment Negative Proof / proof-branch","headBranch":"environment-proof/proof"},{"databaseId":102,"displayTitle":"Release Environment Negative Proof / proof-tag","headBranch":"environment-proof-proof"}]'
-                          ;;
-                      esac
-                      exit 0
-                    fi
-                    if [[ "$1" != "api" ]]; then exit 90; fi
-                    if [[ "$args" == *"actions/runs/100/jobs"* ]] ||
-                       [[ "$args" == *"actions/runs/101/jobs"* ]]; then
-                      printf '%s\n' '{"jobs":[{"name":"Baseline runner","status":"completed","conclusion":"success"},{"name":"Release environment probe","status":"completed","conclusion":"success"}]}'
-                      exit 0
-                    fi
-                    if [[ "$args" == *"actions/runs/100"* ]] ||
-                       [[ "$args" == *"actions/runs/101"* ]]; then
-                      printf '%s\n' '{"status":"completed","conclusion":"success"}'
-                      exit 0
-                    fi
-                    if [[ "$args" == *"contents/.github/workflows/release-environment-proof.yml"* ]]; then
-                      printf '%s\n' '{"type":"file"}'
-                      exit 0
-                    fi
-                    if [[ "$args" == *"commits/main"* ]]; then
-                      printf '%s\n' '{"sha":"1111111111111111111111111111111111111111"}'
-                      exit 0
-                    fi
-                    if [[ "$args" == *"git/ref/heads/environment-proof/proof"* ]] ||
-                       [[ "$args" == *"git/ref/tags/environment-proof-proof"* ]]; then
-                      exit 1
-                    fi
-                    if [[ "$args" == *"--method POST"* ]]; then exit 0; fi
-                    if [[ "$args" == *"--method DELETE"* ]]; then exit 0; fi
-                    if [[ "$args" == *"repos/example/disposable"* ]]; then
-                      printf '%s\n' '{"default_branch":"main"}'
-                      exit 0
-                    fi
-                    exit 91
-                    """
-                ),
-                encoding="utf-8",
-            )
-            fake_gh.chmod(0o755)
-
+            write_fake_gh(root)
             result = run_script(
                 "--repository",
                 "example/disposable",
                 "--confirm-disposable",
                 "example/disposable",
-                env={
-                    "PATH": f"{root}:{os.environ['PATH']}",
-                    "GITHUB_REPOSITORY": "example/template",
-                    "GH_STUB_STATE": str(root / "dispatch-state"),
-                    "PROOF_NONCE": "proof",
-                    "PROOF_POLL_ATTEMPTS": "1",
-                    "PROOF_POLL_SECONDS": "0",
-                },
+                env=fake_env(root, "unauthorized-enters"),
             )
 
         self.assertNotEqual(0, result.returncode)

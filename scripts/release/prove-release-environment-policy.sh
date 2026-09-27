@@ -90,6 +90,15 @@ api_headers=(
   -H 'X-GitHub-Api-Version: 2026-03-10'
 )
 
+urlencode() {
+  python3 -c '
+import sys
+from urllib.parse import quote
+
+print(quote(sys.argv[1], safe=""))
+' "$1"
+}
+
 repo_json="$(gh api "${api_headers[@]}" "repos/${repository}")"
 default_branch="$(
   python3 -c '
@@ -154,12 +163,72 @@ gh api "${api_headers[@]}" --method POST "repos/${repository}/git/refs" -f "ref=
 tag_created=true
 
 list_workflow_runs() {
-  gh run list \
-    --repo "${repository}" \
-    --workflow "${workflow_name}" \
-    --event workflow_dispatch \
-    --limit 100 \
-    --json databaseId,displayTitle,headBranch
+  local encoded_workflow
+  encoded_workflow="$(urlencode "${workflow_name}")"
+
+  gh api "${api_headers[@]}" --paginate --slurp \
+    "repos/${repository}/actions/workflows/${encoded_workflow}/runs?event=workflow_dispatch&per_page=100" |
+    python3 -c '
+import json
+import sys
+
+pages = json.load(sys.stdin)
+if not isinstance(pages, list) or not pages:
+    raise SystemExit("workflow-run pagination response must be a non-empty array")
+
+runs = []
+declared_total = None
+for page in pages:
+    if not isinstance(page, dict) or not isinstance(page.get("workflow_runs"), list):
+        raise SystemExit("workflow-run pagination page is malformed")
+    total_count = page.get("total_count")
+    if type(total_count) is not int or total_count < 0:
+        raise SystemExit("workflow-run total_count is malformed")
+    if declared_total is None:
+        declared_total = total_count
+    elif total_count != declared_total:
+        raise SystemExit("workflow-run pages disagree on total_count")
+    runs.extend(page["workflow_runs"])
+
+if declared_total != len(runs):
+    raise SystemExit(
+        f"workflow-run total_count={declared_total} does not match "
+        f"fetched entries={len(runs)}"
+    )
+
+normalized = []
+seen = set()
+for item in runs:
+    if not isinstance(item, dict):
+        raise SystemExit("workflow-run entry must be an object")
+    run_id = item.get("id")
+    title = item.get("display_title")
+    head_branch = item.get("head_branch")
+    event = item.get("event")
+    if type(run_id) is not int or run_id <= 0:
+        raise SystemExit("workflow-run entry has invalid id")
+    if run_id in seen:
+        raise SystemExit(f"workflow-run response contains duplicate id: {run_id}")
+    seen.add(run_id)
+    if not isinstance(title, str) or not title:
+        raise SystemExit(f"workflow-run entry {run_id} has invalid display_title")
+    if not isinstance(head_branch, str) or not head_branch:
+        raise SystemExit(f"workflow-run entry {run_id} has invalid head_branch")
+    if event != "workflow_dispatch":
+        raise SystemExit(
+            f"workflow-run entry {run_id} event={event!r}, expected 'workflow_dispatch'"
+        )
+    normalized.append(
+        {
+            "databaseId": run_id,
+            "displayTitle": title,
+            "headBranch": head_branch,
+        }
+    )
+
+json.dump(normalized, sys.stdout, separators=(",", ":"))
+sys.stdout.write("\n")
+'
 }
 
 snapshot_run_ids() {
@@ -256,16 +325,82 @@ print(
   return 1
 }
 
+list_run_jobs() {
+  local run_id="$1"
+
+  gh api "${api_headers[@]}" --paginate --slurp \
+    "repos/${repository}/actions/runs/${run_id}/jobs?per_page=100" |
+    python3 -c '
+import json
+import sys
+
+pages = json.load(sys.stdin)
+if not isinstance(pages, list) or not pages:
+    raise SystemExit("workflow jobs pagination response must be a non-empty array")
+
+jobs = []
+declared_total = None
+for page in pages:
+    if not isinstance(page, dict) or not isinstance(page.get("jobs"), list):
+        raise SystemExit("workflow jobs pagination page is malformed")
+    total_count = page.get("total_count")
+    if type(total_count) is not int or total_count < 0:
+        raise SystemExit("workflow jobs total_count is malformed")
+    if declared_total is None:
+        declared_total = total_count
+    elif total_count != declared_total:
+        raise SystemExit("workflow jobs pages disagree on total_count")
+    jobs.extend(page["jobs"])
+
+if declared_total != len(jobs):
+    raise SystemExit(
+        f"workflow jobs total_count={declared_total} does not match "
+        f"fetched entries={len(jobs)}"
+    )
+
+normalized = []
+seen = set()
+for item in jobs:
+    if not isinstance(item, dict):
+        raise SystemExit("workflow job entry must be an object")
+    job_id = item.get("id")
+    name = item.get("name")
+    status = item.get("status")
+    conclusion = item.get("conclusion")
+    if type(job_id) is not int or job_id <= 0:
+        raise SystemExit("workflow job entry has invalid id")
+    if job_id in seen:
+        raise SystemExit(f"workflow jobs response contains duplicate id: {job_id}")
+    seen.add(job_id)
+    if not isinstance(name, str) or not name:
+        raise SystemExit(f"workflow job entry {job_id} has invalid name")
+    if not isinstance(status, str) or not status:
+        raise SystemExit(f"workflow job entry {job_id} has invalid status")
+    if conclusion is not None and not isinstance(conclusion, str):
+        raise SystemExit(f"workflow job entry {job_id} has invalid conclusion")
+    normalized.append(
+        {
+            "id": job_id,
+            "name": name,
+            "status": status,
+            "conclusion": conclusion,
+        }
+    )
+
+json.dump(normalized, sys.stdout, separators=(",", ":"))
+sys.stdout.write("\n")
+'
+}
+
 assert_allowed_jobs() {
   local run_id="$1"
   local jobs_json
-  jobs_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${run_id}/jobs?per_page=100")"
+  jobs_json="$(list_run_jobs "${run_id}")"
   python3 -c '
 import json
 import sys
 
-document = json.load(sys.stdin)
-jobs = document.get("jobs")
+jobs = json.load(sys.stdin)
 if not isinstance(jobs, list):
     raise SystemExit("workflow jobs response is malformed")
 
@@ -286,13 +421,12 @@ if not isinstance(probe, dict) or probe.get("conclusion") != "success":
 assert_denied_jobs() {
   local run_id="$1"
   local jobs_json
-  jobs_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${run_id}/jobs?per_page=100")"
+  jobs_json="$(list_run_jobs "${run_id}")"
   python3 -c '
 import json
 import sys
 
-document = json.load(sys.stdin)
-jobs = document.get("jobs")
+jobs = json.load(sys.stdin)
 if not isinstance(jobs, list):
     raise SystemExit("workflow jobs response is malformed")
 

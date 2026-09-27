@@ -441,7 +441,7 @@ It then creates a temporary branch and arbitrary tag at the same default-branch 
 - the overall workflow to fail;
 - `Release environment probe` to fail rather than enter the Environment.
 
-Because all three refs point at the same commit and execute the same secret-free workflow, the deployment-ref identity is the material difference exercised by the proof. The script removes the temporary branch/tag in an EXIT cleanup path and refuses to target the current `GITHUB_REPOSITORY`.
+Because all three refs point at the same commit and execute the same secret-free workflow, the deployment-ref identity is the material difference exercised by the proof. Workflow-run discovery and job collection use the paginated Actions API with total-count and duplicate-ID validation, so a busy disposable repository cannot hide the target run or Environment probe beyond the first page. The script removes the temporary branch/tag in an EXIT cleanup path and refuses to target the current `GITHUB_REPOSITORY`.
 
 This proof does not access Apple credentials and does not replace the read-only Environment doctor. Keep both checks: configuration-shape audit plus runtime evidence that the authorized default branch is admitted while unauthorized branch/tag refs are denied.
 
