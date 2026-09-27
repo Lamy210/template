@@ -93,17 +93,16 @@ repository_identity() {
     return 1
   fi
 
-  printf '%s' "${response}" |
-    python3 - "${GITHUB_REPOSITORY}" "${EXPECTED_REPOSITORY_ID}" <<'PY'
+  python3 - "${GITHUB_REPOSITORY}" "${EXPECTED_REPOSITORY_ID}" "${response}" <<'PY'
 import json
 import re
 import sys
 
-expected_name, expected_id_text = sys.argv[1:]
+expected_name, expected_id_text, response = sys.argv[1:]
 expected_id = int(expected_id_text)
 
 try:
-    document = json.load(sys.stdin)
+    document = json.loads(response)
 except json.JSONDecodeError as error:
     raise SystemExit(f"repository identity response is not valid JSON: {error}")
 if not isinstance(document, dict):
