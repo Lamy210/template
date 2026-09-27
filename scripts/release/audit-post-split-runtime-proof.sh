@@ -183,6 +183,78 @@ python3 "${repo_root}/scripts/release/extract-runtime-proof-metadata.py" \
 
 read -r unsigned_archive_digest <"${temp_root}/archive-digest.txt"
 
+source_artifact_identity_file="${temp_root}/source-artifact-identity.txt"
+python3 - "${temp_root}/source-run.json" "${temp_root}/source-artifacts.json" >"${source_artifact_identity_file}" <<'PY'
+import json
+import re
+import sys
+
+source_path, artifacts_path = sys.argv[1:]
+with open(source_path, encoding="utf-8") as handle:
+    source = json.load(handle)
+with open(artifacts_path, encoding="utf-8") as handle:
+    pages = json.load(handle)
+
+source_id = source.get("id")
+source_attempt = source.get("run_attempt")
+if type(source_id) is not int or source_id <= 0:
+    raise SystemExit("source run id is malformed")
+if type(source_attempt) is not int or source_attempt <= 0:
+    raise SystemExit("source run attempt is malformed")
+
+expected = f"unsigned-macos-release-{source_id}-{source_attempt}"
+artifacts = []
+if not isinstance(pages, list):
+    raise SystemExit("source artifact pagination response must be an array")
+for page in pages:
+    if not isinstance(page, dict) or not isinstance(page.get("artifacts"), list):
+        raise SystemExit("source artifact pagination page is malformed")
+    artifacts.extend(page["artifacts"])
+
+matches = [
+    artifact
+    for artifact in artifacts
+    if isinstance(artifact, dict) and artifact.get("name") == expected
+]
+if len(matches) != 1:
+    raise SystemExit(
+        f"expected exactly one source artifact named {expected!r}; found {len(matches)}"
+    )
+
+artifact = matches[0]
+if artifact.get("expired") is not False:
+    raise SystemExit("source artifact is expired")
+artifact_id = artifact.get("id")
+artifact_digest = artifact.get("digest")
+if type(artifact_id) is not int or artifact_id <= 0:
+    raise SystemExit("source artifact id is missing or invalid")
+if (
+    not isinstance(artifact_digest, str)
+    or re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_digest) is None
+):
+    raise SystemExit("source artifact digest is missing or invalid")
+
+print(artifact_id)
+print(artifact_digest)
+PY
+
+readarray -t source_artifact_identity <"${source_artifact_identity_file}"
+if (("${#source_artifact_identity[@]}" != 2)); then
+  echo "Source Artifact identity output was malformed." >&2
+  exit 3
+fi
+source_artifact_id="${source_artifact_identity[0]}"
+source_artifact_digest="${source_artifact_identity[1]}"
+
+source_artifact_zip="${temp_root}/source-artifact.zip"
+gh api "${api_headers[@]}" "repos/${repository}/actions/artifacts/${source_artifact_id}/zip" >"${source_artifact_zip}"
+
+python3 "${repo_root}/scripts/release/verify-runtime-proof-source-artifact.py" \
+  --archive "${source_artifact_zip}" \
+  --output "${temp_root}/source-artifact" \
+  --expected-artifact-digest "${source_artifact_digest}" \
+  --expected-app-archive-digest "${unsigned_archive_digest}"
+
 readarray -t shas < <(
   python3 - "${temp_root}/source-run.json" "${temp_root}/publisher-run.json" <<'PY'
 import json
