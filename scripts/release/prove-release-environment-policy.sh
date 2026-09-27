@@ -134,7 +134,7 @@ if [[ -n "${origin_url}" ]]; then
   fi
 fi
 
-nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$}"
+nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$$}"
 if [[ ! "${nonce}" =~ ^[A-Za-z0-9._-]+$ ]]; then
   echo "PROOF_NONCE must contain only letters, numbers, dot, underscore, or hyphen." >&2
   exit 2
