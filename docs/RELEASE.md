@@ -447,7 +447,7 @@ This proof does not access Apple credentials and does not replace the read-only 
 
 ## Disposable post-split ancestor runtime proof
 
-The preferred operator path is the guarded runner below. It requires an explicit disposable-repository confirmation, verifies that the selected source ref is a strict ancestor of the current default-branch publisher, confirms both workflow files exist at the expected commits, snapshots pre-existing workflow runs, creates one previously unused stable SemVer tag, discovers the exact Release Build/Release Publisher pair through the validator Artifact identity, and then delegates to the read-only auditor.
+The preferred operator path is the guarded runner below. It requires an explicit disposable-repository confirmation, verifies that the selected source ref is a strict ancestor of the current default-branch publisher, fetches the historical `.github/workflows/release-build.yml` bytes and validates the unprivileged/proof-compatible boundary with **current** control code, confirms the publisher workflow exists at the current default-branch commit, snapshots pre-existing workflow runs, creates one previously unused stable SemVer tag, discovers the exact Release Build/Release Publisher pair through the validator Artifact identity, and then delegates to the read-only auditor.
 
 ```bash
 bash scripts/release/prove-post-split-ancestor-runtime.sh \
@@ -459,6 +459,8 @@ bash scripts/release/prove-post-split-ancestor-runtime.sh \
 ```
 
 The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
+
+Before creating that tag, the runner rejects a historical Release Build workflow that is not safe for the post-split boundary. The preflight requires the canonical tag-only trigger and proof Artifact/provenance contract, top-level no-permission default, no write permission, no Environment, no secrets context or privileged secret names, no reusable privileged workflow call, credential-less checkout, and full-SHA pinning for external actions. This check intentionally runs from the current trusted operator checkout rather than executing validation code from the historical source commit.
 
 The runner waits for the Release Build run to complete successfully, but it does **not** wait for the entire Release Publisher workflow to finish. It waits only for the exact publisher attempt's `Validate release input without secrets` job to complete successfully and for the matching validator Artifact to exist, then immediately runs the read-only auditor. This is intentional: a disposable repository may leave the downstream signing job waiting on the protected `release` Environment or may let it fail because Apple credentials are absent. Neither condition invalidates the control-code proof once the secret-free validation boundary has succeeded.
 
@@ -489,7 +491,7 @@ The manual procedure remains useful for incident analysis or when the tag/run pa
 Before enabling the two-stage publisher for production, prove the architecture with a **disposable repository**. This proof is specifically about control-code selection; it is separate from Apple signing/notarization and from the immutable-tag Ruleset proof.
 
 1. Put the current two-stage publisher on the disposable repository default branch.
-2. Choose an older **post-split ancestor** that already contains `.github/workflows/release-build.yml` but predates the current publisher-control changes.
+2. Choose an older **post-split ancestor** that already contains an unprivileged/proof-compatible `.github/workflows/release-build.yml` but predates the current publisher-control changes. The guarded runner fetches and validates that historical workflow before creating the proof tag.
 3. Create a canonical stable SemVer tag such as `v0.0.1` pointing to that ancestor.
 4. Wait for that tag's **Release Build** run to complete successfully.
 5. Wait only for the downstream **Release Publisher** job `Validate release input without secrets` to succeed and produce its `validated-release-input-...` artifact. The overall publisher workflow does not need to finish first. A later signing/publication job may remain blocked on Environment approval or fail when the disposable repository intentionally has no Apple credentials; neither condition invalidates this control-code proof.
