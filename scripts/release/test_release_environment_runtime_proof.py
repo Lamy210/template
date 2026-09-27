@@ -242,7 +242,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("Baseline runner", text)
         self.assertIn("Release environment probe", text)
         self.assertIn("prove_ref_allowed", text)
-        self.assertIn('prove_ref_allowed "\${default_branch}" default', text)
+        self.assertIn('prove_ref_allowed "${default_branch}" default', text)
         self.assertIn("default branch admitted by release Environment policy", text)
         self.assertIn("probe job must fail", text)
         self.assertIn("--method DELETE", text)
