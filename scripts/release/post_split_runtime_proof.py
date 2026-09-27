@@ -12,6 +12,7 @@ SOURCE_WORKFLOW_NAME = "Release Build"
 SOURCE_WORKFLOW_PATH = ".github/workflows/release-build.yml"
 PUBLISHER_WORKFLOW_NAME = "Release Publisher"
 PUBLISHER_WORKFLOW_PATH = ".github/workflows/release-publisher.yml"
+PUBLISHER_VALIDATION_JOB_NAME = "Validate release input without secrets"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
@@ -134,6 +135,44 @@ def _source_artifact_errors(
         ):
             errors.append("sourceArtifactDigest does not match live source artifact")
 
+    return errors
+
+
+def _publisher_validation_job_errors(
+    jobs: object,
+    *,
+    publisher_run_id: int,
+    publisher_run_attempt: int,
+    publisher_sha: str,
+) -> list[str]:
+    if not isinstance(jobs, list) or any(not isinstance(item, dict) for item in jobs):
+        return ["publisher jobs must be an array of objects"]
+
+    matches = [
+        item for item in jobs if item.get("name") == PUBLISHER_VALIDATION_JOB_NAME
+    ]
+    if len(matches) != 1:
+        return [
+            "publisher validation job must appear exactly once with expected name "
+            f"{PUBLISHER_VALIDATION_JOB_NAME!r}; found {len(matches)}"
+        ]
+
+    job = matches[0]
+    errors: list[str] = []
+    if not _positive_int(job.get("id")):
+        errors.append("publisher validation job id must be a positive integer")
+    if job.get("run_id") != publisher_run_id:
+        errors.append("publisher validation job run_id does not match publisher run")
+    if job.get("run_attempt") != publisher_run_attempt:
+        errors.append(
+            "publisher validation job run_attempt does not match publisher run attempt"
+        )
+    if job.get("head_sha") != publisher_sha:
+        errors.append("publisher validation job head_sha does not match publisher SHA")
+    if job.get("status") != "completed":
+        errors.append("publisher validation job must be completed")
+    if job.get("conclusion") != "success":
+        errors.append("publisher validation job must conclude successfully")
     return errors
 
 
@@ -337,6 +376,7 @@ def validate_post_split_runtime_proof(
     source_artifacts: object | None = None,
     tag_ref: object | None = None,
     tag_objects: object | None = None,
+    publisher_jobs: object | None = None,
     final_default_commit: object | None = None,
 ) -> list[str]:
     errors: list[str] = []
@@ -483,6 +523,20 @@ def validate_post_split_runtime_proof(
                 source_run_attempt=source_run_attempt,
                 source_sha=source_sha,
                 metadata=metadata,
+            )
+        )
+
+    if (
+        _positive_int(publisher_run_id)
+        and _positive_int(publisher_run_attempt)
+        and _sha(publisher_sha)
+    ):
+        errors.extend(
+            _publisher_validation_job_errors(
+                publisher_jobs,
+                publisher_run_id=publisher_run_id,
+                publisher_run_attempt=publisher_run_attempt,
+                publisher_sha=publisher_sha,
             )
         )
 
