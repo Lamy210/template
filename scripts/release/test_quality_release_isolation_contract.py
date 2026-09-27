@@ -27,6 +27,7 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
             "scripts.release.test_release_publisher_workflow_contract",
             "scripts.release.test_privileged_release_workflow_contract",
             "scripts.release.test_homebrew_publisher_workflow_contract",
+            "scripts.release.test_unprivileged_release_build_workflow",
             "scripts.release.test_verify_validated_release_metadata",
         ):
             with self.subTest(module=module):
