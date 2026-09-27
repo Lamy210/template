@@ -27,7 +27,7 @@ TOP_LEVEL_FIELDS = {
 ANCESTOR_FIELDS = {"aheadBy", "behindBy", "mergeBaseSHA", "status"}
 APPLICATION_FIELDS = {"appBasename", "bundleId", "version"}
 DEFAULT_HEAD_FIELDS = {"finalSHA", "initialSHA"}
-PUBLISHER_FIELDS = {
+PUBLISHER_FIELDS_V2 = {
     "runAttempt",
     "runId",
     "sha",
@@ -35,6 +35,18 @@ PUBLISHER_FIELDS = {
     "validatorArtifactId",
     "workflowName",
     "workflowPath",
+}
+PUBLISHER_FIELDS_V3 = PUBLISHER_FIELDS_V2 | {"validationJob"}
+VALIDATION_JOB_FIELDS = {
+    "conclusion",
+    "headBranch",
+    "headSHA",
+    "id",
+    "name",
+    "runAttempt",
+    "runId",
+    "status",
+    "workflowName",
 }
 REPOSITORY_FIELDS = {"defaultBranch", "fullName", "id"}
 SOURCE_FIELDS = {
@@ -53,6 +65,7 @@ SOURCE_WORKFLOW_NAME = "Release Build"
 SOURCE_WORKFLOW_PATH = ".github/workflows/release-build.yml"
 PUBLISHER_WORKFLOW_NAME = "Release Publisher"
 PUBLISHER_WORKFLOW_PATH = ".github/workflows/release-publisher.yml"
+PUBLISHER_VALIDATION_JOB_NAME = "Validate release input without secrets"
 
 
 class EvidenceError(ValueError):
@@ -107,6 +120,58 @@ def _source_artifact(
     return matches[0]
 
 
+def _publisher_validation_job(
+    jobs: object,
+    *,
+    publisher_run_id: int,
+    publisher_run_attempt: int,
+    publisher_sha: str,
+    default_branch: str,
+) -> dict[str, object]:
+    if not isinstance(jobs, list) or any(not isinstance(item, dict) for item in jobs):
+        raise EvidenceError("publisher jobs must be an array of objects")
+
+    matches = [
+        item for item in jobs if item.get("name") == PUBLISHER_VALIDATION_JOB_NAME
+    ]
+    if len(matches) != 1:
+        raise EvidenceError(
+            "expected exactly one publisher validation job named "
+            f"{PUBLISHER_VALIDATION_JOB_NAME!r}"
+        )
+
+    job = matches[0]
+    job_id = _positive_int(job.get("id"), "publisher validation job id")
+    if job.get("run_id") != publisher_run_id:
+        raise EvidenceError("publisher validation job run_id does not match publisher run")
+    if job.get("head_sha") != publisher_sha:
+        raise EvidenceError("publisher validation job head_sha does not match publisher SHA")
+    if job.get("workflow_name") != PUBLISHER_WORKFLOW_NAME:
+        raise EvidenceError(
+            "publisher validation job workflow_name does not match publisher workflow"
+        )
+    if job.get("head_branch") != default_branch:
+        raise EvidenceError(
+            "publisher validation job head_branch does not match default branch"
+        )
+    if job.get("status") != "completed":
+        raise EvidenceError("publisher validation job must be completed")
+    if job.get("conclusion") != "success":
+        raise EvidenceError("publisher validation job must conclude successfully")
+
+    return {
+        "conclusion": "success",
+        "headBranch": default_branch,
+        "headSHA": publisher_sha,
+        "id": job_id,
+        "name": PUBLISHER_VALIDATION_JOB_NAME,
+        "runAttempt": publisher_run_attempt,
+        "runId": publisher_run_id,
+        "status": "completed",
+        "workflowName": PUBLISHER_WORKFLOW_NAME,
+    }
+
+
 def _validator_artifact(
     artifacts: object,
     *,
@@ -137,6 +202,7 @@ def build_evidence(
     final_default_commit: object,
     source_run: object,
     publisher_run: object,
+    publisher_jobs: object,
     source_artifacts: object,
     artifacts: object,
     metadata: object,
@@ -169,6 +235,14 @@ def build_evidence(
         publisher.get("run_attempt"), "publisher run attempt"
     )
     publisher_sha = _sha(publisher.get("head_sha"), "publisher SHA")
+
+    validation_job = _publisher_validation_job(
+        publisher_jobs,
+        publisher_run_id=publisher_run_id,
+        publisher_run_attempt=publisher_run_attempt,
+        publisher_sha=publisher_sha,
+        default_branch=default_branch,
+    )
 
     initial_head_sha = _sha(initial_head.get("sha"), "initial default-head SHA")
     final_head_sha = _sha(final_head.get("sha"), "final default-head SHA")
@@ -247,6 +321,7 @@ def build_evidence(
             "sha": publisher_sha,
             "validatorArtifactDigest": validator_artifact_digest,
             "validatorArtifactId": validator_artifact_id,
+            "validationJob": validation_job,
             "workflowName": _string(publisher.get("name"), "publisher workflow name"),
             "workflowPath": _string(publisher.get("path"), "publisher workflow path"),
         },
@@ -255,7 +330,7 @@ def build_evidence(
             "fullName": repository_full_name,
             "id": repository_id,
         },
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "source": {
             "archiveDigest": unsigned_archive_digest,
             "artifactDigest": source_artifact_digest,
@@ -315,8 +390,8 @@ def validate_evidence_document(document: object) -> list[str]:
         return errors
 
     schema_version = root.get("schemaVersion")
-    if type(schema_version) is not int or schema_version != 2:
-        errors.append("schemaVersion must equal integer 2")
+    if type(schema_version) is not int or schema_version not in {2, 3}:
+        errors.append("schemaVersion must equal integer 2 or 3")
     if root.get("proofType") != "post-split-ancestor-runtime":
         errors.append("proofType must equal 'post-split-ancestor-runtime'")
 
@@ -380,10 +455,13 @@ def validate_evidence_document(document: object) -> list[str]:
         if source.get("workflowPath") != SOURCE_WORKFLOW_PATH:
             errors.append(f"source.workflowPath must equal {SOURCE_WORKFLOW_PATH!r}")
 
+    publisher_fields = (
+        PUBLISHER_FIELDS_V3 if schema_version == 3 else PUBLISHER_FIELDS_V2
+    )
     publisher_errors, publisher = _closed_object_errors(
         root.get("publisher"),
         label="publisher",
-        expected_fields=PUBLISHER_FIELDS,
+        expected_fields=publisher_fields,
     )
     errors.extend(publisher_errors)
     if publisher is not None:
@@ -406,6 +484,97 @@ def validate_evidence_document(document: object) -> list[str]:
             errors.append(
                 f"publisher.workflowPath must equal {PUBLISHER_WORKFLOW_PATH!r}"
             )
+
+        if schema_version == 3:
+            validation_job_errors, validation_job = _closed_object_errors(
+                publisher.get("validationJob"),
+                label="publisher.validationJob",
+                expected_fields=VALIDATION_JOB_FIELDS,
+            )
+            errors.extend(validation_job_errors)
+            if validation_job is not None:
+                for field in ("id", "runId", "runAttempt"):
+                    if not _is_positive_int(validation_job.get(field)):
+                        errors.append(
+                            f"publisher.validationJob.{field} must be a positive integer"
+                        )
+                head_sha = validation_job.get("headSHA")
+                if not isinstance(head_sha, str) or SHA_RE.fullmatch(head_sha) is None:
+                    errors.append(
+                        "publisher.validationJob.headSHA must be 40 lowercase hexadecimal characters"
+                    )
+                if validation_job.get("name") != PUBLISHER_VALIDATION_JOB_NAME:
+                    errors.append(
+                        "publisher.validationJob.name must equal "
+                        f"{PUBLISHER_VALIDATION_JOB_NAME!r}"
+                    )
+                if validation_job.get("workflowName") != PUBLISHER_WORKFLOW_NAME:
+                    errors.append(
+                        "publisher.validationJob.workflowName must equal "
+                        f"{PUBLISHER_WORKFLOW_NAME!r}"
+                    )
+                head_branch = validation_job.get("headBranch")
+                if (
+                    not isinstance(head_branch, str)
+                    or not head_branch
+                    or "\n" in head_branch
+                    or "\r" in head_branch
+                ):
+                    errors.append(
+                        "publisher.validationJob.headBranch must be a non-empty single-line string"
+                    )
+                if validation_job.get("status") != "completed":
+                    errors.append(
+                        "publisher.validationJob.status must equal 'completed'"
+                    )
+                if validation_job.get("conclusion") != "success":
+                    errors.append(
+                        "publisher.validationJob.conclusion must equal 'success'"
+                    )
+
+    if schema_version == 3 and publisher is not None and repository is not None:
+        validation_job = publisher.get("validationJob")
+        if isinstance(validation_job, dict):
+            if (
+                _is_positive_int(validation_job.get("runId"))
+                and _is_positive_int(publisher.get("runId"))
+                and validation_job.get("runId") != publisher.get("runId")
+            ):
+                errors.append(
+                    "publisher.validationJob.runId must equal publisher.runId"
+                )
+            if (
+                _is_positive_int(validation_job.get("runAttempt"))
+                and _is_positive_int(publisher.get("runAttempt"))
+                and validation_job.get("runAttempt") != publisher.get("runAttempt")
+            ):
+                errors.append(
+                    "publisher.validationJob.runAttempt must equal publisher.runAttempt"
+                )
+            validation_sha = validation_job.get("headSHA")
+            publisher_sha = publisher.get("sha")
+            if (
+                isinstance(validation_sha, str)
+                and SHA_RE.fullmatch(validation_sha) is not None
+                and isinstance(publisher_sha, str)
+                and SHA_RE.fullmatch(publisher_sha) is not None
+                and validation_sha != publisher_sha
+            ):
+                errors.append(
+                    "publisher.validationJob.headSHA must equal publisher.sha"
+                )
+            default_branch = repository.get("defaultBranch")
+            head_branch = validation_job.get("headBranch")
+            if (
+                isinstance(default_branch, str)
+                and default_branch
+                and isinstance(head_branch, str)
+                and head_branch
+                and head_branch != default_branch
+            ):
+                errors.append(
+                    "publisher.validationJob.headBranch must equal repository.defaultBranch"
+                )
 
     application_errors, application = _closed_object_errors(
         root.get("application"),
