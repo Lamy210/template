@@ -388,15 +388,29 @@ print(attempt)
 ' <<<"${run_json}"
       )" || continue
 
-      artifact_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${candidate_id}/artifacts?per_page=100")"
+      artifact_json="$(gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${candidate_id}/artifacts?per_page=100")"
       if python3 -c '
 import json
 import sys
 
 publisher_id, publisher_attempt, source_id, source_attempt = map(int, sys.argv[1:])
-document = json.load(sys.stdin)
-artifacts = document.get("artifacts")
-if not isinstance(artifacts, list):
+pages = json.load(sys.stdin)
+if not isinstance(pages, list):
+    raise SystemExit(1)
+artifacts = []
+declared_total = None
+for page in pages:
+    if not isinstance(page, dict) or not isinstance(page.get("artifacts"), list):
+        raise SystemExit(1)
+    total_count = page.get("total_count")
+    if type(total_count) is not int or total_count < 0:
+        raise SystemExit(1)
+    if declared_total is None:
+        declared_total = total_count
+    elif declared_total != total_count:
+        raise SystemExit(1)
+    artifacts.extend(page["artifacts"])
+if declared_total is None or declared_total != len(artifacts):
     raise SystemExit(1)
 expected = (
     f"validated-release-input-{publisher_id}-{publisher_attempt}-"
@@ -430,8 +444,122 @@ raise SystemExit(0 if len(matches) == 1 else 1)
   return 1
 }
 
+wait_for_publisher_validation_success() {
+  local run_id="$1"
+  local run_json run_attempt attempt jobs_json validation_state
+
+  run_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${run_id}")"
+  run_attempt="$(
+    python3 -c '
+import json
+import sys
+
+document = json.load(sys.stdin)
+attempt = document.get("run_attempt")
+if document.get("event") != "workflow_run":
+    raise SystemExit("Release Publisher event is not workflow_run")
+if type(attempt) is not int or attempt <= 0:
+    raise SystemExit("Release Publisher run_attempt is missing or malformed")
+print(attempt)
+' <<<"${run_json}"
+  )"
+
+  for ((attempt = 1; attempt <= poll_attempts; attempt++)); do
+    jobs_json="$(gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100")"
+    validation_state="$(
+      python3 -c '
+import json
+import sys
+
+run_id = int(sys.argv[1])
+publisher_sha, default_branch = sys.argv[2:]
+pages = json.load(sys.stdin)
+if not isinstance(pages, list):
+    print("FAIL:publisher job pagination response must be an array")
+    raise SystemExit(0)
+
+jobs = []
+declared_total = None
+for page in pages:
+    if not isinstance(page, dict) or not isinstance(page.get("jobs"), list):
+        print("FAIL:publisher job pagination page is malformed")
+        raise SystemExit(0)
+    total_count = page.get("total_count")
+    if type(total_count) is not int or total_count < 0:
+        print("FAIL:publisher job total_count is malformed")
+        raise SystemExit(0)
+    if declared_total is None:
+        declared_total = total_count
+    elif declared_total != total_count:
+        print("FAIL:publisher job pages disagree on total_count")
+        raise SystemExit(0)
+    jobs.extend(page["jobs"])
+
+if declared_total is None or declared_total != len(jobs):
+    print("FAIL:publisher job pagination total_count does not match collected jobs")
+    raise SystemExit(0)
+
+matches = [
+    job
+    for job in jobs
+    if isinstance(job, dict)
+    and job.get("name") == "Validate release input without secrets"
+]
+if not matches:
+    print("WAIT")
+    raise SystemExit(0)
+if len(matches) != 1:
+    print(f"FAIL:expected exactly one publisher validation job; found {len(matches)}")
+    raise SystemExit(0)
+
+job = matches[0]
+checks = (
+    (job.get("run_id") == run_id, "validation job run_id does not match publisher run"),
+    (job.get("head_sha") == publisher_sha, "validation job head_sha does not match publisher SHA"),
+    (job.get("workflow_name") == "Release Publisher", "validation job workflow_name does not match Release Publisher"),
+    (job.get("head_branch") == default_branch, "validation job head_branch does not match default branch"),
+)
+for ok, message in checks:
+    if not ok:
+        print(f"FAIL:{message}")
+        raise SystemExit(0)
+
+status = job.get("status")
+conclusion = job.get("conclusion")
+if status == "completed":
+    if conclusion == "success":
+        print("SUCCESS")
+    else:
+        print(f"FAIL:publisher validation job concluded {conclusion!r}")
+else:
+    print("WAIT")
+' "${run_id}" "${publisher_sha}" "${default_branch}" <<<"${jobs_json}"
+    )"
+
+    case "${validation_state}" in
+      SUCCESS)
+        return 0
+        ;;
+      WAIT)
+        sleep "${poll_seconds}"
+        ;;
+      FAIL:*)
+        echo "${validation_state#FAIL:}" >&2
+        return 1
+        ;;
+      *)
+        echo "Publisher validation job state output was malformed: ${validation_state}" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  echo "Release Publisher validation job did not succeed within the proof polling window." >&2
+  return 1
+}
+
 publisher_run_id="$(find_publisher_run_id)"
-wait_for_run_completion "${publisher_run_id}" false >/dev/null
+wait_for_publisher_validation_success "${publisher_run_id}"
 
 audit_args=(
   bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh"
