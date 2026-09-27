@@ -56,6 +56,16 @@ def inputs() -> dict[str, object]:
             "path": ".github/workflows/release-publisher.yml",
             "head_sha": PUBLISHER_SHA,
         },
+        "source_artifacts": [
+            {
+                "id": SOURCE_ARTIFACT_ID,
+                "name": (
+                    f"unsigned-macos-release-{SOURCE_RUN_ID}-{SOURCE_RUN_ATTEMPT}"
+                ),
+                "expired": False,
+                "digest": SOURCE_ARTIFACT_DIGEST,
+            }
+        ],
         "artifacts": [
             {
                 "id": VALIDATOR_ARTIFACT_ID,
@@ -154,6 +164,18 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                 "default head drift",
                 lambda data: data["final_default_commit"].__setitem__(
                     "sha", "2" * 40
+                ),
+            ),
+            (
+                "source artifact id",
+                lambda data: data["source_artifacts"][0].__setitem__(
+                    "id", SOURCE_ARTIFACT_ID + 1
+                ),
+            ),
+            (
+                "source artifact digest",
+                lambda data: data["source_artifacts"][0].__setitem__(
+                    "digest", "sha256:" + "d" * 64
                 ),
             ),
             (

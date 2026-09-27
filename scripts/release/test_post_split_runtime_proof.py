@@ -89,6 +89,23 @@ def artifacts() -> list[dict]:
     ]
 
 
+def source_artifacts() -> list[dict]:
+    return [
+        {
+            "id": 404,
+            "name": f"unsigned-macos-release-{SOURCE_RUN_ID}-{SOURCE_RUN_ATTEMPT}",
+            "expired": False,
+            "digest": "sha256:" + "a" * 64,
+            "workflow_run": {
+                "id": SOURCE_RUN_ID,
+                "head_sha": SOURCE_SHA,
+                "repository_id": REPO_ID,
+                "head_repository_id": REPO_ID,
+            },
+        }
+    ]
+
+
 def metadata() -> dict:
     return {
         "schemaVersion": 1,
@@ -120,11 +137,16 @@ def compare() -> dict:
     }
 
 
+def validate_proof(*args: object, **kwargs: object) -> list[str]:
+    kwargs.setdefault("source_artifacts", source_artifacts())
+    return validate_post_split_runtime_proof(*args, **kwargs)
+
+
 class PostSplitRuntimeProofTests(unittest.TestCase):
     def test_accepts_old_source_with_current_default_branch_publisher(self) -> None:
         self.assertEqual(
             [],
-            validate_post_split_runtime_proof(
+            validate_proof(
                 repository(),
                 default_commit(),
                 source_run(),
@@ -133,6 +155,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 metadata(),
                 "sha256:" + "b" * 64,
                 compare(),
+                source_artifacts=source_artifacts(),
                 final_default_commit=default_commit(),
             ),
         )
@@ -142,7 +165,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         run["conclusion"] = "failure"
         self.assertEqual(
             [],
-            validate_post_split_runtime_proof(
+            validate_proof(
                 repository(),
                 default_commit(),
                 source_run(),
@@ -151,6 +174,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 metadata(),
                 "sha256:" + "b" * 64,
                 compare(),
+                source_artifacts=source_artifacts(),
             ),
         )
 
@@ -158,7 +182,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         relation = compare()
         relation["status"] = "identical"
         relation["ahead_by"] = 0
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(), default_commit(), source_run(), publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, relation
         )
         self.assertTrue(any("strict ancestor" in error for error in errors))
@@ -166,7 +190,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
     def test_rejects_publisher_not_at_current_default_head(self) -> None:
         head = default_commit()
         head["sha"] = "2" * 40
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(), head, source_run(), publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("current default-branch head" in error for error in errors))
@@ -175,7 +199,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         final_head = default_commit()
         final_head["sha"] = "2" * 40
 
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(),
             default_commit(),
             source_run(),
@@ -202,14 +226,14 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
     def test_rejects_wrong_source_or_publisher_workflow_identity(self) -> None:
         bad_source = source_run()
         bad_source["path"] = ".github/workflows/other.yml"
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(), default_commit(), bad_source, publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("source workflow path" in error for error in errors))
 
         bad_publisher = publisher_run()
         bad_publisher["event"] = "push"
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(), default_commit(), source_run(), bad_publisher, artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("publisher event" in error for error in errors))
@@ -223,7 +247,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     run.pop("head_branch")
                 else:
                     run["head_branch"] = value
-                errors = validate_post_split_runtime_proof(
+                errors = validate_proof(
                     repository(),
                     default_commit(),
                     run,
@@ -239,7 +263,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         document = metadata()
         document["tag"] = "v1.2.4"
 
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(),
             default_commit(),
             source_run(),
@@ -255,10 +279,65 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
     def test_rejects_repository_identity_drift(self) -> None:
         run = source_run()
         run["head_repository"]["id"] = 999
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(), default_commit(), run, publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("source head repository identity" in error for error in errors))
+
+    def test_rejects_live_source_artifact_binding_drift(self) -> None:
+        base = source_artifacts()[0]
+        cases = (
+            ("missing", []),
+            ("duplicate", source_artifacts() + source_artifacts()),
+            ("expired", [{**base, "expired": True}]),
+            ("wrong name", [{**base, "name": "unsigned-macos-release-wrong"}]),
+            ("wrong id", [{**base, "id": 405}]),
+            ("wrong digest", [{**base, "digest": "sha256:" + "d" * 64}]),
+            (
+                "wrong run",
+                [
+                    {
+                        **base,
+                        "workflow_run": {
+                            **base["workflow_run"],
+                            "id": SOURCE_RUN_ID + 1,
+                        },
+                    }
+                ],
+            ),
+            (
+                "wrong repository",
+                [
+                    {
+                        **base,
+                        "workflow_run": {
+                            **base["workflow_run"],
+                            "repository_id": REPO_ID + 1,
+                        },
+                    }
+                ],
+            ),
+        )
+        for label, source_artifact_list in cases:
+            with self.subTest(label=label):
+                errors = validate_proof(
+                    repository(),
+                    default_commit(),
+                    source_run(),
+                    publisher_run(),
+                    artifacts(),
+                    metadata(),
+                    "sha256:" + "b" * 64,
+                    compare(),
+                    source_artifacts=source_artifact_list,
+                )
+                self.assertTrue(
+                    any(
+                        "source artifact" in error or "sourceArtifact" in error
+                        for error in errors
+                    ),
+                    errors,
+                )
 
     def test_rejects_missing_duplicate_expired_or_wrong_artifact(self) -> None:
         cases = [
@@ -269,7 +348,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         ]
         for artifact_list in cases:
             with self.subTest(artifact_list=artifact_list):
-                errors = validate_post_split_runtime_proof(
+                errors = validate_proof(
                     repository(),
                     default_commit(),
                     source_run(),
@@ -289,7 +368,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         ]
         for artifact in cases:
             with self.subTest(artifact=artifact):
-                errors = validate_post_split_runtime_proof(
+                errors = validate_proof(
                     repository(),
                     default_commit(),
                     source_run(),
@@ -305,7 +384,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 )
 
     def test_rejects_unsigned_archive_digest_drift_from_validated_metadata(self) -> None:
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(),
             default_commit(),
             source_run(),
@@ -332,7 +411,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             with self.subTest(field=field):
                 document = metadata()
                 document[field] = value
-                errors = validate_post_split_runtime_proof(
+                errors = validate_proof(
                     repository(),
                     default_commit(),
                     source_run(),
@@ -358,7 +437,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             with self.subTest(label=label):
                 document = metadata()
                 mutate(document)
-                errors = validate_post_split_runtime_proof(
+                errors = validate_proof(
                     repository(),
                     default_commit(),
                     source_run(),
@@ -376,7 +455,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
     def test_rejects_malformed_integer_identity_instead_of_bool_equality(self) -> None:
         run = source_run()
         run["id"] = True
-        errors = validate_post_split_runtime_proof(
+        errors = validate_proof(
             repository(), default_commit(), run, publisher_run(), artifacts(), metadata(), "sha256:" + "b" * 64, compare()
         )
         self.assertTrue(any("source run id" in error for error in errors))
@@ -390,6 +469,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "final-default-commit.json": default_commit(),
                 "source-run.json": source_run(),
                 "publisher-run.json": publisher_run(),
+                "source-artifacts.json": [
+                    {"total_count": 1, "artifacts": source_artifacts()}
+                ],
                 "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
                 "metadata.json": metadata(),
                 "compare.json": compare(),
@@ -411,6 +493,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     str(root / "source-run.json"),
                     "--publisher-run",
                     str(root / "publisher-run.json"),
+                    "--source-artifacts",
+                    str(root / "source-artifacts.json"),
                     "--artifacts",
                     str(root / "artifacts.json"),
                     "--metadata",
@@ -438,6 +522,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "final-default-commit.json": default_commit(),
                 "source-run.json": source_run(),
                 "publisher-run.json": publisher_run(),
+                "source-artifacts.json": [
+                    {"total_count": 1, "artifacts": source_artifacts()}
+                ],
                 "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
                 "metadata.json": metadata(),
                 "compare.json": compare(),
@@ -459,6 +546,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 str(root / "source-run.json"),
                 "--publisher-run",
                 str(root / "publisher-run.json"),
+                "--source-artifacts",
+                str(root / "source-artifacts.json"),
                 "--artifacts",
                 str(root / "artifacts.json"),
                 "--metadata",
@@ -477,6 +566,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
+            self.assertEqual(0, first.returncode, first.stderr)
             document = json.loads(output.read_text(encoding="utf-8"))
             second = subprocess.run(
                 args,
@@ -486,7 +576,6 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 check=False,
             )
 
-        self.assertEqual(0, first.returncode, first.stderr)
         self.assertEqual(2, second.returncode)
         self.assertIn("already exists", second.stderr)
         self.assertEqual(2, document["schemaVersion"])
@@ -505,6 +594,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "final-default-commit.json": bad_final,
                 "source-run.json": source_run(),
                 "publisher-run.json": publisher_run(),
+                "source-artifacts.json": [
+                    {"total_count": 1, "artifacts": source_artifacts()}
+                ],
                 "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
                 "metadata.json": metadata(),
                 "compare.json": compare(),
@@ -527,6 +619,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     str(root / "source-run.json"),
                     "--publisher-run",
                     str(root / "publisher-run.json"),
+                    "--source-artifacts",
+                    str(root / "source-artifacts.json"),
                     "--artifacts",
                     str(root / "artifacts.json"),
                     "--metadata",
@@ -575,6 +669,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         for token in (
             "actions/runs/",
             "/artifacts?per_page=100",
+            "source-artifacts.json",
             "/actions/artifacts/${artifact_id}/zip",
             "extract-runtime-proof-metadata.py",
             "--app-archive-digest-output",
@@ -585,6 +680,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             "audit-post-split-runtime-proof.py",
             "--final-default-commit",
             "final-default-commit.json",
+            "--source-artifacts",
             "--evidence-output",
         ):
             with self.subTest(token=token):

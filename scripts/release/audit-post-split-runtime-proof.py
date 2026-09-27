@@ -66,6 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--final-default-commit", required=True, type=Path)
     parser.add_argument("--source-run", required=True, type=Path)
     parser.add_argument("--publisher-run", required=True, type=Path)
+    parser.add_argument("--source-artifacts", required=True, type=Path)
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--archive-digest", required=True)
@@ -82,6 +83,7 @@ def main() -> int:
         final_default_commit = _load_json(args.final_default_commit)
         source_run = _load_json(args.source_run)
         publisher_run = _load_json(args.publisher_run)
+        source_artifacts = _flatten_artifacts(_load_json(args.source_artifacts))
         artifacts = _flatten_artifacts(_load_json(args.artifacts))
         metadata = _load_json(args.metadata)
         comparison = _load_json(args.compare)
@@ -89,6 +91,9 @@ def main() -> int:
         print(f"unable to read runtime proof evidence: {error}", file=sys.stderr)
         return 2
 
+    if isinstance(source_artifacts, dict) and "error" in source_artifacts:
+        print(source_artifacts["error"], file=sys.stderr)
+        return 2
     if isinstance(artifacts, dict) and "error" in artifacts:
         print(artifacts["error"], file=sys.stderr)
         return 2
@@ -102,6 +107,7 @@ def main() -> int:
         metadata,
         args.archive_digest,
         comparison,
+        source_artifacts=source_artifacts,
         final_default_commit=final_default_commit,
     )
     for error in errors:
@@ -117,6 +123,7 @@ def main() -> int:
                 final_default_commit=final_default_commit,
                 source_run=source_run,
                 publisher_run=publisher_run,
+                source_artifacts=source_artifacts,
                 artifacts=artifacts,
                 metadata=metadata,
                 archive_digest=args.archive_digest,
