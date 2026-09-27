@@ -460,7 +460,19 @@ bash scripts/release/prove-post-split-ancestor-runtime.sh \
 
 The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
 
-When `--evidence-output` is supplied, the runner writes a deterministic JSON identity document **only after** the read-only auditor succeeds. The file binds the repository, default branch, proof tag/source ref, source and publisher SHAs, and exact source/publisher run IDs plus attempts. It contains no timestamp or credentials, and the output path must not already exist, so a previous proof record is never silently overwritten.
+When `--evidence-output` is supplied, the runner delegates evidence creation to the read-only auditor. The auditor writes schema-v2 JSON **only after** the complete runtime proof succeeds. The record captures the audited repository ID/name/default branch, initial and final default-head SHAs, strict-ancestor compare result, source and publisher workflow/run identity, source Artifact ID/digest, validator Artifact ID/digest, unsigned archive digest, and validated application identity. It contains no operator timestamp or credentials. The output path must not already exist, so a previous proof record is never silently overwritten.
+
+The same evidence option is available when auditing an already-known run pair directly:
+
+```bash
+bash scripts/release/audit-post-split-runtime-proof.sh \
+  owner/disposable-repo \
+  SOURCE_RUN_ID \
+  PUBLISHER_RUN_ID \
+  --evidence-output post-split-proof.json
+```
+
+Because the evidence is emitted by the validator path rather than reconstructed by the orchestration runner, a failed proof produces no evidence file. Preserve the resulting JSON together with the retained proof tag and GitHub Actions run URLs as the rollout audit record.
 
 The manual procedure remains useful for incident analysis or when the tag/run pair already exists:
 
