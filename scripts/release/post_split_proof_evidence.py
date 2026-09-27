@@ -89,6 +89,24 @@ def _digest(value: object, label: str) -> str:
     return value
 
 
+def _source_artifact(
+    artifacts: object,
+    *,
+    source_run_id: int,
+    source_run_attempt: int,
+) -> dict[str, Any]:
+    if not isinstance(artifacts, list) or any(not isinstance(item, dict) for item in artifacts):
+        raise EvidenceError("source artifacts must be an array of objects")
+
+    expected_name = f"unsigned-macos-release-{source_run_id}-{source_run_attempt}"
+    matches = [item for item in artifacts if item.get("name") == expected_name]
+    if len(matches) != 1:
+        raise EvidenceError(
+            f"expected exactly one source artifact named {expected_name!r}"
+        )
+    return matches[0]
+
+
 def _validator_artifact(
     artifacts: object,
     *,
@@ -119,6 +137,7 @@ def build_evidence(
     final_default_commit: object,
     source_run: object,
     publisher_run: object,
+    source_artifacts: object,
     artifacts: object,
     metadata: object,
     archive_digest: object,
@@ -156,6 +175,22 @@ def build_evidence(
     if initial_head_sha != publisher_sha or final_head_sha != publisher_sha:
         raise EvidenceError("default-head snapshots must equal publisher SHA")
 
+    source_artifact = _source_artifact(
+        source_artifacts,
+        source_run_id=source_run_id,
+        source_run_attempt=source_run_attempt,
+    )
+    source_artifact_id = _positive_int(source_artifact.get("id"), "source artifact id")
+    source_artifact_digest = _digest(
+        source_artifact.get("digest"), "source artifact digest"
+    )
+    if validated_metadata.get("sourceArtifactId") != source_artifact_id:
+        raise EvidenceError("validator metadata sourceArtifactId does not match source artifact")
+    if validated_metadata.get("sourceArtifactDigest") != source_artifact_digest:
+        raise EvidenceError(
+            "validator metadata sourceArtifactDigest does not match source artifact"
+        )
+
     artifact = _validator_artifact(
         artifacts,
         publisher_run_id=publisher_run_id,
@@ -170,12 +205,6 @@ def build_evidence(
         artifact.get("digest"), "validator artifact digest"
     )
 
-    source_artifact_id = _positive_int(
-        validated_metadata.get("sourceArtifactId"), "source artifact id"
-    )
-    source_artifact_digest = _digest(
-        validated_metadata.get("sourceArtifactDigest"), "source artifact digest"
-    )
     unsigned_archive_digest = _digest(archive_digest, "unsigned archive digest")
     if validated_metadata.get("archiveSha256") != unsigned_archive_digest:
         raise EvidenceError("validator metadata archive digest does not match proof input")
