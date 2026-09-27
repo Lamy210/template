@@ -504,6 +504,7 @@ bash scripts/release/audit-post-split-runtime-proof.sh \
 The read-only proof collector verifies all of the following from GitHub API evidence and the publisher-owned validator artifact:
 
 - source run is the successful same-repository `Release Build` push workflow at `.github/workflows/release-build.yml`;
+- the live `refs/tags/<stable-version>` ref is re-read from GitHub, annotated-tag objects are dereferenced with a bounded/cycle-checked chain, and the resulting commit must still equal the source run SHA;
 - the source run exposes exactly one non-expired `unsigned-macos-release-<run>-<attempt>` Artifact, whose live Artifact ID/digest/run/SHA/repository binding matches the validator-owned metadata;
 - the auditor re-downloads that exact source Artifact by ID, verifies the GitHub Artifact ZIP digest and exact two-file source payload, and requires its `release-input/unsigned-macos-app.tar.gz` SHA-256 to equal the unsigned archive embedded in the validator Artifact;
 - publisher run is the same-repository `workflow_run`-triggered `Release Publisher` at `.github/workflows/release-publisher.yml`;
@@ -518,7 +519,7 @@ A successful proof demonstrates the intended property:
 
 > Historical post-split application bytes came from the tagged ancestor, while validation/control code came from the current default branch.
 
-The command performs only reads and artifact download. It does not create/move/delete tags, mutate Rulesets, change Environments, or publish releases.
+The command performs only reads and artifact downloads. It does not create/move/delete tags, mutate Rulesets, change Environments, or publish releases. Re-reading the live release tag is an additional runtime binding check; it does not replace the separate immutable-tag Ruleset proof.
 
 Run this proof immediately after the disposable test. The collector snapshots the default-branch head before gathering run/Artifact evidence and re-reads it after the compare request as its final remote evidence fetch. Both snapshots must equal the publisher SHA, so a default-branch advance during collection fails closed. A later default-branch commit also makes a subsequently collected proof fail rather than silently treating stale evidence as current.
 
