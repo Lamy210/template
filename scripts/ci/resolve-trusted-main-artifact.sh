@@ -138,6 +138,24 @@ api_to_file() {
   return 1
 }
 
+api_paginated_to_file() {
+  local endpoint="$1"
+  local destination="$2"
+  local attempt
+
+  for attempt in 1 2 3; do
+    if gh api --paginate --slurp "${endpoint}" >"${destination}"; then
+      return 0
+    fi
+    rm -f "${destination}"
+    if ((attempt < 3)); then
+      sleep "${attempt}"
+    fi
+  done
+
+  return 1
+}
+
 encoded_branch="$(
   python3 - "${branch}" <<'PY'
 import sys
@@ -232,7 +250,7 @@ while IFS=$'\t' read -r run_id run_attempt source_sha run_event; do
 
   artifacts_json="${work_root}/artifacts-${run_id}.json"
   artifacts_endpoint="repos/${repository}/actions/runs/${run_id}/artifacts?per_page=100"
-  api_to_file "${artifacts_endpoint}" "${artifacts_json}" || die "${EXIT_INFRA}" "failed to query artifacts for run ${run_id}"
+  api_paginated_to_file "${artifacts_endpoint}" "${artifacts_json}" || die "${EXIT_INFRA}" "failed to query artifacts for run ${run_id}"
 
   artifact_result="${work_root}/artifact-${run_id}.tsv"
   if python3 - "${artifacts_json}" "${artifact_name}" >"${artifact_result}" <<'PY'
@@ -242,19 +260,60 @@ import sys
 path, expected_name = sys.argv[1:3]
 try:
     with open(path, encoding="utf-8") as handle:
-        payload = json.load(handle)
-    artifacts = payload["artifacts"]
-    if not isinstance(artifacts, list):
-        raise TypeError("artifacts must be a list")
-except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        pages = json.load(handle)
+    if not isinstance(pages, list) or not pages:
+        raise TypeError("paginated artifacts response must be a non-empty list")
+except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
     print(f"invalid artifacts response: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+artifacts = []
+declared_total = None
+seen_ids = set()
+
+for page in pages:
+    if not isinstance(page, dict):
+        print("artifact page must be an object", file=sys.stderr)
+        raise SystemExit(1)
+    page_artifacts = page.get("artifacts")
+    total_count = page.get("total_count")
+    if not isinstance(page_artifacts, list):
+        print("artifact page is missing artifacts list", file=sys.stderr)
+        raise SystemExit(1)
+    if type(total_count) is not int or total_count < 0:
+        print("artifact page total_count is invalid", file=sys.stderr)
+        raise SystemExit(1)
+    if declared_total is None:
+        declared_total = total_count
+    elif total_count != declared_total:
+        print("artifact pages disagree on total_count", file=sys.stderr)
+        raise SystemExit(1)
+
+    for artifact in page_artifacts:
+        if not isinstance(artifact, dict):
+            print("artifact entry must be an object", file=sys.stderr)
+            raise SystemExit(1)
+        artifact_id = artifact.get("id")
+        if type(artifact_id) is not int or artifact_id <= 0:
+            print("artifact id is missing or invalid", file=sys.stderr)
+            raise SystemExit(1)
+        if artifact_id in seen_ids:
+            print(f"duplicate artifact id across pages: {artifact_id}", file=sys.stderr)
+            raise SystemExit(1)
+        seen_ids.add(artifact_id)
+        artifacts.append(artifact)
+
+if declared_total != len(artifacts):
+    print(
+        f"artifact total_count={declared_total} does not match fetched entries={len(artifacts)}",
+        file=sys.stderr,
+    )
     raise SystemExit(1)
 
 matches = [
     artifact
     for artifact in artifacts
-    if isinstance(artifact, dict)
-    and artifact.get("name") == expected_name
+    if artifact.get("name") == expected_name
     and artifact.get("expired") is False
 ]
 
