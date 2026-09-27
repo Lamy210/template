@@ -162,7 +162,7 @@ class HistoricalReleaseBuildWorkflowTests(unittest.TestCase):
                     "unsigned-macos-release",
                     1,
                 ),
-                "missing proof contract token",
+                "missing proof contract line",
             ),
             (
                 "provenance writer removed",
@@ -171,7 +171,25 @@ class HistoricalReleaseBuildWorkflowTests(unittest.TestCase):
                     "scripts/release/other.py",
                     1,
                 ),
-                "missing proof contract token",
+                "must invoke scripts/release/write-build-provenance.py",
+            ),
+            (
+                "provenance run attempt removed",
+                lambda text: text.replace(
+                    '--run-attempt "${GITHUB_RUN_ATTEMPT}" \\',
+                    '--run-attempt "1" \\',
+                    1,
+                ),
+                "missing proof contract line",
+            ),
+            (
+                "artifact upload path drift",
+                lambda text: text.replace(
+                    "          path: artifact-payload/",
+                    "          path: artifact-payload/release-input/",
+                    1,
+                ),
+                "missing proof contract line",
             ),
         )
 
@@ -196,7 +214,7 @@ class HistoricalReleaseBuildWorkflowTests(unittest.TestCase):
         errors = validate_unprivileged_release_build_workflow(text)
 
         self.assertTrue(
-            any("missing proof contract token" in error for error in errors),
+            any("missing proof contract line" in error for error in errors),
             errors,
         )
 
