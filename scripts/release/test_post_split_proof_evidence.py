@@ -23,6 +23,7 @@ SOURCE_RUN_ID = 101
 SOURCE_RUN_ATTEMPT = 1
 PUBLISHER_RUN_ID = 202
 PUBLISHER_RUN_ATTEMPT = 2
+VALIDATION_JOB_ID = 505
 VALIDATOR_ARTIFACT_ID = 303
 VALIDATOR_ARTIFACT_DIGEST = "sha256:" + "c" * 64
 SOURCE_ARTIFACT_ID = 404
@@ -56,6 +57,18 @@ def inputs() -> dict[str, object]:
             "path": ".github/workflows/release-publisher.yml",
             "head_sha": PUBLISHER_SHA,
         },
+        "publisher_jobs": [
+            {
+                "id": VALIDATION_JOB_ID,
+                "name": "Validate release input without secrets",
+                "run_id": PUBLISHER_RUN_ID,
+                "head_sha": PUBLISHER_SHA,
+                "workflow_name": "Release Publisher",
+                "head_branch": "main",
+                "status": "completed",
+                "conclusion": "success",
+            }
+        ],
         "source_artifacts": [
             {
                 "id": SOURCE_ARTIFACT_ID,
@@ -126,6 +139,17 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                     "sha": PUBLISHER_SHA,
                     "validatorArtifactDigest": VALIDATOR_ARTIFACT_DIGEST,
                     "validatorArtifactId": VALIDATOR_ARTIFACT_ID,
+                    "validationJob": {
+                        "conclusion": "success",
+                        "headBranch": "main",
+                        "headSHA": PUBLISHER_SHA,
+                        "id": VALIDATION_JOB_ID,
+                        "name": "Validate release input without secrets",
+                        "runAttempt": PUBLISHER_RUN_ATTEMPT,
+                        "runId": PUBLISHER_RUN_ID,
+                        "status": "completed",
+                        "workflowName": "Release Publisher",
+                    },
                     "workflowName": "Release Publisher",
                     "workflowPath": ".github/workflows/release-publisher.yml",
                 },
@@ -134,7 +158,7 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                     "fullName": REPOSITORY,
                     "id": REPO_ID,
                 },
-                "schemaVersion": 2,
+                "schemaVersion": 3,
                 "source": {
                     "archiveDigest": ARCHIVE_DIGEST,
                     "artifactDigest": SOURCE_ARTIFACT_DIGEST,
@@ -176,6 +200,18 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                 "source artifact digest",
                 lambda data: data["source_artifacts"][0].__setitem__(
                     "digest", "sha256:" + "d" * 64
+                ),
+            ),
+            (
+                "publisher validation job run",
+                lambda data: data["publisher_jobs"][0].__setitem__(
+                    "run_id", PUBLISHER_RUN_ID + 1
+                ),
+            ),
+            (
+                "publisher validation job conclusion",
+                lambda data: data["publisher_jobs"][0].__setitem__(
+                    "conclusion", "failure"
                 ),
             ),
             (
@@ -234,6 +270,27 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                 "publisher.workflowName",
             ),
             (
+                "validation job attempt drift",
+                lambda document: document["publisher"]["validationJob"].__setitem__(
+                    "runAttempt", PUBLISHER_RUN_ATTEMPT + 1
+                ),
+                "publisher.validationJob.runAttempt must equal publisher.runAttempt",
+            ),
+            (
+                "validation job SHA drift",
+                lambda document: document["publisher"]["validationJob"].__setitem__(
+                    "headSHA", "2" * 40
+                ),
+                "publisher.validationJob.headSHA must equal publisher.sha",
+            ),
+            (
+                "validation job branch drift",
+                lambda document: document["publisher"]["validationJob"].__setitem__(
+                    "headBranch", "release"
+                ),
+                "publisher.validationJob.headBranch must equal repository.defaultBranch",
+            ),
+            (
                 "default-head drift",
                 lambda document: document["defaultHead"].__setitem__(
                     "finalSHA", "2" * 40
@@ -284,6 +341,24 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                     any(expected_error in error for error in errors),
                     errors,
                 )
+
+    def test_accepts_legacy_schema_v2_evidence(self) -> None:
+        document = json.loads(json.dumps(valid_evidence()))
+        document["schemaVersion"] = 2
+        document["publisher"].pop("validationJob")
+
+        self.assertEqual([], validate_evidence_document(document))
+
+    def test_rejects_validation_job_in_legacy_schema_v2(self) -> None:
+        document = json.loads(json.dumps(valid_evidence()))
+        document["schemaVersion"] = 2
+
+        errors = validate_evidence_document(document)
+
+        self.assertTrue(
+            any("publisher unexpected fields" in error for error in errors),
+            errors,
+        )
 
     def test_writer_refuses_invalid_evidence(self) -> None:
         evidence = valid_evidence()

@@ -166,6 +166,7 @@ def main() -> int:
                 final_default_commit=final_default_commit,
                 source_run=source_run,
                 publisher_run=publisher_run,
+                publisher_jobs=publisher_jobs,
                 source_artifacts=source_artifacts,
                 artifacts=artifacts,
                 metadata=metadata,
