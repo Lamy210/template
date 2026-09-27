@@ -232,7 +232,7 @@ require_repository_identity_stable() {
     return 1
   fi
   if [[ "${current_repository_id}" != "${initial_repository_id}" ||
-        "${current_repository_name}" != "${initial_repository_name}" ]]; then
+    "${current_repository_name}" != "${initial_repository_name}" ]]; then
     echo "Disposable repository identity changed during release-tag proof." >&2
     return 1
   fi
