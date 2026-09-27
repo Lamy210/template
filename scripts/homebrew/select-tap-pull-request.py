@@ -11,7 +11,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.homebrew.tap_pr_selection import select_same_repository_pull_request
+from scripts.homebrew.tap_pr_selection import (
+    normalize_rest_pull_request_pages,
+    select_same_repository_pull_request,
+)
 
 
 def main() -> int:
@@ -23,6 +26,11 @@ def main() -> int:
     parser.add_argument("--head", required=True)
     parser.add_argument("--base", required=True)
     parser.add_argument("--head-sha", required=True)
+    parser.add_argument(
+        "--rest-pages",
+        action="store_true",
+        help="Interpret metadata as gh api --paginate --slurp REST pull-request pages.",
+    )
     args = parser.parse_args()
 
     try:
@@ -30,6 +38,16 @@ def main() -> int:
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         print(f"failed to read tap pull request metadata {args.metadata}: {error}", file=sys.stderr)
         return 1
+
+    if args.rest_pages:
+        normalization_errors, document = normalize_rest_pull_request_pages(
+            document,
+            expected_repository=args.repository,
+        )
+        for error in normalization_errors:
+            print(error, file=sys.stderr)
+        if normalization_errors:
+            return 1
 
     errors, number = select_same_repository_pull_request(
         document,
