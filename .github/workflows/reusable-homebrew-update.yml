@@ -527,13 +527,18 @@ jobs:
           fi
 
           query_open_pr_number() {
-            if ! gh pr list \
-              --repo "${TAP_REPOSITORY}" \
-              --state open \
-              --head "${BRANCH}" \
-              --base "${TAP_DEFAULT_BRANCH}" \
-              --limit 100 \
-              --json number,headRefName,baseRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository \
+            local tap_owner
+            tap_owner="${TAP_REPOSITORY%%/*}"
+
+            if ! gh api \
+              --method GET \
+              --paginate \
+              --slurp \
+              "repos/${TAP_REPOSITORY}/pulls" \
+              -f state=open \
+              -f "head=${tap_owner}:${BRANCH}" \
+              -f "base=${TAP_DEFAULT_BRANCH}" \
+              -F per_page=100 \
               >"${pr_metadata}"; then
               echo "Failed to query existing tap pull requests." >&2
               return 1
@@ -544,7 +549,8 @@ jobs:
               --repository "${TAP_REPOSITORY}" \
               --head "${BRANCH}" \
               --base "${TAP_DEFAULT_BRANCH}" \
-              --head-sha "${PUSHED_SHA}"
+              --head-sha "${PUSHED_SHA}" \
+              --rest-pages
           }
 
           if ! open_pr_number="$(query_open_pr_number)"; then
@@ -682,13 +688,18 @@ jobs:
 
           query_final_pr_number() {
             local pr_metadata="${RUNNER_TEMP}/tap-final-open-prs.json"
-            if ! gh pr list \
-              --repo "${TAP_REPOSITORY}" \
-              --state open \
-              --head "${BRANCH}" \
-              --base "${TAP_DEFAULT_BRANCH}" \
-              --limit 100 \
-              --json number,headRefName,baseRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository \
+            local tap_owner
+            tap_owner="${TAP_REPOSITORY%%/*}"
+
+            if ! gh api \
+              --method GET \
+              --paginate \
+              --slurp \
+              "repos/${TAP_REPOSITORY}/pulls" \
+              -f state=open \
+              -f "head=${tap_owner}:${BRANCH}" \
+              -f "base=${TAP_DEFAULT_BRANCH}" \
+              -F per_page=100 \
               >"${pr_metadata}"; then
               echo "Failed to re-query the selected tap pull request." >&2
               return 1
@@ -699,7 +710,8 @@ jobs:
               --repository "${TAP_REPOSITORY}" \
               --head "${BRANCH}" \
               --base "${TAP_DEFAULT_BRANCH}" \
-              --head-sha "${PUSHED_SHA}"
+              --head-sha "${PUSHED_SHA}" \
+              --rest-pages
           }
 
           verify_canonical_tap_identity

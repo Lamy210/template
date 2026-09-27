@@ -31,6 +31,117 @@ def _head_repository_identity(item: dict[str, object]) -> str | None:
     return None
 
 
+def normalize_rest_pull_request_pages(
+    document: object,
+    *,
+    expected_repository: str,
+) -> tuple[list[str], list[dict[str, object]]]:
+    errors: list[str] = []
+    normalized: list[dict[str, object]] = []
+
+    if (
+        not isinstance(expected_repository, str)
+        or REPOSITORY_RE.fullmatch(expected_repository) is None
+    ):
+        return ["expected repository must be in owner/repo form"], normalized
+
+    if not isinstance(document, list) or not document:
+        return ["paginated pull request response must be a non-empty JSON array"], normalized
+
+    expected_repository_key = expected_repository.lower()
+    seen_numbers: set[int] = set()
+
+    for page_index, page in enumerate(document):
+        if not isinstance(page, list):
+            errors.append(f"pull request page {page_index} must be a JSON array")
+            continue
+
+        for item_index, item in enumerate(page):
+            label = f"pull request page {page_index} entry {item_index}"
+            if not isinstance(item, dict):
+                errors.append(f"{label} must be a JSON object")
+                continue
+
+            number = item.get("number")
+            if type(number) is not int or number <= 0:
+                errors.append(f"{label} has an invalid number")
+                continue
+            if number in seen_numbers:
+                errors.append(f"duplicate pull request number across pages: {number}")
+                continue
+            seen_numbers.add(number)
+
+            if item.get("state") != "open":
+                errors.append(f"{label} is not open")
+                continue
+
+            head = item.get("head")
+            base = item.get("base")
+            if not isinstance(head, dict) or not isinstance(base, dict):
+                errors.append(f"{label} is missing head/base metadata")
+                continue
+
+            head_ref = head.get("ref")
+            head_sha = head.get("sha")
+            base_ref = base.get("ref")
+            if not isinstance(head_ref, str) or not head_ref or "\n" in head_ref:
+                errors.append(f"{label} has an invalid head ref")
+                continue
+            if not isinstance(base_ref, str) or not base_ref or "\n" in base_ref:
+                errors.append(f"{label} has an invalid base ref")
+                continue
+            if not isinstance(head_sha, str) or SHA_RE.fullmatch(head_sha) is None:
+                errors.append(f"{label} has an invalid head commit")
+                continue
+
+            head_repository = head.get("repo")
+            base_repository = base.get("repo")
+            if not isinstance(head_repository, dict):
+                errors.append(f"{label} has no head repository")
+                continue
+            if not isinstance(base_repository, dict):
+                errors.append(f"{label} has no base repository")
+                continue
+
+            head_full_name = head_repository.get("full_name")
+            base_full_name = base_repository.get("full_name")
+            if (
+                not isinstance(head_full_name, str)
+                or REPOSITORY_RE.fullmatch(head_full_name) is None
+            ):
+                errors.append(f"{label} has an invalid head repository identity")
+                continue
+            if (
+                not isinstance(base_full_name, str)
+                or REPOSITORY_RE.fullmatch(base_full_name) is None
+            ):
+                errors.append(f"{label} has an invalid base repository identity")
+                continue
+            if base_full_name.lower() != expected_repository_key:
+                errors.append(f"{label} targets an unexpected base repository")
+                continue
+
+            head_owner, head_name = head_full_name.split("/", 1)
+            normalized.append(
+                {
+                    "number": number,
+                    "headRefName": head_ref,
+                    "baseRefName": base_ref,
+                    "headRefOid": head_sha,
+                    "headRepository": {
+                        "name": head_name,
+                        "nameWithOwner": head_full_name,
+                    },
+                    "headRepositoryOwner": {"login": head_owner},
+                    "isCrossRepository": (
+                        head_full_name.lower() != expected_repository_key
+                    ),
+                }
+            )
+
+    return errors, normalized
+
+
 def select_same_repository_pull_request(
     document: object,
     *,
