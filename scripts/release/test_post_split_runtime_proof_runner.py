@@ -176,6 +176,32 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertIn('conclusion == "success"', text)
         self.assertIn("validator artifact", text)
 
+    def test_run_baselines_snapshot_complete_workflow_history(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn(
+            '"repos/${repository}/actions/workflows/${encoded_workflow}/runs?per_page=100"',
+            text,
+        )
+        self.assertIn("--paginate --slurp", text)
+        self.assertIn(
+            "workflow-run baseline total_count={declared_total} does not match",
+            text,
+        )
+        self.assertIn("workflow-run baseline contains duplicate id", text)
+        self.assertIn(
+            'snapshot_run_ids "${release_build_workflow}" "${source_baseline}"',
+            text,
+        )
+        self.assertIn(
+            'snapshot_run_ids "${release_publisher_workflow}" "${publisher_baseline}"',
+            text,
+        )
+        self.assertLess(
+            text.index('snapshot_run_ids "${release_build_workflow}"'),
+            text.index("--method POST"),
+            "complete run baselines must be captured before tag creation",
+        )
+
     def test_publisher_discovery_paginates_validator_artifacts(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertIn(
