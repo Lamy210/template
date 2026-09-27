@@ -73,7 +73,7 @@ Before importing the Developer ID certificate, the signing job:
 
 Only then does it import Apple credentials and perform signing/notarization. After final verification it uploads the signed DMG, checksum, and publisher-owned release provenance as an exact current-run/current-attempt Actions Artifact.
 
-The publication job independently verifies that signer-produced artifact's ID, canonical name, GitHub digest, repository identity, publisher run, publisher attempt, and publisher SHA before downloading it. It then revalidates the trusted DMG basename, rebinds the immutable release tag, and performs GitHub Release publication.
+The publication job independently verifies that signer-produced artifact's ID, canonical name, GitHub digest, repository identity, publisher run, publisher attempt, and publisher SHA before downloading it. It then revalidates the trusted DMG basename and release provenance. The publication script itself rebinds the stable tag to the validated source SHA immediately before any GitHub Release lookup/create path and again after remote release-state/asset verification, so tag movement during publication fails closed rather than relying only on a preceding workflow step.
 
 The signing job must never execute scripts or hooks from the downloaded application archive. Release scripts and optional entitlements come from the trusted publisher/default-branch checkout. The publication job must never receive Apple signing/notarization credentials.
 
@@ -312,6 +312,7 @@ Stable releases are append-never/replace-never.
 
 - requires and validates explicit `GITHUB_REPOSITORY=owner/repo` identity, and passes it to every GitHub Release read/write/download operation instead of relying on ambient Git remote state;
 - validates the stable SemVer tag, literal `.dmg` basename, and complete immutable three-asset name set before any GitHub Release lookup or mutation;
+- requires the validated source SHA and trusted publisher SHA, then re-runs the live tag/source/history verifier immediately before GitHub Release state is read or mutated and again after all remote assets have been re-downloaded and byte-checked;
 - requires the canonical `release-provenance.json` asset; omission or renaming fails before any GitHub call;
 - requires the DMG, checksum, and provenance inputs to be regular non-symlink files;
 - enumerates releases through the paginated GitHub API in the explicitly bound repository before deciding that a tag has no release; API/auth/network failure is treated as unknown state and fails closed rather than as absence;
