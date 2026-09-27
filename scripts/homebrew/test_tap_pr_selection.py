@@ -188,7 +188,8 @@ class TapPullRequestSelectionTests(unittest.TestCase):
             expected_repository=REPOSITORY,
         )
 
-        self.assertEqual([], normalized[1:])
+        self.assertEqual(1, len(normalized))
+        self.assertEqual(42, normalized[0]["number"])
         self.assertTrue(any("duplicate pull request number" in error for error in errors))
 
     def test_rest_normalization_rejects_unexpected_base_repository(self) -> None:
