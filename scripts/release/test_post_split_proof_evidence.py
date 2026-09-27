@@ -194,6 +194,72 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
         self.assertNotIn("timestamp", serialized.lower())
         self.assertNotIn("validatedAt", serialized)
 
+    def test_builds_annotated_live_tag_chain(self) -> None:
+        data = inputs()
+        first = "2" * 40
+        second = "3" * 40
+        data["tag_ref"] = {
+            "ref": "refs/tags/v1.2.3",
+            "object": {"type": "tag", "sha": first},
+        }
+        data["tag_objects"] = [
+            {
+                "sha": first,
+                "tag": "v1.2.3",
+                "object": {"type": "tag", "sha": second},
+            },
+            {
+                "sha": second,
+                "tag": "inner-release-tag",
+                "object": {"type": "commit", "sha": SOURCE_SHA},
+            },
+        ]
+
+        evidence = build_evidence(**data)
+
+        self.assertEqual(
+            {
+                "annotatedChain": [
+                    {
+                        "sha": first,
+                        "tag": "v1.2.3",
+                        "target": {"sha": second, "type": "tag"},
+                    },
+                    {
+                        "sha": second,
+                        "tag": "inner-release-tag",
+                        "target": {"sha": SOURCE_SHA, "type": "commit"},
+                    },
+                ],
+                "ref": "refs/tags/v1.2.3",
+                "refTarget": {"sha": first, "type": "tag"},
+                "resolvedSHA": SOURCE_SHA,
+            },
+            evidence["source"]["liveTag"],
+        )
+        self.assertEqual([], validate_evidence_document(evidence))
+
+    def test_rejects_outer_annotated_tag_name_drift(self) -> None:
+        data = inputs()
+        first = "2" * 40
+        data["tag_ref"] = {
+            "ref": "refs/tags/v1.2.3",
+            "object": {"type": "tag", "sha": first},
+        }
+        data["tag_objects"] = [
+            {
+                "sha": first,
+                "tag": "v9.9.9",
+                "object": {"type": "commit", "sha": SOURCE_SHA},
+            }
+        ]
+
+        with self.assertRaisesRegex(
+            EvidenceError,
+            "outer annotated release tag object name",
+        ):
+            build_evidence(**data)
+
     def test_rejects_unverified_or_malformed_facts(self) -> None:
         mutations = (
             ("repository id", lambda data: data["repository"].__setitem__("id", True)),
