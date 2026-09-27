@@ -71,6 +71,21 @@ class HistoricalReleaseBuildWorkflowTests(unittest.TestCase):
                 with self.assertRaises(WorkflowValidationError):
                     decode_github_contents_document(document)
 
+    def test_accepts_quoted_fully_pinned_action_targets(self) -> None:
+        text = workflow_text()
+        text = text.replace(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            '"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"',
+            1,
+        )
+        text = text.replace(
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+            "'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'",
+            1,
+        )
+
+        self.assertEqual([], validate_unprivileged_release_build_workflow(text))
+
     def test_rejects_privilege_and_proof_contract_drift(self) -> None:
         cases = (
             (
@@ -127,6 +142,42 @@ class HistoricalReleaseBuildWorkflowTests(unittest.TestCase):
                     1,
                 ),
                 "full lowercase commit SHA",
+            ),
+            (
+                "quoted mutable checkout action ref",
+                lambda text: text.replace(
+                    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+                    '"actions/checkout@v7"',
+                    1,
+                ),
+                "full lowercase commit SHA",
+            ),
+            (
+                "quoted permissions key",
+                lambda text: text.replace(
+                    "    permissions:\n      contents: read",
+                    '    "permissions":\n      contents: write',
+                    1,
+                ),
+                "privilege-sensitive workflow keys must not be quoted",
+            ),
+            (
+                "yaml merge key",
+                lambda text: text.replace(
+                    "    runs-on: macos-latest",
+                    "    runs-on: macos-latest\n    <<: *privileged",
+                    1,
+                ),
+                "must not use YAML merge keys",
+            ),
+            (
+                "indirect mixed-case secrets context",
+                lambda text: text.replace(
+                    "        run: |",
+                    "        env:\n          DUMP: ${{ toJSON(SeCrEtS) }}\n        run: |",
+                    1,
+                ),
+                "secrets context",
             ),
             (
                 "mutable upload action ref",
