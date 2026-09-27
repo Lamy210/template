@@ -80,6 +80,63 @@ def _metadata_binding_errors(
     return errors
 
 
+def _source_artifact_errors(
+    artifacts: object,
+    *,
+    repository_id: int,
+    source_run_id: int,
+    source_run_attempt: int,
+    source_sha: str,
+    metadata: object,
+) -> list[str]:
+    if not isinstance(artifacts, list) or any(not isinstance(item, dict) for item in artifacts):
+        return ["source artifacts must be an array of objects"]
+
+    expected_name = f"unsigned-macos-release-{source_run_id}-{source_run_attempt}"
+    matches = [item for item in artifacts if item.get("name") == expected_name]
+    if len(matches) != 1:
+        return [
+            "source artifact must appear exactly once with expected run-attempt "
+            f"binding: {expected_name!r}; found {len(matches)}"
+        ]
+
+    artifact = matches[0]
+    errors: list[str] = []
+    artifact_id = artifact.get("id")
+    artifact_digest = artifact.get("digest")
+    if not _positive_int(artifact_id):
+        errors.append("source artifact id must be a positive integer")
+    if artifact.get("expired") is not False:
+        errors.append("source artifact must exist and not be expired")
+    if not isinstance(artifact_digest, str) or DIGEST_RE.fullmatch(artifact_digest) is None:
+        errors.append("source artifact digest must use sha256:<64 lowercase hex>")
+
+    workflow_run = artifact.get("workflow_run")
+    if not isinstance(workflow_run, dict):
+        errors.append("source artifact workflow_run must be an object")
+    else:
+        if workflow_run.get("id") != source_run_id:
+            errors.append("source artifact workflow_run.id does not match source run")
+        if workflow_run.get("head_sha") != source_sha:
+            errors.append("source artifact workflow_run.head_sha does not match source SHA")
+        if workflow_run.get("repository_id") != repository_id:
+            errors.append("source artifact repository_id does not match repository")
+        if workflow_run.get("head_repository_id") != repository_id:
+            errors.append("source artifact head_repository_id does not match repository")
+
+    if isinstance(metadata, dict):
+        if _positive_int(artifact_id) and metadata.get("sourceArtifactId") != artifact_id:
+            errors.append("sourceArtifactId does not match live source artifact")
+        if (
+            isinstance(artifact_digest, str)
+            and DIGEST_RE.fullmatch(artifact_digest) is not None
+            and metadata.get("sourceArtifactDigest") != artifact_digest
+        ):
+            errors.append("sourceArtifactDigest does not match live source artifact")
+
+    return errors
+
+
 def _artifact_errors(
     artifacts: object,
     *,
@@ -169,6 +226,7 @@ def validate_post_split_runtime_proof(
     archive_digest: object,
     comparison: object,
     *,
+    source_artifacts: object | None = None,
     final_default_commit: object | None = None,
 ) -> list[str]:
     errors: list[str] = []
@@ -286,6 +344,23 @@ def validate_post_split_runtime_proof(
         errors.append("unsigned app archive digest must use sha256:<64 lowercase hex>")
     elif isinstance(metadata, dict) and metadata.get("archiveSha256") != archive_digest:
         errors.append("unsigned app archive digest does not match validator metadata")
+
+    if (
+        _positive_int(repository_id)
+        and _positive_int(source_run_id)
+        and _positive_int(source_run_attempt)
+        and _sha(source_sha)
+    ):
+        errors.extend(
+            _source_artifact_errors(
+                source_artifacts,
+                repository_id=repository_id,
+                source_run_id=source_run_id,
+                source_run_attempt=source_run_attempt,
+                source_sha=source_sha,
+                metadata=metadata,
+            )
+        )
 
     if (
         _positive_int(repository_id)
