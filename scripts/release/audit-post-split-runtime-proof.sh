@@ -92,6 +92,94 @@ gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch
 
 gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${source_run_id}" >"${temp_root}/source-run.json"
 
+source_tag="$(
+  python3 - "${temp_root}/source-run.json" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    document = json.load(handle)
+tag = document.get("head_branch")
+if not isinstance(tag, str) or re.fullmatch(
+    r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)",
+    tag,
+) is None:
+    raise SystemExit("source run head_branch is not canonical stable SemVer")
+print(tag)
+PY
+)"
+
+gh api "${api_headers[@]}" "repos/${repository}/git/ref/tags/${source_tag}" >"${temp_root}/tag-ref.json"
+
+tag_objects_dir="${temp_root}/tag-objects"
+mkdir -p "${tag_objects_dir}"
+current_tag_object_file="${temp_root}/tag-ref.json"
+resolved_tag_sha=""
+for depth in 1 2 3 4 5 6 7 8; do
+  readarray -t current_tag_object < <(
+    python3 - "${current_tag_object_file}" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    document = json.load(handle)
+if not isinstance(document, dict):
+    raise SystemExit("GitHub tag/ref response must be an object")
+target = document.get("object")
+if not isinstance(target, dict):
+    raise SystemExit("GitHub tag/ref response is missing object metadata")
+object_type = target.get("type")
+object_sha = target.get("sha")
+if object_type not in {"commit", "tag"}:
+    raise SystemExit(f"unsupported GitHub tag target type: {object_type!r}")
+if not isinstance(object_sha, str) or re.fullmatch(r"[0-9a-f]{40}", object_sha) is None:
+    raise SystemExit("GitHub tag target SHA is invalid")
+print(object_type)
+print(object_sha)
+PY
+  )
+  if (("${#current_tag_object[@]}" != 2)); then
+    echo "GitHub tag target identity output was malformed." >&2
+    exit 3
+  fi
+  object_type="${current_tag_object[0]}"
+  object_sha="${current_tag_object[1]}"
+
+  if [[ "${object_type}" == "commit" ]]; then
+    resolved_tag_sha="${object_sha}"
+    break
+  fi
+
+  current_tag_object_file="${tag_objects_dir}/tag-object-${depth}.json"
+  gh api "${api_headers[@]}" "repos/${repository}/git/tags/${object_sha}" >"${current_tag_object_file}"
+done
+
+if [[ -z "${resolved_tag_sha}" ]]; then
+  echo "Live release tag exceeded maximum annotated-tag dereference depth." >&2
+  exit 3
+fi
+
+python3 - "${tag_objects_dir}" "${temp_root}/tag-objects.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+directory = Path(sys.argv[1])
+output = Path(sys.argv[2])
+documents = []
+for path in sorted(
+    directory.glob("tag-object-*.json"),
+    key=lambda item: int(item.stem.rsplit("-", 1)[1]),
+):
+    with path.open(encoding="utf-8") as handle:
+        documents.append(json.load(handle))
+with output.open("x", encoding="utf-8") as handle:
+    json.dump(documents, handle, sort_keys=True, separators=(",", ":"))
+    handle.write("\n")
+PY
+
 gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${source_run_id}/artifacts?per_page=100" >"${temp_root}/source-artifacts.json"
 
 gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${publisher_run_id}" >"${temp_root}/publisher-run.json"
@@ -287,6 +375,8 @@ audit_args=(
   --source-run "${temp_root}/source-run.json"
   --publisher-run "${temp_root}/publisher-run.json"
   --source-artifacts "${temp_root}/source-artifacts.json"
+  --tag-ref "${temp_root}/tag-ref.json"
+  --tag-objects "${temp_root}/tag-objects.json"
   --artifacts "${temp_root}/artifacts.json"
   --metadata "${temp_root}/metadata.json"
   --archive-digest "${unsigned_archive_digest}"
