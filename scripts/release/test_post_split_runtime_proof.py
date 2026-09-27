@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 from scripts.release.post_split_runtime_proof import validate_post_split_runtime_proof
+from scripts.release.runtime_proof_source_artifact import (
+    verify_runtime_proof_source_artifact,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -137,9 +142,143 @@ def compare() -> dict:
     }
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        digest.update(handle.read())
+    return "sha256:" + digest.hexdigest()
+
+
+def sha256_bytes(payload: bytes) -> str:
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def write_source_artifact_zip(
+    path: Path,
+    *,
+    app_payload: bytes = b"unsigned-app-archive",
+    include_extra: bool = False,
+) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("release-input/unsigned-macos-app.tar.gz", app_payload)
+        archive.writestr("release-input/build-provenance.json", b"{}\n")
+        if include_extra:
+            archive.writestr("release-input/unexpected.txt", b"unexpected")
+
+
 def validate_proof(*args: object, **kwargs: object) -> list[str]:
     kwargs.setdefault("source_artifacts", source_artifacts())
     return validate_post_split_runtime_proof(*args, **kwargs)
+
+
+class RuntimeProofSourceArtifactByteTests(unittest.TestCase):
+    def test_accepts_exact_source_artifact_and_inner_archive_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            archive = root / "source-artifact.zip"
+            output = root / "source-artifact"
+            app_payload = b"exact-unsigned-app-archive"
+            write_source_artifact_zip(archive, app_payload=app_payload)
+
+            errors = verify_runtime_proof_source_artifact(
+                archive,
+                output,
+                expected_artifact_digest=sha256_file(archive),
+                expected_app_archive_digest=sha256_bytes(app_payload),
+            )
+
+            self.assertEqual([], errors)
+            self.assertEqual(
+                app_payload,
+                (output / "release-input/unsigned-macos-app.tar.gz").read_bytes(),
+            )
+
+    def test_rejects_source_artifact_zip_digest_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            archive = root / "source-artifact.zip"
+            output = root / "source-artifact"
+            write_source_artifact_zip(archive)
+
+            errors = verify_runtime_proof_source_artifact(
+                archive,
+                output,
+                expected_artifact_digest="sha256:" + "0" * 64,
+                expected_app_archive_digest=sha256_bytes(b"unsigned-app-archive"),
+            )
+
+        self.assertTrue(
+            any("source Artifact ZIP digest mismatch" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_source_unsigned_archive_digest_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            archive = root / "source-artifact.zip"
+            output = root / "source-artifact"
+            write_source_artifact_zip(archive)
+
+            errors = verify_runtime_proof_source_artifact(
+                archive,
+                output,
+                expected_artifact_digest=sha256_file(archive),
+                expected_app_archive_digest="sha256:" + "0" * 64,
+            )
+
+        self.assertTrue(
+            any("source unsigned app archive digest mismatch" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_unexpected_source_artifact_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            archive = root / "source-artifact.zip"
+            output = root / "source-artifact"
+            write_source_artifact_zip(archive, include_extra=True)
+
+            errors = verify_runtime_proof_source_artifact(
+                archive,
+                output,
+                expected_artifact_digest=sha256_file(archive),
+                expected_app_archive_digest=sha256_bytes(b"unsigned-app-archive"),
+            )
+
+        self.assertTrue(
+            any("unexpected files in release artifact" in error for error in errors),
+            errors,
+        )
+
+    def test_cli_binds_source_artifact_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            archive = root / "source-artifact.zip"
+            output = root / "source-artifact"
+            app_payload = b"cli-unsigned-app-archive"
+            write_source_artifact_zip(archive, app_payload=app_payload)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/release/verify-runtime-proof-source-artifact.py",
+                    "--archive",
+                    str(archive),
+                    "--output",
+                    str(output),
+                    "--expected-artifact-digest",
+                    sha256_file(archive),
+                    "--expected-app-archive-digest",
+                    sha256_bytes(app_payload),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("source Artifact bytes are bound", result.stdout)
 
 
 class PostSplitRuntimeProofTests(unittest.TestCase):
@@ -670,6 +809,11 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             "actions/runs/",
             "/artifacts?per_page=100",
             "source-artifacts.json",
+            "source-artifact.zip",
+            "verify-runtime-proof-source-artifact.py",
+            "--expected-artifact-digest",
+            "--expected-app-archive-digest",
+            "/actions/artifacts/${source_artifact_id}/zip",
             "/actions/artifacts/${artifact_id}/zip",
             "extract-runtime-proof-metadata.py",
             "--app-archive-digest-output",
