@@ -15,6 +15,8 @@ CHECKSUM_PATH="${DMG_PATH}.sha256"
 RELEASE_PROVENANCE_PATH="${LOCAL_DIR}/release-provenance.json"
 TAG_NAME="v1.2.3"
 GITHUB_REPOSITORY="example/release-repo"
+SOURCE_SHA="1111111111111111111111111111111111111111"
+PUBLISHER_SHA="2222222222222222222222222222222222222222"
 
 mkdir -p "${LOCAL_DIR}" "${REMOTE_DIR}" "${FAKE_BIN}"
 printf 'stable-release-payload\n' >"${DMG_PATH}"
@@ -23,6 +25,22 @@ printf 'stable-release-payload\n' >"${DMG_PATH}"
   shasum -a 256 "$(basename "${DMG_PATH}")" >"$(basename "${CHECKSUM_PATH}")"
 )
 printf '{"schemaVersion":1,"dmgSha256":"sha256:test"}\n' >"${RELEASE_PROVENANCE_PATH}"
+
+cat >"${FAKE_BIN}/git" <<'FAKE_GIT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "cat-file" && "${2:-}" == "-e" ]]; then
+  exit 0
+fi
+if [[ "${1:-}" == "merge-base" && "${2:-}" == "--is-ancestor" ]]; then
+  exit 0
+fi
+
+echo "Unexpected git command: $*" >&2
+exit 97
+FAKE_GIT
+chmod 0755 "${FAKE_BIN}/git"
 
 cat >"${FAKE_BIN}/gh" <<'FAKE_GH'
 #!/usr/bin/env bash
@@ -33,16 +51,30 @@ set -euo pipefail
 printf '%s\n' "$*" >>"${GH_FAKE_LOG}"
 
 if [[ "$1" == "api" ]]; then
-  if [[ "${GH_FAKE_RELEASE_LIST_FAIL:-false}" == "true" ]]; then
-    exit 1
+  if [[ " $* " == *" /repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME} "* ]]; then
+    resolved_sha="${SOURCE_SHA:?SOURCE_SHA is required}"
+    if [[ "${GH_FAKE_TAG_DRIFT_AFTER_CREATE:-false}" == "true" && -f "${GH_FAKE_STATE_FILE}" ]]; then
+      resolved_sha="3333333333333333333333333333333333333333"
+    fi
+    printf '{"ref":"refs/tags/%s","object":{"type":"commit","sha":"%s"}}\n' "${TAG_NAME}" "${resolved_sha}"
+    exit 0
   fi
-  if [[ "${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" == "true" && -f "${GH_FAKE_STATE_FILE}" ]]; then
-    exit 1
+
+  if [[ " $* " == *" repos/${GITHUB_REPOSITORY}/releases?per_page=100 "* ]]; then
+    if [[ "${GH_FAKE_RELEASE_LIST_FAIL:-false}" == "true" ]]; then
+      exit 1
+    fi
+    if [[ "${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" == "true" && -f "${GH_FAKE_STATE_FILE}" ]]; then
+      exit 1
+    fi
+    if [[ "${GH_FAKE_RELEASE_EXISTS:-false}" == "true" || -f "${GH_FAKE_STATE_FILE}" ]]; then
+      printf '%s\n' "${TAG_NAME:?TAG_NAME is required}"
+    fi
+    exit 0
   fi
-  if [[ "${GH_FAKE_RELEASE_EXISTS:-false}" == "true" || -f "${GH_FAKE_STATE_FILE}" ]]; then
-    printf '%s\n' "${TAG_NAME:?TAG_NAME is required}"
-  fi
-  exit 0
+
+  echo "Unexpected gh api command: $*" >&2
+  exit 92
 fi
 
 if [[ "$1" != "release" ]]; then
@@ -144,8 +176,12 @@ run_publisher() {
     GH_FAKE_CREATE_FAIL_EMPTY="${GH_FAKE_CREATE_FAIL_EMPTY:-false}" \
     GH_FAKE_RELEASE_LIST_FAIL="${GH_FAKE_RELEASE_LIST_FAIL:-false}" \
     GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE="${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" \
+    GH_FAKE_TAG_DRIFT_AFTER_CREATE="${GH_FAKE_TAG_DRIFT_AFTER_CREATE:-false}" \
     PATH="${FAKE_BIN}:${PATH}" \
+    GH_TOKEN="test-token" \
     TAG_NAME="${TAG_NAME}" \
+    SOURCE_SHA="${SOURCE_SHA}" \
+    PUBLISHER_SHA="${PUBLISHER_SHA}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
     DMG_PATH="${DMG_PATH}" \
     RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
@@ -157,7 +193,10 @@ run_publisher_without_repository() {
     GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
     GH_FAKE_STATE_FILE="${STATE_FILE}" \
     PATH="${FAKE_BIN}:${PATH}" \
+    GH_TOKEN="test-token" \
     TAG_NAME="${TAG_NAME}" \
+    SOURCE_SHA="${SOURCE_SHA}" \
+    PUBLISHER_SHA="${PUBLISHER_SHA}" \
     DMG_PATH="${DMG_PATH}" \
     RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
     env -u GITHUB_REPOSITORY bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
@@ -167,7 +206,10 @@ run_publisher_without_provenance() {
   GH_FAKE_LOG="${LOG_PATH}" \
     GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
     PATH="${FAKE_BIN}:${PATH}" \
+    GH_TOKEN="test-token" \
     TAG_NAME="${TAG_NAME}" \
+    SOURCE_SHA="${SOURCE_SHA}" \
+    PUBLISHER_SHA="${PUBLISHER_SHA}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
     DMG_PATH="${DMG_PATH}" \
     bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
