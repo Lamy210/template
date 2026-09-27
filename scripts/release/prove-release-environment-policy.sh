@@ -547,7 +547,7 @@ prove_ref_denied() {
   snapshot_run_ids "${baseline_run_ids}"
   gh workflow run "${workflow_name}" --repo "${repository}" --ref "${ref}" -f "nonce=${nonce}-${suffix}"
 
-  run_id="$(find_run_id "${title}" "${ref}" "${baseline_run_ids}")"
+  run_id="$(find_run_id "${title}" "${ref}" "${default_sha}" "${baseline_run_ids}")"
   conclusion="$(wait_for_completion "${run_id}")"
   if [[ "${conclusion}" != failure ]]; then
     echo "Expected unauthorized ${suffix} run to fail; got conclusion '${conclusion}'." >&2
