@@ -474,6 +474,14 @@ bash scripts/release/audit-post-split-runtime-proof.sh \
 
 Because the evidence is emitted by the validator path rather than reconstructed by the orchestration runner, a failed proof produces no evidence file. Preserve the resulting JSON together with the retained proof tag and GitHub Actions run URLs as the rollout audit record.
 
+A preserved schema-v2 evidence file can be checked later without GitHub access:
+
+```bash
+python3 scripts/release/verify-post-split-proof-evidence.py post-split-proof.json
+```
+
+The offline verifier requires the exact closed schema and checks internal bindings such as source/publisher SHA separation, default-head equality, strict-ancestor facts, workflow identity, Artifact IDs/digests, and tag/version consistency. This check detects malformed, truncated, or internally inconsistent evidence, but it does **not** recreate the original GitHub API observations or prove that an edited but internally consistent JSON file is authentic. The live runtime audit remains the source of the evidence.
+
 The manual procedure remains useful for incident analysis or when the tag/run pair already exists:
 
 Before enabling the two-stage publisher for production, prove the architecture with a **disposable repository**. This proof is specifically about control-code selection; it is separate from Apple signing/notarization and from the immutable-tag Ruleset proof.
@@ -531,7 +539,7 @@ For an adopter moving from the old monolithic example:
 11. run release-isolation tests before creating a real release tag;
 12. use a disposable repository for destructive tag/ruleset tests;
 13. before enabling the production publisher, perform the disposable post-split ancestor proof above, require `audit-post-split-runtime-proof.sh` to pass, save its schema-v2 evidence JSON, and confirm the downstream run used the **current default-branch publisher** control code;
-14. retain the proof tag, run URLs, and evidence JSON together as rollout audit evidence;
+14. retain the proof tag, run URLs, and evidence JSON together as rollout audit evidence, and verify the saved JSON with `verify-post-split-proof-evidence.py`;
 15. remove/ignore any copied legacy monolithic release workflow.
 
 ## Rollback
