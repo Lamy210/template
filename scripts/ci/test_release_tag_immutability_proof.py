@@ -191,6 +191,12 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
                 encoding="utf-8",
             )
             fake_git.chmod(0o755)
+            fake_gh = root / "gh"
+            fake_gh.write_text(
+                "#!/usr/bin/env bash\necho 'gh must not be called' >&2\nexit 92\n",
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
 
             result = run_script(
                 *proof_args("lamy210/TEMPLATE"),
@@ -226,7 +232,9 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
 
     def test_contract_guards_target_before_mutation_and_rebinds_identity(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn('${GITHUB_REPOSITORY,,}', text)
+        self.assertIn("same_repository", text)
+        self.assertNotIn("mapfile", text)
+        self.assertNotIn(",,}", text)
         self.assertIn('git -C "${repo_root}" remote get-url origin', text)
         self.assertIn("github_repository_from_remote", text)
         self.assertIn("repository_identity", text)
