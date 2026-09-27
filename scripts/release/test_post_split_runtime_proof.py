@@ -952,10 +952,24 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
 
         self.assertEqual(2, second.returncode)
         self.assertIn("already exists", second.stderr)
-        self.assertEqual(2, document["schemaVersion"])
+        self.assertEqual(3, document["schemaVersion"])
         self.assertEqual(
             "sha256:" + "c" * 64,
             document["publisher"]["validatorArtifactDigest"],
+        )
+        self.assertEqual(
+            {
+                "conclusion": "success",
+                "headBranch": "main",
+                "headSHA": PUBLISHER_SHA,
+                "id": 505,
+                "name": "Validate release input without secrets",
+                "runAttempt": PUBLISHER_RUN_ATTEMPT,
+                "runId": PUBLISHER_RUN_ID,
+                "status": "completed",
+                "workflowName": "Release Publisher",
+            },
+            document["publisher"]["validationJob"],
         )
         self.assertEqual("sha256:" + "a" * 64, document["source"]["artifactDigest"])
         self.assertEqual("sha256:" + "b" * 64, document["source"]["archiveDigest"])
