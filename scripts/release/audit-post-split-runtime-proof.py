@@ -10,6 +10,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.release.post_split_proof_evidence import (
+    EvidenceError,
+    build_evidence,
+    write_evidence,
+)
 from scripts.release.post_split_runtime_proof import validate_post_split_runtime_proof
 
 
@@ -65,6 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--archive-digest", required=True)
     parser.add_argument("--compare", required=True, type=Path)
+    parser.add_argument("--evidence-output", type=Path)
     return parser.parse_args()
 
 
@@ -102,6 +108,25 @@ def main() -> int:
         print(error, file=sys.stderr)
     if errors:
         return 1
+
+    if args.evidence_output is not None:
+        try:
+            evidence = build_evidence(
+                repository=repository,
+                default_commit=default_commit,
+                final_default_commit=final_default_commit,
+                source_run=source_run,
+                publisher_run=publisher_run,
+                artifacts=artifacts,
+                metadata=metadata,
+                archive_digest=args.archive_digest,
+                comparison=comparison,
+            )
+            write_evidence(args.evidence_output, evidence)
+        except EvidenceError as error:
+            print(f"unable to write runtime proof evidence: {error}", file=sys.stderr)
+            return 2
+        print(f"post-split runtime proof evidence written: {args.evidence_output}")
 
     print(
         "post-split runtime proof is valid: historical source bytes were "
