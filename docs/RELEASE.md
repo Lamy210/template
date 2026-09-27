@@ -508,7 +508,7 @@ The read-only proof collector verifies all of the following from GitHub API evid
 - the source run exposes exactly one non-expired `unsigned-macos-release-<run>-<attempt>` Artifact, whose live Artifact ID/digest/run/SHA/repository binding matches the validator-owned metadata;
 - the auditor re-downloads that exact source Artifact by ID, verifies the GitHub Artifact ZIP digest and exact two-file source payload, and requires its `release-input/unsigned-macos-app.tar.gz` SHA-256 to equal the unsigned archive embedded in the validator Artifact;
 - publisher run is the same-repository `workflow_run`-triggered `Release Publisher` at `.github/workflows/release-publisher.yml`;
-- the exact publisher run attempt contains exactly one `Validate release input without secrets` job, and that job must be completed successfully with the same run ID, run attempt, and publisher SHA;
+- the jobs API is queried for the exact publisher run attempt; that response must contain exactly one `Validate release input without secrets` job completed successfully with the same run ID and publisher SHA, the `Release Publisher` workflow name, and the repository default branch;
 - source SHA is a **strict ancestor** of the publisher SHA;
 - publisher SHA equals the repository's default-branch head both before and after remote proof evidence collection, and any head drift during collection is rejected;
 - the validator Artifact name is bound to the exact publisher run/attempt and source run/attempt;
