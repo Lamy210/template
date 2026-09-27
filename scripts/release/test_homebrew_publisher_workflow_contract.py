@@ -450,12 +450,50 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--head-sha "${PUSHED_SHA}"', block)
         self.assertIn("--rest-pages", block)
         self.assertIn("PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}", block)
+        self.assertIn(
+            "EXPECTED_TAP_REPOSITORY_ID: ${{ steps.tap_identity.outputs.repository_id }}",
+            block,
+        )
+        self.assertIn("verify_pr_write_target() {", block)
+        self.assertIn("tap_repository_identity.py", block)
+        self.assertIn(
+            '--repository-id "${EXPECTED_TAP_REPOSITORY_ID}"',
+            block,
+        )
+        self.assertIn(
+            'git -C tap ls-remote --exit-code --branches origin "refs/heads/${BRANCH}"',
+            block,
+        )
+        self.assertIn('if [[ "${remote_sha}" != "${PUSHED_SHA}" ]]', block)
+        self.assertIn(
+            "Automation branch moved before pull request mutation.",
+            block,
+        )
         self.assertIn("Tap pull request query result failed identity validation.", block)
         self.assertNotIn('if gh pr view "${BRANCH}"', block)
         self.assertNotIn('gh pr view "${open_pr_number}"', block)
-        self.assertGreaterEqual(block.count('open_pr_number="$(query_open_pr_number)"'), 2)
+        self.assertGreaterEqual(
+            block.count('open_pr_number="$(query_open_pr_number)"'),
+            2,
+        )
+
+        preflights = [
+            match.start()
+            for match in re.finditer(
+                r"(?m)^          verify_pr_write_target$",
+                block,
+            )
+        ]
+        self.assertEqual(3, len(preflights))
+        first_query = block.index(
+            'open_pr_number="$(query_open_pr_number)"'
+        )
+        create = block.index("gh pr create")
+        self.assertLess(preflights[0], first_query)
+        self.assertLess(preflights[1], create)
+        self.assertGreater(preflights[2], create)
         self.assertLess(
-            block.index("gh pr create"),
+            create,
             block.rindex('open_pr_number="$(query_open_pr_number)"'),
         )
         self.assertIn("Tap pull request post-create identity validation failed.", block)
