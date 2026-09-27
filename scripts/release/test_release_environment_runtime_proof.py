@@ -326,6 +326,12 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("expected_sha", text)
         self.assertIn('item.get("headSha") == expected_sha', text)
         self.assertIn('?ref=${default_sha}', text)
+        self.assertEqual(
+            2,
+            text.count(
+                'find_run_id "${title}" "${ref}" "${default_sha}" "${baseline_run_ids}"'
+            ),
+        )
 
     def test_refuses_modified_remote_proof_workflow_before_ref_creation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
