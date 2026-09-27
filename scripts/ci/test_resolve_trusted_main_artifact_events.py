@@ -66,16 +66,16 @@ if "/actions/workflows/tests.yml/runs" in args:
 
 if "/actions/runs/9200/artifacts" in args:
     payload = archive_bytes()
-    print(json.dumps({"artifacts": [{
+    print(json.dumps([{"total_count": 1, "artifacts": [{
         "id": 7200,
         "name": "visual-baseline",
         "expired": False,
         "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
-    }]}))
+    }]}]))
     raise SystemExit(0)
 
 if "/actions/runs/9100/artifacts" in args:
-    print(json.dumps({"artifacts": []}))
+    print(json.dumps([{"total_count": 0, "artifacts": []}]))
     raise SystemExit(0)
 
 if "/actions/artifacts/7200/zip" in args:
@@ -148,6 +148,13 @@ class TrustedResolverEventPolicyTests(unittest.TestCase):
         self.assertIn("event=push", log)
         self.assertIn("event=schedule", log)
         self.assertIn("actions/runs/9200/artifacts", log)
+        artifact_lines = [
+            line for line in log.splitlines()
+            if "actions/runs/9200/artifacts" in line
+        ]
+        self.assertTrue(artifact_lines)
+        self.assertTrue(all("--paginate" in line for line in artifact_lines))
+        self.assertTrue(all("--slurp" in line for line in artifact_lines))
 
     def test_rejects_untrusted_event_names(self):
         completed, _ = self.run_resolver("--trusted-events", "push,pull_request")
