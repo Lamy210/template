@@ -142,8 +142,8 @@ def _publisher_validation_job_errors(
     jobs: object,
     *,
     publisher_run_id: int,
-    publisher_run_attempt: int,
     publisher_sha: str,
+    default_branch: str,
 ) -> list[str]:
     if not isinstance(jobs, list) or any(not isinstance(item, dict) for item in jobs):
         return ["publisher jobs must be an array of objects"]
@@ -163,10 +163,10 @@ def _publisher_validation_job_errors(
         errors.append("publisher validation job id must be a positive integer")
     if job.get("run_id") != publisher_run_id:
         errors.append("publisher validation job run_id does not match publisher run")
-    if job.get("run_attempt") != publisher_run_attempt:
-        errors.append(
-            "publisher validation job run_attempt does not match publisher run attempt"
-        )
+    if job.get("workflow_name") != PUBLISHER_WORKFLOW_NAME:
+        errors.append("publisher validation job workflow_name does not match publisher workflow")
+    if job.get("head_branch") != default_branch:
+        errors.append("publisher validation job head_branch does not match default branch")
     if job.get("head_sha") != publisher_sha:
         errors.append("publisher validation job head_sha does not match publisher SHA")
     if job.get("status") != "completed":
@@ -535,8 +535,8 @@ def validate_post_split_runtime_proof(
             _publisher_validation_job_errors(
                 publisher_jobs,
                 publisher_run_id=publisher_run_id,
-                publisher_run_attempt=publisher_run_attempt,
                 publisher_sha=publisher_sha,
+                default_branch=default_branch,
             )
         )
 
