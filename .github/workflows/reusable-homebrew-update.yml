@@ -367,6 +367,7 @@ jobs:
           CASK_TOKEN: ${{ inputs.cask_token }}
           TAP_REPOSITORY: ${{ inputs.tap_repository }}
           TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}
+          EXPECTED_TAP_REPOSITORY_ID: ${{ steps.tap_identity.outputs.repository_id }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           REMOTE_BRANCH_SHA: ${{ steps.branch.outputs.remote_branch_sha }}
           BASE_SHA: ${{ steps.branch.outputs.base_sha }}
@@ -376,39 +377,30 @@ jobs:
           cd tap
 
           verify_canonical_tap_identity() {
+            local metadata
             local canonical_identity
             local canonical_fields
-            local canonical_repository
-            local canonical_default_branch
-            local canonical_https_url
-            local canonical_ssh_url
             local fetch_url
             local push_url
 
-            if ! canonical_identity="$(
-              gh repo view "${TAP_REPOSITORY}" \
-                --json nameWithOwner,defaultBranchRef,url,sshUrl \
-                --jq '.nameWithOwner, .defaultBranchRef.name, .url, .sshUrl'
-            )"; then
+            metadata="${RUNNER_TEMP}/tap-repository-before-push.json"
+            if ! gh api "repos/${TAP_REPOSITORY}" >"${metadata}"; then
               echo "Failed to re-resolve canonical tap repository identity before push." >&2
               return 1
             fi
-
+            if ! canonical_identity="$(
+              python3 ../source/scripts/homebrew/tap_repository_identity.py \
+                --metadata "${metadata}" \
+                --repository "${TAP_REPOSITORY}" \
+                --default-branch "${TAP_DEFAULT_BRANCH}" \
+                --repository-id "${EXPECTED_TAP_REPOSITORY_ID}"
+            )"; then
+              echo "Tap repository stable identity changed before branch push." >&2
+              return 1
+            fi
             mapfile -t canonical_fields <<<"${canonical_identity}"
-            if (("${#canonical_fields[@]}" != 4)); then
+            if (("${#canonical_fields[@]}" != 5)); then
               echo "Canonical tap repository metadata is incomplete before push." >&2
-              return 1
-            fi
-            canonical_repository="${canonical_fields[0]}"
-            canonical_default_branch="${canonical_fields[1]}"
-            canonical_https_url="${canonical_fields[2]}"
-            canonical_ssh_url="${canonical_fields[3]}"
-            if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]; then
-              echo "Tap repository identity changed before branch push." >&2
-              return 1
-            fi
-            if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]; then
-              echo "Tap default branch changed before branch push." >&2
               return 1
             fi
 
@@ -417,8 +409,8 @@ jobs:
             python3 ../source/scripts/homebrew/validate-tap-remote.py \
               --fetch-url="${fetch_url}" \
               --push-url="${push_url}" \
-              --canonical-https-url="${canonical_https_url}" \
-              --canonical-ssh-url="${canonical_ssh_url}"
+              --canonical-https-url="${canonical_fields[3]}" \
+              --canonical-ssh-url="${canonical_fields[4]}"
           }
           git add "Casks/${CASK_TOKEN}.rb"
 
