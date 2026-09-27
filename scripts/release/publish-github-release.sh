@@ -261,7 +261,7 @@ if (("${#final_repository_identity[@]}" != 2)); then
   exit 1
 fi
 if [[ "${final_repository_identity[0]}" != "${initial_repository_id}" ||
-      "${final_repository_identity[1]}" != "${initial_repository_full_name}" ]]; then
+  "${final_repository_identity[1]}" != "${initial_repository_full_name}" ]]; then
   echo "Repository identity changed during GitHub Release publication." >&2
   exit 1
 fi
