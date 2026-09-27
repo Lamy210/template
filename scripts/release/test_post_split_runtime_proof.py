@@ -77,6 +77,20 @@ def publisher_run() -> dict:
     }
 
 
+def publisher_jobs() -> list[dict]:
+    return [
+        {
+            "id": 505,
+            "name": "Validate release input without secrets",
+            "run_id": PUBLISHER_RUN_ID,
+            "run_attempt": PUBLISHER_RUN_ATTEMPT,
+            "head_sha": PUBLISHER_SHA,
+            "status": "completed",
+            "conclusion": "success",
+        }
+    ]
+
+
 def artifacts() -> list[dict]:
     return [
         {
@@ -196,6 +210,7 @@ def validate_proof(*args: object, **kwargs: object) -> list[str]:
     kwargs.setdefault("source_artifacts", source_artifacts())
     kwargs.setdefault("tag_ref", tag_ref())
     kwargs.setdefault("tag_objects", [])
+    kwargs.setdefault("publisher_jobs", publisher_jobs())
     return validate_post_split_runtime_proof(*args, **kwargs)
 
 
@@ -454,6 +469,54 @@ class RuntimeProofLiveTagTests(unittest.TestCase):
             any("unexpected annotated release tag objects" in error for error in errors),
             errors,
         )
+
+
+class RuntimeProofPublisherValidationJobTests(unittest.TestCase):
+    def test_accepts_exact_successful_validation_job(self) -> None:
+        self.assertEqual(
+            [],
+            validate_proof(
+                repository(),
+                default_commit(),
+                source_run(),
+                publisher_run(),
+                artifacts(),
+                metadata(),
+                "sha256:" + "b" * 64,
+                compare(),
+            ),
+        )
+
+    def test_rejects_missing_duplicate_or_drifted_validation_job(self) -> None:
+        base = publisher_jobs()[0]
+        cases = (
+            ("missing", []),
+            ("duplicate", publisher_jobs() + publisher_jobs()),
+            ("wrong run", [{**base, "run_id": PUBLISHER_RUN_ID + 1}]),
+            ("wrong attempt", [{**base, "run_attempt": PUBLISHER_RUN_ATTEMPT + 1}]),
+            ("wrong sha", [{**base, "head_sha": "9" * 40}]),
+            ("not completed", [{**base, "status": "in_progress"}]),
+            ("failed", [{**base, "conclusion": "failure"}]),
+            ("boolean id", [{**base, "id": True}]),
+            ("wrong name", [{**base, "name": "Other validation"}]),
+        )
+        for label, jobs in cases:
+            with self.subTest(label=label):
+                errors = validate_proof(
+                    repository(),
+                    default_commit(),
+                    source_run(),
+                    publisher_run(),
+                    artifacts(),
+                    metadata(),
+                    "sha256:" + "b" * 64,
+                    compare(),
+                    publisher_jobs=jobs,
+                )
+                self.assertTrue(
+                    any("publisher validation job" in error for error in errors),
+                    errors,
+                )
 
 
 class PostSplitRuntimeProofTests(unittest.TestCase):
@@ -783,6 +846,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "final-default-commit.json": default_commit(),
                 "source-run.json": source_run(),
                 "publisher-run.json": publisher_run(),
+                "publisher-jobs.json": [
+                    {"total_count": 1, "jobs": publisher_jobs()}
+                ],
                 "source-artifacts.json": [
                     {"total_count": 1, "artifacts": source_artifacts()}
                 ],
@@ -809,6 +875,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     str(root / "source-run.json"),
                     "--publisher-run",
                     str(root / "publisher-run.json"),
+                    "--publisher-jobs",
+                    str(root / "publisher-jobs.json"),
                     "--source-artifacts",
                     str(root / "source-artifacts.json"),
                     "--tag-ref",
@@ -842,6 +910,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "final-default-commit.json": default_commit(),
                 "source-run.json": source_run(),
                 "publisher-run.json": publisher_run(),
+                "publisher-jobs.json": [
+                    {"total_count": 1, "jobs": publisher_jobs()}
+                ],
                 "source-artifacts.json": [
                     {"total_count": 1, "artifacts": source_artifacts()}
                 ],
@@ -920,6 +991,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "final-default-commit.json": bad_final,
                 "source-run.json": source_run(),
                 "publisher-run.json": publisher_run(),
+                "publisher-jobs.json": [
+                    {"total_count": 1, "jobs": publisher_jobs()}
+                ],
                 "source-artifacts.json": [
                     {"total_count": 1, "artifacts": source_artifacts()}
                 ],
@@ -947,6 +1021,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     str(root / "source-run.json"),
                     "--publisher-run",
                     str(root / "publisher-run.json"),
+                    "--publisher-jobs",
+                    str(root / "publisher-jobs.json"),
                     "--source-artifacts",
                     str(root / "source-artifacts.json"),
                     "--tag-ref",
@@ -1000,6 +1076,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         text = LIVE_AUDIT.read_text(encoding="utf-8")
         for token in (
             "actions/runs/",
+            "/attempts/${publisher_run_attempt}/jobs?per_page=100",
+            "publisher-jobs.json",
+            "--publisher-jobs",
             "/artifacts?per_page=100",
             "source-artifacts.json",
             "/git/ref/tags/",
