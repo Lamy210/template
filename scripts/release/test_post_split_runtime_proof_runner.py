@@ -125,11 +125,37 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertNotIn("trap cleanup", text)
         self.assertNotIn("delete tag", text.lower())
 
-    def test_source_run_must_complete_successfully_but_publisher_may_fail_later(self) -> None:
+    def test_source_run_waits_for_success_but_publisher_waits_only_for_validation(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('wait_for_run_completion "${source_run_id}" true', text)
-        self.assertIn('wait_for_run_completion "${publisher_run_id}" false', text)
+        self.assertIn(
+            'wait_for_publisher_validation_success "${publisher_run_id}"',
+            text,
+        )
+        self.assertNotIn(
+            'wait_for_run_completion "${publisher_run_id}" false',
+            text,
+        )
+        self.assertIn(
+            'attempts/${run_attempt}/jobs?per_page=100',
+            text,
+        )
+        self.assertIn("Validate release input without secrets", text)
+        self.assertIn('status == "completed"', text)
+        self.assertIn('conclusion == "success"', text)
         self.assertIn("validator artifact", text)
+
+    def test_publisher_discovery_paginates_validator_artifacts(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn(
+            '--paginate --slurp "repos/${repository}/actions/runs/${candidate_id}/artifacts?per_page=100"',
+            text,
+        )
+        self.assertIn("publisher job pages disagree on total_count", text)
+        self.assertIn(
+            "publisher job pagination total_count does not match collected jobs",
+            text,
+        )
 
 
 if __name__ == "__main__":
