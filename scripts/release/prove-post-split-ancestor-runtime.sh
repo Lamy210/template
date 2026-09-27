@@ -291,7 +291,7 @@ snapshot_run_ids() {
   local encoded_workflow
   encoded_workflow="$(urlencode "${workflow}")"
 
-  gh api "${api_headers[@]}" --paginate --slurp     "repos/${repository}/actions/workflows/${encoded_workflow}/runs?per_page=100" |
+  gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/workflows/${encoded_workflow}/runs?per_page=100" |
     python3 -c '
 import json
 import sys
