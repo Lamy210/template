@@ -16,6 +16,11 @@ from scripts.release.post_split_proof_evidence import (
     write_evidence,
 )
 from scripts.release.post_split_runtime_proof import validate_post_split_runtime_proof
+from scripts.release.unprivileged_release_build_workflow import (
+    WorkflowValidationError,
+    decode_github_contents_document,
+    validate_unprivileged_release_build_workflow,
+)
 
 
 def _load_json(path: Path) -> object:
@@ -96,6 +101,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--default-commit", required=True, type=Path)
     parser.add_argument("--final-default-commit", required=True, type=Path)
     parser.add_argument("--source-run", required=True, type=Path)
+    parser.add_argument("--source-workflow", required=True, type=Path)
     parser.add_argument("--publisher-run", required=True, type=Path)
     parser.add_argument("--publisher-jobs", required=True, type=Path)
     parser.add_argument("--source-artifacts", required=True, type=Path)
@@ -116,6 +122,7 @@ def main() -> int:
         default_commit = _load_json(args.default_commit)
         final_default_commit = _load_json(args.final_default_commit)
         source_run = _load_json(args.source_run)
+        source_workflow = _load_json(args.source_workflow)
         publisher_run = _load_json(args.publisher_run)
         publisher_jobs = _flatten_jobs(_load_json(args.publisher_jobs))
         source_artifacts = _flatten_artifacts(_load_json(args.source_artifacts))
@@ -127,6 +134,20 @@ def main() -> int:
     except (OSError, json.JSONDecodeError) as error:
         print(f"unable to read runtime proof evidence: {error}", file=sys.stderr)
         return 2
+
+    try:
+        source_workflow_text = decode_github_contents_document(source_workflow)
+    except WorkflowValidationError as error:
+        print(f"historical Release Build workflow evidence is invalid: {error}", file=sys.stderr)
+        return 1
+
+    source_workflow_errors = validate_unprivileged_release_build_workflow(
+        source_workflow_text
+    )
+    for error in source_workflow_errors:
+        print(f"historical Release Build workflow: {error}", file=sys.stderr)
+    if source_workflow_errors:
+        return 1
 
     if isinstance(publisher_jobs, dict) and "error" in publisher_jobs:
         print(publisher_jobs["error"], file=sys.stderr)

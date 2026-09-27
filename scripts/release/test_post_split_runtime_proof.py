@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import hashlib
 import json
@@ -31,6 +32,21 @@ ARTIFACT_NAME = (
     f"validated-release-input-{PUBLISHER_RUN_ID}-{PUBLISHER_RUN_ATTEMPT}-"
     f"{SOURCE_RUN_ID}-{SOURCE_RUN_ATTEMPT}"
 )
+SOURCE_WORKFLOW_BLOB_SHA = "9" * 40
+
+
+def source_workflow_contents(text: str | None = None) -> dict[str, object]:
+    if text is None:
+        text = (REPO_ROOT / "examples/app-release-build.yml").read_text(
+            encoding="utf-8"
+        )
+    return {
+        "type": "file",
+        "path": ".github/workflows/release-build.yml",
+        "sha": SOURCE_WORKFLOW_BLOB_SHA,
+        "encoding": "base64",
+        "content": base64.b64encode(text.encode("utf-8")).decode("ascii"),
+    }
 
 
 def repository() -> dict:
@@ -211,6 +227,7 @@ def write_audit_cli_fixtures(
     root: Path,
     *,
     final_default_commit_document: dict | None = None,
+    source_workflow_document: dict[str, object] | None = None,
 ) -> None:
     fixtures = {
         "repository.json": repository(),
@@ -221,6 +238,11 @@ def write_audit_cli_fixtures(
             else default_commit()
         ),
         "source-run.json": source_run(),
+        "source-workflow.json": (
+            source_workflow_document
+            if source_workflow_document is not None
+            else source_workflow_contents()
+        ),
         "publisher-run.json": publisher_run(),
         "publisher-jobs.json": [
             {"total_count": 1, "jobs": publisher_jobs()}
@@ -254,6 +276,8 @@ def audit_cli_args(
         str(root / "final-default-commit.json"),
         "--source-run",
         str(root / "source-run.json"),
+        "--source-workflow",
+        str(root / "source-workflow.json"),
         "--publisher-run",
         str(root / "publisher-run.json"),
         "--publisher-jobs",
@@ -1012,6 +1036,31 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             document["source"]["liveTag"],
         )
 
+    def test_cli_rejects_privileged_historical_source_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            workflow = (REPO_ROOT / "examples/app-release-build.yml").read_text(
+                encoding="utf-8"
+            )
+            workflow = workflow.replace("contents: read", "contents: write", 1)
+            write_audit_cli_fixtures(
+                root,
+                source_workflow_document=source_workflow_contents(workflow),
+            )
+            output = root / "proof.json"
+            result = subprocess.run(
+                audit_cli_args(root, evidence_output=output),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn("historical Release Build workflow", result.stderr)
+            self.assertIn("must not grant write access", result.stderr)
+            self.assertFalse(output.exists())
+
     def test_cli_does_not_write_evidence_when_validation_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -1065,6 +1114,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             "--publisher-jobs",
             "/artifacts?per_page=100",
             "source-artifacts.json",
+            "contents/.github/workflows/release-build.yml?ref=${source_sha}",
+            "source-workflow.json",
+            "--source-workflow",
             "/git/ref/tags/",
             "/git/tags/",
             "tag-ref.json",
