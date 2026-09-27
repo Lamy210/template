@@ -394,6 +394,13 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                 "source.liveTag.resolvedSHA must equal source.sha",
             ),
             (
+                "live annotated chain missing",
+                lambda document: document["source"]["liveTag"].__setitem__(
+                    "refTarget", {"sha": "6" * 40, "type": "tag"}
+                ),
+                "source.liveTag annotated chain must resolve to a commit",
+            ),
+            (
                 "default-head drift",
                 lambda document: document["defaultHead"].__setitem__(
                     "finalSHA", "2" * 40
@@ -474,6 +481,7 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
     def test_rejects_validation_job_in_legacy_schema_v2(self) -> None:
         document = json.loads(json.dumps(valid_evidence()))
         document["schemaVersion"] = 2
+        document["source"].pop("liveTag")
 
         errors = validate_evidence_document(document)
 
