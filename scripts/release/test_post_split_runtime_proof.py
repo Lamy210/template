@@ -226,11 +226,17 @@ def write_source_artifact_zip(
 def write_audit_cli_fixtures(
     root: Path,
     *,
+    final_repository_document: dict | None = None,
     final_default_commit_document: dict | None = None,
     source_workflow_document: dict[str, object] | None = None,
 ) -> None:
     fixtures = {
         "repository.json": repository(),
+        "final-repository.json": (
+            final_repository_document
+            if final_repository_document is not None
+            else repository()
+        ),
         "default-commit.json": default_commit(),
         "final-default-commit.json": (
             final_default_commit_document
@@ -270,6 +276,8 @@ def audit_cli_args(
         "scripts/release/audit-post-split-runtime-proof.py",
         "--repository",
         str(root / "repository.json"),
+        "--final-repository",
+        str(root / "final-repository.json"),
         "--default-commit",
         str(root / "default-commit.json"),
         "--final-default-commit",
@@ -1061,6 +1069,57 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             self.assertIn("must not grant write access", result.stderr)
             self.assertFalse(output.exists())
 
+    def test_cli_rejects_default_branch_setting_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            final_repository = repository()
+            final_repository["default_branch"] = "release-control"
+            write_audit_cli_fixtures(
+                root,
+                final_repository_document=final_repository,
+            )
+            output = root / "proof.json"
+            result = subprocess.run(
+                audit_cli_args(root, evidence_output=output),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn(
+                "repository default_branch changed during runtime proof collection",
+                result.stderr,
+            )
+            self.assertFalse(output.exists())
+
+    def test_core_rejects_repository_identity_drift(self) -> None:
+        mutations = (
+            ("id", REPO_ID + 1, "repository id changed"),
+            ("full_name", "example/renamed", "repository full_name changed"),
+            ("default_branch", "other", "repository default_branch changed"),
+        )
+        for field, value, expected in mutations:
+            with self.subTest(field=field):
+                final_repository = repository()
+                final_repository[field] = value
+                errors = validate_proof(
+                    repository(),
+                    default_commit(),
+                    source_run(),
+                    publisher_run(),
+                    artifacts(),
+                    metadata(),
+                    "sha256:" + "b" * 64,
+                    compare(),
+                    final_repository=final_repository,
+                )
+                self.assertTrue(
+                    any(expected in error for error in errors),
+                    errors,
+                )
+
     def test_cli_does_not_write_evidence_when_validation_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -1136,6 +1195,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             "compare/",
             "validated-release-input-",
             "audit-post-split-runtime-proof.py",
+            "--final-repository",
+            "final-repository.json",
             "--final-default-commit",
             "final-default-commit.json",
             "--source-artifacts",
@@ -1150,6 +1211,10 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         )
         self.assertLess(
             text.index('repos/${repository}/compare/${source_sha}...${publisher_sha}'),
+            text.index('>"${temp_root}/final-repository.json"'),
+        )
+        self.assertLess(
+            text.index('>"${temp_root}/final-repository.json"'),
             text.index('>"${temp_root}/final-default-commit.json"'),
         )
 
