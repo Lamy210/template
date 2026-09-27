@@ -287,30 +287,61 @@ list_runs() {
 
 snapshot_run_ids() {
   local workflow="$1"
-  local event="$2"
-  local destination="$3"
-  list_runs "${workflow}" "${event}" |
+  local destination="$2"
+  local encoded_workflow
+  encoded_workflow="$(urlencode "${workflow}")"
+
+  gh api "${api_headers[@]}" --paginate --slurp     "repos/${repository}/actions/workflows/${encoded_workflow}/runs?per_page=100" |
     python3 -c '
 import json
 import sys
 
-runs = json.load(sys.stdin)
-ids = sorted(
-    item.get("databaseId")
-    for item in runs
-    if isinstance(item, dict)
-    and type(item.get("databaseId")) is int
-    and item.get("databaseId") > 0
-)
-json.dump(ids, sys.stdout, separators=(",", ":"))
+pages = json.load(sys.stdin)
+if not isinstance(pages, list) or not pages:
+    raise SystemExit("workflow-run baseline pagination response must be a non-empty array")
+
+runs = []
+declared_total = None
+for page in pages:
+    if not isinstance(page, dict) or not isinstance(page.get("workflow_runs"), list):
+        raise SystemExit("workflow-run baseline page is malformed")
+    total_count = page.get("total_count")
+    if type(total_count) is not int or total_count < 0:
+        raise SystemExit("workflow-run baseline total_count is malformed")
+    if declared_total is None:
+        declared_total = total_count
+    elif total_count != declared_total:
+        raise SystemExit("workflow-run baseline pages disagree on total_count")
+    runs.extend(page["workflow_runs"])
+
+if declared_total != len(runs):
+    raise SystemExit(
+        f"workflow-run baseline total_count={declared_total} does not match "
+        f"fetched entries={len(runs)}"
+    )
+
+ids = []
+seen = set()
+for item in runs:
+    if not isinstance(item, dict):
+        raise SystemExit("workflow-run baseline entry must be an object")
+    run_id = item.get("id")
+    if type(run_id) is not int or run_id <= 0:
+        raise SystemExit("workflow-run baseline entry has invalid id")
+    if run_id in seen:
+        raise SystemExit(f"workflow-run baseline contains duplicate id: {run_id}")
+    seen.add(run_id)
+    ids.append(run_id)
+
+json.dump(sorted(ids), sys.stdout, separators=(",", ":"))
 sys.stdout.write("\n")
 ' >"${destination}"
 }
 
 source_baseline="${temp_root}/source-baseline.json"
 publisher_baseline="${temp_root}/publisher-baseline.json"
-snapshot_run_ids "${release_build_workflow}" push "${source_baseline}"
-snapshot_run_ids "${release_publisher_workflow}" workflow_run "${publisher_baseline}"
+snapshot_run_ids "${release_build_workflow}" "${source_baseline}"
+snapshot_run_ids "${release_publisher_workflow}" "${publisher_baseline}"
 
 gh api "${api_headers[@]}" --method POST "repos/${repository}/git/refs" -f "ref=refs/tags/${tag_name}" -f "sha=${source_sha}" >/dev/null
 
