@@ -433,36 +433,15 @@ raise SystemExit(0 if len(matches) == 1 else 1)
 publisher_run_id="$(find_publisher_run_id)"
 wait_for_run_completion "${publisher_run_id}" false >/dev/null
 
-publisher_run_json="$(gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${publisher_run_id}")"
-publisher_run_attempt="$(
-  python3 -c '
-import json
-import sys
-
-document = json.load(sys.stdin)
-attempt = document.get("run_attempt")
-if type(attempt) is not int or attempt <= 0:
-    raise SystemExit("Release Publisher run_attempt is missing or malformed")
-print(attempt)
-' <<<"${publisher_run_json}"
-)"
-
-bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh" "${repository}" "${source_run_id}" "${publisher_run_id}"
-
+audit_args=(
+  bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh"
+  "${repository}"
+  "${source_run_id}"
+  "${publisher_run_id}"
+)
 if [[ -n "${evidence_output}" ]]; then
-  python3 "${repo_root}/scripts/release/post_split_proof_evidence.py" \
-    --output "${evidence_output}" \
-    --repository "${repository}" \
-    --default-branch "${default_branch}" \
-    --tag "${tag_name}" \
-    --source-ref "${source_ref}" \
-    --source-sha "${source_sha}" \
-    --source-run-id "${source_run_id}" \
-    --source-run-attempt "${source_run_attempt}" \
-    --publisher-sha "${publisher_sha}" \
-    --publisher-run-id "${publisher_run_id}" \
-    --publisher-run-attempt "${publisher_run_attempt}"
-  printf 'proof evidence written: %s\n' "${evidence_output}"
+  audit_args+=(--evidence-output "${evidence_output}")
 fi
+"${audit_args[@]}"
 
 printf 'post-split ancestor proof passed: repository=%s tag=%s source_run_id=%s publisher_run_id=%s\n' "${repository}" "${tag_name}" "${source_run_id}" "${publisher_run_id}"
