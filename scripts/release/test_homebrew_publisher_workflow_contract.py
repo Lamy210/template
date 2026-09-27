@@ -480,7 +480,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         preflights = [
             match.start()
             for match in re.finditer(
-                r"(?m)^          verify_pr_write_target$",
+                r"(?m)^\s+verify_pr_write_target$",
                 block,
             )
         ]
