@@ -466,7 +466,7 @@ The runner waits for the Release Build run to complete successfully, but it does
 
 When `--evidence-output` is supplied, the runner delegates evidence creation to the read-only auditor. The auditor writes schema-v4 JSON **only after** the complete runtime proof succeeds. The record captures the audited repository ID/name/default branch, initial and final default-head SHAs, strict-ancestor compare result, source and publisher workflow/run identity, the exact successful secret-free publisher validation job identity, the live release-tag ref target plus bounded annotated-tag chain and resolved source SHA, the independently re-fetched and byte-verified source Artifact ID/digest, validator Artifact ID/digest, unsigned archive digest, and validated application identity. It contains no operator timestamp or credentials. The output path must not already exist, so a previous proof record is never silently overwritten.
 
-The same evidence option is available when auditing an already-known run pair directly:
+The same evidence option is available when auditing an already-known run pair directly. This path performs the same historical Release Build workflow privilege/proof-contract validation; it does not rely on the guarded runner having run first:
 
 ```bash
 bash scripts/release/audit-post-split-runtime-proof.sh \
@@ -508,6 +508,7 @@ bash scripts/release/audit-post-split-runtime-proof.sh \
 The read-only proof collector verifies all of the following from GitHub API evidence and the publisher-owned validator artifact:
 
 - source run is the successful same-repository `Release Build` push workflow at `.github/workflows/release-build.yml`;
+- using that source run SHA, the auditor independently re-fetches the historical `.github/workflows/release-build.yml` through the Contents API and applies the current unprivileged/proof-contract validator before accepting the runtime proof;
 - the live `refs/tags/<stable-version>` ref is re-read from GitHub, annotated-tag objects are dereferenced with a bounded/cycle-checked chain, and the resulting commit must still equal the source run SHA;
 - the source run exposes exactly one non-expired `unsigned-macos-release-<run>-<attempt>` Artifact, whose live Artifact ID/digest/run/SHA/repository binding matches the validator-owned metadata;
 - the auditor re-downloads that exact source Artifact by ID, verifies the GitHub Artifact ZIP digest and exact two-file source payload, and requires its `release-input/unsigned-macos-app.tar.gz` SHA-256 to equal the unsigned archive embedded in the validator Artifact;
