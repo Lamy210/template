@@ -349,7 +349,7 @@ for item in runs:
     )
 
 json.dump(normalized, sys.stdout, separators=(",", ":"))
-sys.stdout.write("\\n")
+sys.stdout.write("\n")
 ' "${event}"
 }
 
