@@ -162,18 +162,37 @@ print(quote(sys.argv[1], safe=""))
 }
 
 repo_json="$(gh api "${api_headers[@]}" "repos/${repository}")"
-default_branch="$(
+readarray -t repository_identity < <(
   python3 -c '
 import json
+import re
 import sys
 
 document = json.load(sys.stdin)
+repository_id = document.get("id")
+full_name = document.get("full_name")
 branch = document.get("default_branch")
+if type(repository_id) is not int or repository_id <= 0:
+    raise SystemExit("repository response has no valid id")
+if not isinstance(full_name, str) or re.fullmatch(
+    r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",
+    full_name,
+) is None:
+    raise SystemExit("repository response has no canonical full_name")
 if not isinstance(branch, str) or not branch:
     raise SystemExit("repository response has no default_branch")
+print(repository_id)
+print(full_name)
 print(branch)
 ' <<<"${repo_json}"
-)"
+)
+if (("${#repository_identity[@]}" != 3)); then
+  echo "Repository identity output was malformed." >&2
+  exit 3
+fi
+repository_id="${repository_identity[0]}"
+repository_full_name="${repository_identity[1]}"
+default_branch="${repository_identity[2]}"
 
 encoded_default_branch="$(urlencode "${default_branch}")"
 commit_json="$(gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch}")"
@@ -564,5 +583,68 @@ echo "unauthorized branch denied by release Environment policy"
 
 prove_ref_denied "${tag_name}" tag
 echo "unauthorized tag denied by release Environment policy"
+
+final_repo_json="$(gh api "${api_headers[@]}" "repos/${repository}")"
+final_commit_json="$(gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch}")"
+
+python3 - "${repository_id}" "${repository_full_name}" "${default_branch}" "${default_sha}" "${repo_json}" "${final_repo_json}" "${final_commit_json}" <<'PY'
+import json
+import re
+import sys
+
+(
+    expected_id_text,
+    expected_full_name,
+    expected_default_branch,
+    expected_sha,
+    initial_repository_json,
+    final_repository_json,
+    final_commit_json,
+) = sys.argv[1:]
+
+expected_id = int(expected_id_text)
+initial_repository = json.loads(initial_repository_json)
+final_repository = json.loads(final_repository_json)
+final_commit = json.loads(final_commit_json)
+
+if not isinstance(initial_repository, dict) or not isinstance(final_repository, dict):
+    raise SystemExit("repository identity snapshots must be JSON objects")
+
+checks = (
+    (
+        initial_repository.get("id") == expected_id,
+        "initial repository id does not match captured identity",
+    ),
+    (
+        initial_repository.get("full_name") == expected_full_name,
+        "initial repository full_name does not match captured identity",
+    ),
+    (
+        initial_repository.get("default_branch") == expected_default_branch,
+        "initial repository default_branch does not match captured identity",
+    ),
+    (
+        final_repository.get("id") == expected_id,
+        "repository id changed during Environment proof",
+    ),
+    (
+        final_repository.get("full_name") == expected_full_name,
+        "repository full_name changed during Environment proof",
+    ),
+    (
+        final_repository.get("default_branch") == expected_default_branch,
+        "repository default_branch changed during Environment proof",
+    ),
+)
+for ok, message in checks:
+    if not ok:
+        raise SystemExit(message)
+
+final_sha = final_commit.get("sha")
+if not isinstance(final_sha, str) or re.fullmatch(r"[0-9a-f]{40}", final_sha) is None:
+    raise SystemExit("final default branch response has no canonical commit SHA")
+if final_sha != expected_sha:
+    raise SystemExit("default branch head changed during Environment proof")
+PY
 
 echo "release Environment negative runtime proof passed for ${repository}"
