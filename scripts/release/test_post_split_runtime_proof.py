@@ -546,6 +546,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 str(root / "source-run.json"),
                 "--publisher-run",
                 str(root / "publisher-run.json"),
+                "--source-artifacts",
+                str(root / "source-artifacts.json"),
                 "--artifacts",
                 str(root / "artifacts.json"),
                 "--metadata",
@@ -564,6 +566,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
+            self.assertEqual(0, first.returncode, first.stderr)
             document = json.loads(output.read_text(encoding="utf-8"))
             second = subprocess.run(
                 args,
@@ -573,7 +576,6 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 check=False,
             )
 
-        self.assertEqual(0, first.returncode, first.stderr)
         self.assertEqual(2, second.returncode)
         self.assertIn("already exists", second.stderr)
         self.assertEqual(2, document["schemaVersion"])
