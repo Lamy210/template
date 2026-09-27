@@ -519,7 +519,7 @@ The read-only proof collector verifies all of the following from GitHub API evid
 - publisher run is the same-repository `workflow_run`-triggered `Release Publisher` at `.github/workflows/release-publisher.yml`;
 - the jobs API is queried for the exact publisher run attempt; that response must contain exactly one `Validate release input without secrets` job completed successfully with the same run ID and publisher SHA, the `Release Publisher` workflow name, and the repository default branch;
 - source SHA is a **strict ancestor** of the publisher SHA;
-- publisher SHA equals the repository's default-branch head both before and after remote proof evidence collection, and any head drift during collection is rejected;
+- repository ID, full name, and `default_branch` are re-read near the end of collection and must still equal the initial repository identity; publisher SHA also equals that default branch's head both before and after evidence collection, so either repository-setting drift or branch-head drift is rejected;
 - the validator Artifact name is bound to the exact publisher run/attempt and source run/attempt;
 - the Artifact is non-expired and is itself bound to the publisher SHA/repository identity;
 - the downloaded validator Artifact contains exactly the two expected root-level regular files (`validated-release-metadata.json` and `unsigned-macos-app.tar.gz`) with no additional file payloads;
@@ -531,7 +531,7 @@ A successful proof demonstrates the intended property:
 
 The command performs only reads and artifact downloads. It does not create/move/delete tags, mutate Rulesets, change Environments, or publish releases. Re-reading the live release tag is an additional runtime binding check; it does not replace the separate immutable-tag Ruleset proof.
 
-Run this proof immediately after the disposable test. The collector snapshots the default-branch head before gathering run/Artifact evidence and re-reads it after the compare request as its final remote evidence fetch. Both snapshots must equal the publisher SHA, so a default-branch advance during collection fails closed. A later default-branch commit also makes a subsequently collected proof fail rather than silently treating stale evidence as current.
+Run this proof immediately after the disposable test. The collector snapshots repository identity plus the default-branch head before gathering run/Artifact evidence. Near the end it re-reads repository metadata and requires the repository ID, full name, and default-branch setting to remain unchanged; it then re-reads that branch head as the final remote evidence fetch. Both head snapshots must equal the publisher SHA. A repository rename, default-branch switch, or default-branch advance during collection therefore fails closed rather than silently treating stale evidence as current.
 
 This proof does **not** replace the separate release-tag immutability test. The disposable repository must still prove that a newly-created `v*` tag can be created once but cannot later be updated or deleted.
 
