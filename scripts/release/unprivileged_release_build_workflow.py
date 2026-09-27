@@ -179,7 +179,10 @@ def _permission_block_errors(
     for line_number, child_raw, child in block:
         if _indent(child_raw) != indent + 2:
             continue
-        match = re.fullmatch(r"([A-Za-z0-9_-]+):\s*(read|none|write)", child)
+        match = re.fullmatch(
+            r"([A-Za-z0-9_-]+):\s*(read|none|write)(?:\s+#.*)?",
+            child,
+        )
         if match is None:
             errors.append(
                 f"{label} permissions line {line_number} must be an explicit read/none scalar"
@@ -195,7 +198,7 @@ def _permission_block_errors(
 def _step_uses_errors(lines: list[tuple[int, str, str]]) -> list[str]:
     errors: list[str] = []
     for index, (line_number, raw, stripped) in enumerate(lines):
-        match = re.fullmatch(r"uses:\s*(\S+)", stripped)
+        match = re.fullmatch(r"uses:\s*(\S+)(?:\s+#.*)?", stripped)
         if match is None:
             continue
         value = match.group(1)
@@ -279,7 +282,7 @@ def validate_unprivileged_release_build_workflow(text: str) -> list[str]:
         if not job_starts:
             errors.append("workflow must declare at least one job")
 
-        for position, (_, item) in enumerate(job_starts):
+        for _, item in job_starts:
             _, job_raw, job_key = item
             job_name = job_key[:-1]
             start_in_jobs = jobs_block.index(item)
@@ -325,7 +328,7 @@ def validate_unprivileged_release_build_workflow(text: str) -> list[str]:
         if token in text:
             errors.append(f"release build workflow contains forbidden privileged token: {token}")
 
-    if re.search(r"\\$\\{\\{\\s*secrets(?:\\.|\\[)", text):
+    if re.search(r"\$\{\{\s*secrets(?:\.|\[)", text):
         errors.append("release build workflow must not reference the secrets context")
 
     if re.search(r"(?m)^\s*environment\s*:", text):
