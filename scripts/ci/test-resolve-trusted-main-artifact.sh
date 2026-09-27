@@ -20,7 +20,7 @@ if [[ "${args}" == *"/actions/workflows/visual-regression.yml/runs"* ]]; then
     malformed-runs)
       printf '{not-json'
       ;;
-    success|digest-mismatch|missing-digest|wrong-artifact|expired|duplicate-artifact|absolute|traversal|duplicate-member|symlink-escape)
+    success|second-page-artifact|digest-mismatch|missing-digest|wrong-artifact|expired|duplicate-artifact|duplicate-id|absolute|traversal|duplicate-member|symlink-escape)
       cat <<'JSON'
 {"workflow_runs":[{"id":9001,"run_attempt":2,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"full_name":"Lamy210/template"}}]}
 JSON
@@ -53,8 +53,12 @@ JSON
 fi
 
 if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
+  if [[ "${args}" != *"--paginate"* || "${args}" != *"--slurp"* ]]; then
+    echo "artifact discovery must use --paginate --slurp" >&2
+    exit 98
+  fi
   case "${scenario}" in
-    success|digest-mismatch|missing-digest|absolute|traversal|duplicate-member|symlink-escape)
+    success|second-page-artifact|digest-mismatch|missing-digest|absolute|traversal|duplicate-member|symlink-escape)
       python3 - "${scenario}" <<'PY'
 import hashlib
 import io
@@ -109,22 +113,43 @@ if scenario == "digest-mismatch":
     artifact["digest"] = "sha256:" + ("0" * 64)
 elif scenario != "missing-digest":
     artifact["digest"] = digest
-print(json.dumps({"artifacts": [artifact]}, separators=(",", ":")))
+if scenario == "second-page-artifact":
+    print(json.dumps([
+        {
+            "total_count": 2,
+            "artifacts": [{
+                "id": 7000,
+                "name": "unrelated-artifact",
+                "expired": False,
+                "digest": "sha256:" + ("1" * 64),
+            }],
+        },
+        {"total_count": 2, "artifacts": [artifact]},
+    ], separators=(",", ":")))
+else:
+    print(json.dumps([
+        {"total_count": 1, "artifacts": [artifact]},
+    ], separators=(",", ":")))
 PY
       ;;
     wrong-artifact)
       cat <<'JSON'
-{"artifacts":[{"id":7002,"name":"different-artifact","expired":false,"digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}
+[{"total_count":1,"artifacts":[{"id":7002,"name":"different-artifact","expired":false,"digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}]
 JSON
       ;;
     expired)
       cat <<'JSON'
-{"artifacts":[{"id":7003,"name":"visual-baseline-test","expired":true,"digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]}
+[{"total_count":1,"artifacts":[{"id":7003,"name":"visual-baseline-test","expired":true,"digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]}]
 JSON
       ;;
     duplicate-artifact)
       cat <<'JSON'
-{"artifacts":[{"id":7001,"name":"visual-baseline-test","expired":false},{"id":7004,"name":"visual-baseline-test","expired":false}]}
+[{"total_count":2,"artifacts":[{"id":7001,"name":"visual-baseline-test","expired":false}]},{"total_count":2,"artifacts":[{"id":7004,"name":"visual-baseline-test","expired":false}]}]
+JSON
+      ;;
+    duplicate-id)
+      cat <<'JSON'
+[{"total_count":2,"artifacts":[{"id":7008,"name":"first","expired":false}]},{"total_count":2,"artifacts":[{"id":7008,"name":"second","expired":false}]}]
 JSON
       ;;
   esac
@@ -232,6 +257,13 @@ run_id="$(run_resolver success "${success_output}")"
 [[ -f "${success_output}/profile.json" ]]
 [[ -f "${success_output}/screen.png" ]]
 [[ -f "${success_output}/resolver-metadata.json" ]]
+
+second_page_output="${TEMP_ROOT}/second-page-artifact"
+second_page_run_id="$(run_resolver second-page-artifact "${second_page_output}")"
+[[ "${second_page_run_id}" == "9001" ]]
+[[ -f "${second_page_output}/profile.json" ]]
+[[ -f "${second_page_output}/resolver-metadata.json" ]]
+
 python3 - "${success_output}/resolver-metadata.json" <<'PY'
 import json
 import re
@@ -259,6 +291,7 @@ assert_status wrong-artifact 4
 assert_status expired 4
 assert_status malformed-runs 3
 assert_status duplicate-artifact 3
+assert_status duplicate-id 3
 assert_status absolute 5
 assert_status traversal 5
 assert_status duplicate-member 5
