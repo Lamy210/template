@@ -447,7 +447,7 @@ This proof does not access Apple credentials and does not replace the read-only 
 
 ## Disposable post-split ancestor runtime proof
 
-The preferred operator path is the guarded runner below. It requires an explicit disposable-repository confirmation, verifies that the selected source ref is a strict ancestor of the current default-branch publisher, fetches the historical `.github/workflows/release-build.yml` bytes and validates the unprivileged/proof-compatible boundary with **current** control code, confirms the publisher workflow exists at the current default-branch commit, snapshots pre-existing workflow runs, creates one previously unused stable SemVer tag, discovers the exact Release Build/Release Publisher pair through the validator Artifact identity, and then delegates to the read-only auditor.
+The preferred operator path is the guarded runner below. It requires an explicit disposable-repository confirmation, verifies that the selected source ref is a strict ancestor of the current default-branch publisher, fetches the historical `.github/workflows/release-build.yml` bytes and validates the unprivileged/proof-compatible boundary with **current** control code, confirms the publisher workflow exists at the current default-branch commit, takes a paginated full-history snapshot of existing run IDs for both release workflows, creates one previously unused stable SemVer tag, discovers the exact fresh Release Build/Release Publisher pair through the validator Artifact identity, and then delegates to the read-only auditor.
 
 ```bash
 bash scripts/release/prove-post-split-ancestor-runtime.sh \
@@ -461,6 +461,8 @@ bash scripts/release/prove-post-split-ancestor-runtime.sh \
 The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
 
 The target must also be a repository other than the operator checkout. The runner compares `--repository` case-insensitively against `GITHUB_REPOSITORY` when present and against the current checkout's GitHub `origin` when that remote can be resolved to `owner/repo`. A match is rejected before any proof tag is created. A non-GitHub origin is ignored, while a GitHub-looking origin that cannot be parsed safely fails closed.
+
+Before creating the tag, the runner snapshots **all** existing run IDs for each release workflow through the paginated Actions API. Fresh-run discovery still examines only recent runs; if activity is so high that the new proof run falls outside that window, the proof times out rather than accepting an older run. This prevents a previously deleted/recreated tag's old workflow run from being mistaken for a new proof run merely because it fell outside a fixed-size baseline.
 
 Before creating that tag, the runner rejects a historical Release Build workflow that is not safe for the post-split boundary. The preflight requires the canonical tag-only trigger and proof Artifact/provenance contract, top-level no-permission default, no write permission, no Environment, no secrets context or privileged secret names, no reusable privileged workflow call, credential-less checkout, and full-SHA pinning for external actions. This check intentionally runs from the current trusted operator checkout rather than executing validation code from the historical source commit.
 
