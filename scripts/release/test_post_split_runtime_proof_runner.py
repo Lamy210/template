@@ -194,6 +194,8 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertIn('"databaseId": run_id', text)
         self.assertIn('"headBranch": head_branch', text)
         self.assertIn('"headSha": head_sha', text)
+        self.assertNotIn('sys.stdout.write("\\\\n")', text)
+        self.assertGreaterEqual(text.count('sys.stdout.write("\\n")'), 2)
 
     def test_run_baselines_snapshot_complete_workflow_history(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
