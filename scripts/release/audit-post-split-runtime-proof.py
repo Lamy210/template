@@ -67,6 +67,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-run", required=True, type=Path)
     parser.add_argument("--publisher-run", required=True, type=Path)
     parser.add_argument("--source-artifacts", required=True, type=Path)
+    parser.add_argument("--tag-ref", required=True, type=Path)
+    parser.add_argument("--tag-objects", required=True, type=Path)
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--archive-digest", required=True)
@@ -84,6 +86,8 @@ def main() -> int:
         source_run = _load_json(args.source_run)
         publisher_run = _load_json(args.publisher_run)
         source_artifacts = _flatten_artifacts(_load_json(args.source_artifacts))
+        tag_ref = _load_json(args.tag_ref)
+        tag_objects = _load_json(args.tag_objects)
         artifacts = _flatten_artifacts(_load_json(args.artifacts))
         metadata = _load_json(args.metadata)
         comparison = _load_json(args.compare)
@@ -108,6 +112,8 @@ def main() -> int:
         args.archive_digest,
         comparison,
         source_artifacts=source_artifacts,
+        tag_ref=tag_ref,
+        tag_objects=tag_objects,
         final_default_commit=final_default_commit,
     )
     for error in errors:
