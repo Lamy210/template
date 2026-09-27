@@ -254,6 +254,30 @@ fi
 GITHUB_REPOSITORY="${original_repository}"
 
 : >"${LOG_PATH}"
+if EXPECTED_REPOSITORY_ID=invalid GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted a malformed expected repository ID." >&2
+  exit 1
+fi
+if [[ -s "${LOG_PATH}" ]]; then
+  echo "Publisher contacted GitHub before rejecting a malformed repository ID." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if EXPECTED_REPOSITORY_ID=999 GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted a repository API ID mismatch." >&2
+  exit 1
+fi
+if grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher reached release creation after repository ID mismatch." >&2
+  exit 1
+fi
+if ! grep -F "api repos/${GITHUB_REPOSITORY}" "${LOG_PATH}" >/dev/null; then
+  echo "Repository ID mismatch probe did not query canonical repository identity." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
 if GH_FAKE_RELEASE_EXISTS=false run_publisher_without_provenance; then
   echo "Publisher accepted a release without final provenance." >&2
   exit 1
