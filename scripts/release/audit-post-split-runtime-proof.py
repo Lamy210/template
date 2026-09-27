@@ -54,6 +54,37 @@ def _flatten_artifacts(payload: object) -> object:
     return payload
 
 
+def _flatten_jobs(payload: object) -> object:
+    if isinstance(payload, dict):
+        jobs = payload.get("jobs")
+        return jobs if isinstance(jobs, list) else payload
+
+    if isinstance(payload, list) and all(isinstance(page, dict) for page in payload):
+        flattened: list[object] = []
+        declared_total: int | None = None
+        for page in payload:
+            total_count = page.get("total_count")
+            if type(total_count) is int and total_count >= 0:
+                if declared_total is None:
+                    declared_total = total_count
+                elif declared_total != total_count:
+                    return {"error": "publisher job pages disagree on total_count"}
+            jobs = page.get("jobs")
+            if not isinstance(jobs, list):
+                return {"error": "publisher job page missing jobs array"}
+            flattened.extend(jobs)
+        if declared_total is not None and declared_total != len(flattened):
+            return {
+                "error": (
+                    f"publisher job total_count={declared_total} does not match "
+                    f"fetched entries={len(flattened)}"
+                )
+            }
+        return flattened
+
+    return payload
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -66,6 +97,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--final-default-commit", required=True, type=Path)
     parser.add_argument("--source-run", required=True, type=Path)
     parser.add_argument("--publisher-run", required=True, type=Path)
+    parser.add_argument("--publisher-jobs", required=True, type=Path)
     parser.add_argument("--source-artifacts", required=True, type=Path)
     parser.add_argument("--tag-ref", required=True, type=Path)
     parser.add_argument("--tag-objects", required=True, type=Path)
@@ -85,6 +117,7 @@ def main() -> int:
         final_default_commit = _load_json(args.final_default_commit)
         source_run = _load_json(args.source_run)
         publisher_run = _load_json(args.publisher_run)
+        publisher_jobs = _flatten_jobs(_load_json(args.publisher_jobs))
         source_artifacts = _flatten_artifacts(_load_json(args.source_artifacts))
         tag_ref = _load_json(args.tag_ref)
         tag_objects = _load_json(args.tag_objects)
@@ -95,6 +128,9 @@ def main() -> int:
         print(f"unable to read runtime proof evidence: {error}", file=sys.stderr)
         return 2
 
+    if isinstance(publisher_jobs, dict) and "error" in publisher_jobs:
+        print(publisher_jobs["error"], file=sys.stderr)
+        return 2
     if isinstance(source_artifacts, dict) and "error" in source_artifacts:
         print(source_artifacts["error"], file=sys.stderr)
         return 2
@@ -114,6 +150,7 @@ def main() -> int:
         source_artifacts=source_artifacts,
         tag_ref=tag_ref,
         tag_objects=tag_objects,
+        publisher_jobs=publisher_jobs,
         final_default_commit=final_default_commit,
     )
     for error in errors:
