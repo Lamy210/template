@@ -3,11 +3,15 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: audit-post-split-runtime-proof.sh owner/repo SOURCE_RUN_ID PUBLISHER_RUN_ID
+Usage:
+  audit-post-split-runtime-proof.sh \
+    owner/repo SOURCE_RUN_ID PUBLISHER_RUN_ID \
+    [--evidence-output post-split-proof.json]
 
 Read-only audit for a disposable-repository two-stage release proof.
 Run it immediately after the proof while the publisher workflow SHA is still
-the repository default-branch head.
+the repository default-branch head. When --evidence-output is supplied, the
+validated proof facts are written only after the audit succeeds.
 EOF
 }
 
@@ -16,10 +20,31 @@ source_run_id="${2:-}"
 publisher_run_id="${3:-}"
 if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
   [[ ! "${source_run_id}" =~ ^[1-9][0-9]*$ ]] ||
-  [[ ! "${publisher_run_id}" =~ ^[1-9][0-9]*$ ]] ||
-  (($# != 3)); then
+  [[ ! "${publisher_run_id}" =~ ^[1-9][0-9]*$ ]]; then
   usage
   exit 2
+fi
+
+shift 3
+evidence_output=""
+if (($#)); then
+  if (($# != 2)) || [[ "${1:-}" != "--evidence-output" ]] || [[ -z "${2:-}" ]]; then
+    usage
+    exit 2
+  fi
+  evidence_output="${2}"
+fi
+
+if [[ -n "${evidence_output}" ]]; then
+  if [[ -e "${evidence_output}" || -L "${evidence_output}" ]]; then
+    echo "--evidence-output must not already exist: ${evidence_output}" >&2
+    exit 2
+  fi
+  evidence_parent="$(dirname -- "${evidence_output}")"
+  if [[ ! -d "${evidence_parent}" || ! -w "${evidence_parent}" ]]; then
+    echo "--evidence-output parent must be an existing writable directory: ${evidence_parent}" >&2
+    exit 2
+  fi
 fi
 
 for command_name in gh python3; do
@@ -180,4 +205,19 @@ gh api "${api_headers[@]}" "repos/${repository}/compare/${source_sha}...${publis
 
 gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch}" >"${temp_root}/final-default-commit.json"
 
-python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py" --repository "${temp_root}/repository.json" --default-commit "${temp_root}/default-commit.json" --final-default-commit "${temp_root}/final-default-commit.json" --source-run "${temp_root}/source-run.json" --publisher-run "${temp_root}/publisher-run.json" --artifacts "${temp_root}/artifacts.json" --metadata "${temp_root}/metadata.json" --archive-digest "${unsigned_archive_digest}" --compare "${temp_root}/compare.json"
+audit_args=(
+  python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py"
+  --repository "${temp_root}/repository.json"
+  --default-commit "${temp_root}/default-commit.json"
+  --final-default-commit "${temp_root}/final-default-commit.json"
+  --source-run "${temp_root}/source-run.json"
+  --publisher-run "${temp_root}/publisher-run.json"
+  --artifacts "${temp_root}/artifacts.json"
+  --metadata "${temp_root}/metadata.json"
+  --archive-digest "${unsigned_archive_digest}"
+  --compare "${temp_root}/compare.json"
+)
+if [[ -n "${evidence_output}" ]]; then
+  audit_args+=(--evidence-output "${evidence_output}")
+fi
+"${audit_args[@]}"

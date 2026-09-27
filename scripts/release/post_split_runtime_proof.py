@@ -110,6 +110,9 @@ def _artifact_errors(
         errors.append("validator artifact id must be a positive integer")
     if artifact.get("expired") is not False:
         errors.append("validator artifact must exist and not be expired")
+    artifact_digest = artifact.get("digest")
+    if not isinstance(artifact_digest, str) or DIGEST_RE.fullmatch(artifact_digest) is None:
+        errors.append("validator artifact digest must use sha256:<64 lowercase hex>")
 
     workflow_run = artifact.get("workflow_run")
     if not isinstance(workflow_run, dict):

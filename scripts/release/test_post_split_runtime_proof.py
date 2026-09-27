@@ -78,6 +78,7 @@ def artifacts() -> list[dict]:
             "id": ARTIFACT_ID,
             "name": ARTIFACT_NAME,
             "expired": False,
+            "digest": "sha256:" + "c" * 64,
             "workflow_run": {
                 "id": PUBLISHER_RUN_ID,
                 "head_sha": PUBLISHER_SHA,
@@ -280,6 +281,29 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 )
                 self.assertTrue(any("validator artifact" in error for error in errors))
 
+    def test_rejects_missing_or_malformed_validator_artifact_digest(self) -> None:
+        cases = [
+            {key: value for key, value in artifacts()[0].items() if key != "digest"},
+            {**artifacts()[0], "digest": "bad"},
+            {**artifacts()[0], "digest": "sha256:" + "C" * 64},
+        ]
+        for artifact in cases:
+            with self.subTest(artifact=artifact):
+                errors = validate_post_split_runtime_proof(
+                    repository(),
+                    default_commit(),
+                    source_run(),
+                    publisher_run(),
+                    [artifact],
+                    metadata(),
+                    "sha256:" + "b" * 64,
+                    compare(),
+                )
+                self.assertTrue(
+                    any("validator artifact digest" in error for error in errors),
+                    errors,
+                )
+
     def test_rejects_unsigned_archive_digest_drift_from_validated_metadata(self) -> None:
         errors = validate_post_split_runtime_proof(
             repository(),
@@ -405,6 +429,147 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("post-split runtime proof is valid", result.stdout)
 
+    def test_cli_writes_evidence_only_after_successful_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixtures = {
+                "repository.json": repository(),
+                "default-commit.json": default_commit(),
+                "final-default-commit.json": default_commit(),
+                "source-run.json": source_run(),
+                "publisher-run.json": publisher_run(),
+                "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
+                "metadata.json": metadata(),
+                "compare.json": compare(),
+            }
+            for name, document in fixtures.items():
+                (root / name).write_text(json.dumps(document) + "\n", encoding="utf-8")
+
+            output = root / "proof.json"
+            args = [
+                sys.executable,
+                "scripts/release/audit-post-split-runtime-proof.py",
+                "--repository",
+                str(root / "repository.json"),
+                "--default-commit",
+                str(root / "default-commit.json"),
+                "--final-default-commit",
+                str(root / "final-default-commit.json"),
+                "--source-run",
+                str(root / "source-run.json"),
+                "--publisher-run",
+                str(root / "publisher-run.json"),
+                "--artifacts",
+                str(root / "artifacts.json"),
+                "--metadata",
+                str(root / "metadata.json"),
+                "--archive-digest",
+                "sha256:" + "b" * 64,
+                "--compare",
+                str(root / "compare.json"),
+                "--evidence-output",
+                str(output),
+            ]
+            first = subprocess.run(
+                args,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            document = json.loads(output.read_text(encoding="utf-8"))
+            second = subprocess.run(
+                args,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, first.returncode, first.stderr)
+        self.assertEqual(2, second.returncode)
+        self.assertIn("already exists", second.stderr)
+        self.assertEqual(2, document["schemaVersion"])
+        self.assertEqual("sha256:" + "c" * 64, document["publisher"]["validatorArtifactDigest"])
+        self.assertEqual("sha256:" + "a" * 64, document["source"]["artifactDigest"])
+        self.assertEqual("sha256:" + "b" * 64, document["source"]["archiveDigest"])
+
+    def test_cli_does_not_write_evidence_when_validation_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            bad_final = default_commit()
+            bad_final["sha"] = "2" * 40
+            fixtures = {
+                "repository.json": repository(),
+                "default-commit.json": default_commit(),
+                "final-default-commit.json": bad_final,
+                "source-run.json": source_run(),
+                "publisher-run.json": publisher_run(),
+                "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
+                "metadata.json": metadata(),
+                "compare.json": compare(),
+            }
+            for name, document in fixtures.items():
+                (root / name).write_text(json.dumps(document) + "\n", encoding="utf-8")
+
+            output = root / "proof.json"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/release/audit-post-split-runtime-proof.py",
+                    "--repository",
+                    str(root / "repository.json"),
+                    "--default-commit",
+                    str(root / "default-commit.json"),
+                    "--final-default-commit",
+                    str(root / "final-default-commit.json"),
+                    "--source-run",
+                    str(root / "source-run.json"),
+                    "--publisher-run",
+                    str(root / "publisher-run.json"),
+                    "--artifacts",
+                    str(root / "artifacts.json"),
+                    "--metadata",
+                    str(root / "metadata.json"),
+                    "--archive-digest",
+                    "sha256:" + "b" * 64,
+                    "--compare",
+                    str(root / "compare.json"),
+                    "--evidence-output",
+                    str(output),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertFalse(output.exists())
+
+    def test_live_wrapper_rejects_existing_evidence_before_github_access(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output = Path(temporary_directory) / "proof.json"
+            output.write_text("{}\n", encoding="utf-8")
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(LIVE_AUDIT),
+                    "example/disposable",
+                    "101",
+                    "202",
+                    "--evidence-output",
+                    str(output),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("must not already exist", result.stderr)
+
     def test_live_wrapper_is_read_only_and_downloads_exact_publisher_artifact(self) -> None:
         text = LIVE_AUDIT.read_text(encoding="utf-8")
         for token in (
@@ -420,6 +585,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             "audit-post-split-runtime-proof.py",
             "--final-default-commit",
             "final-default-commit.json",
+            "--evidence-output",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, text)

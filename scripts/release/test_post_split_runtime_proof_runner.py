@@ -102,9 +102,8 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
             "validated-release-input-",
             "actions/runs/",
             "audit-post-split-runtime-proof.sh",
-            "post_split_proof_evidence.py",
+            "audit_args",
             "--evidence-output",
-            "publisher_run_attempt",
             "refs/tags/",
         ):
             with self.subTest(token=token):
@@ -114,13 +113,10 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertNotIn("--method DELETE", text)
         self.assertNotIn("contents: write", text)
         self.assertNotIn("secrets.", text)
-        self.assertLess(
-            text.index(
-                'bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh"'
-            ),
-            text.index(
-                'python3 "${repo_root}/scripts/release/post_split_proof_evidence.py"'
-            ),
+        self.assertNotIn("post_split_proof_evidence.py", text)
+        self.assertIn(
+            'audit_args+=(--evidence-output "${evidence_output}")',
+            text,
         )
 
     def test_runner_retains_proof_tag_as_audit_evidence(self) -> None:
