@@ -376,6 +376,21 @@ if ! grep -F "release download ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --pattern
 fi
 rm -f "${STATE_FILE}"
 rm -f "${REMOTE_DIR}"/*
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false GH_FAKE_TAG_DRIFT_AFTER_CREATE=true run_publisher; then
+  echo "Publisher accepted a release after the source tag moved during publication." >&2
+  exit 1
+fi
+if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Tag-drift publication probe did not create a release first." >&2
+  exit 1
+fi
+if [[ "$(grep -Fc "/git/ref/tags/${TAG_NAME}" "${LOG_PATH}")" -lt 2 ]]; then
+  echo "Publisher did not rebind the release tag both before and after publication." >&2
+  exit 1
+fi
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
 
 : >"${LOG_PATH}"
 GH_FAKE_RELEASE_EXISTS=false GH_FAKE_CREATE_RACE=true run_publisher
