@@ -98,6 +98,7 @@ def parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("--repository", required=True, type=Path)
+    parser.add_argument("--final-repository", required=True, type=Path)
     parser.add_argument("--default-commit", required=True, type=Path)
     parser.add_argument("--final-default-commit", required=True, type=Path)
     parser.add_argument("--source-run", required=True, type=Path)
@@ -119,6 +120,7 @@ def main() -> int:
     args = parse_args()
     try:
         repository = _load_json(args.repository)
+        final_repository = _load_json(args.final_repository)
         default_commit = _load_json(args.default_commit)
         final_default_commit = _load_json(args.final_default_commit)
         source_run = _load_json(args.source_run)
@@ -172,6 +174,7 @@ def main() -> int:
         tag_ref=tag_ref,
         tag_objects=tag_objects,
         publisher_jobs=publisher_jobs,
+        final_repository=final_repository,
         final_default_commit=final_default_commit,
     )
     for error in errors:
