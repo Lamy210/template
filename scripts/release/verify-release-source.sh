@@ -138,6 +138,7 @@ object_sha="$(printf '%s\n' "${parsed}" | sed -n '2p')"
 
 resolved_sha=""
 seen_tag_objects=""
+tag_depth=0
 for _ in 1 2 3 4 5 6 7 8; do
   if [[ "${object_type}" == commit ]]; then
     resolved_sha="${object_sha}"
@@ -159,12 +160,13 @@ for _ in 1 2 3 4 5 6 7 8; do
   }
 
   expected_outer_tag=""
-  if [[ -z "${seen_tag_objects%:*}" ]]; then
+  if ((tag_depth == 0)); then
     expected_outer_tag="${SOURCE_TAG}"
   fi
   parsed="$(printf '%s' "${tag_json}" | parse_tag_object "${current_tag_object_sha}" "${expected_outer_tag}")" || exit 1
   object_type="$(printf '%s\n' "${parsed}" | sed -n '1p')"
   object_sha="$(printf '%s\n' "${parsed}" | sed -n '2p')"
+  tag_depth=$((tag_depth + 1))
 done
 
 if [[ -z "${resolved_sha}" ]]; then
