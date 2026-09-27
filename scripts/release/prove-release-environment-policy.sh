@@ -268,6 +268,7 @@ for item in runs:
     run_id = item.get("id")
     title = item.get("display_title")
     head_branch = item.get("head_branch")
+    head_sha = item.get("head_sha")
     event = item.get("event")
     if type(run_id) is not int or run_id <= 0:
         raise SystemExit("workflow-run entry has invalid id")
@@ -278,6 +279,11 @@ for item in runs:
         raise SystemExit(f"workflow-run entry {run_id} has invalid display_title")
     if not isinstance(head_branch, str) or not head_branch:
         raise SystemExit(f"workflow-run entry {run_id} has invalid head_branch")
+    if (
+        not isinstance(head_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None
+    ):
+        raise SystemExit(f"workflow-run entry {run_id} has invalid head_sha")
     if event != "workflow_dispatch":
         raise SystemExit(
             f"workflow-run entry {run_id} event={event!r}, expected 'workflow_dispatch'"
@@ -287,6 +293,7 @@ for item in runs:
             "databaseId": run_id,
             "displayTitle": title,
             "headBranch": head_branch,
+            "headSha": head_sha,
         }
     )
 
@@ -318,7 +325,8 @@ sys.stdout.write("\n")
 find_run_id() {
   local title="$1"
   local expected_ref="$2"
-  local baseline_run_ids="$3"
+  local expected_sha="$3"
+  local baseline_run_ids="$4"
   local attempt list_json run_id
   for ((attempt = 1; attempt <= poll_attempts; attempt++)); do
     list_json="$(list_workflow_runs)"
@@ -327,7 +335,7 @@ find_run_id() {
 import json
 import sys
 
-title, expected_ref, baseline_path = sys.argv[1:]
+title, expected_ref, expected_sha, baseline_path = sys.argv[1:]
 runs = json.load(sys.stdin)
 with open(baseline_path, encoding="utf-8") as handle:
     baseline = set(json.load(handle))
@@ -338,6 +346,7 @@ matches = [
     if isinstance(item, dict)
     and item.get("displayTitle") == title
     and item.get("headBranch") == expected_ref
+    and item.get("headSha") == expected_sha
     and type(item.get("databaseId")) is int
     and item.get("databaseId") > 0
     and item.get("databaseId") not in baseline
@@ -348,7 +357,7 @@ elif len(matches) > 1:
     raise SystemExit(
         f"multiple fresh workflow runs matched title={title!r} ref={expected_ref!r}: {matches!r}"
     )
-' "${title}" "${expected_ref}" "${baseline_run_ids}" <<<"${list_json}"
+' "${title}" "${expected_ref}" "${expected_sha}" "${baseline_run_ids}" <<<"${list_json}"
     )" || return 1
     if [[ "${run_id}" =~ ^[1-9][0-9]*$ ]]; then
       printf '%s\n' "${run_id}"
@@ -518,7 +527,7 @@ prove_ref_allowed() {
   snapshot_run_ids "${baseline_run_ids}"
   gh workflow run "${workflow_name}" --repo "${repository}" --ref "${ref}" -f "nonce=${nonce}-${suffix}"
 
-  run_id="$(find_run_id "${title}" "${ref}" "${baseline_run_ids}")"
+  run_id="$(find_run_id "${title}" "${ref}" "${default_sha}" "${baseline_run_ids}")"
   conclusion="$(wait_for_completion "${run_id}")"
   if [[ "${conclusion}" != success ]]; then
     echo "Expected authorized ${suffix} run to succeed; got conclusion '${conclusion}'." >&2
