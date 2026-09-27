@@ -234,6 +234,28 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("refuses the current repository", result.stderr)
 
+    def test_refuses_current_repository_case_insensitively(self) -> None:
+        result = run_script(
+            "--repository",
+            "Example/Live",
+            "--confirm-disposable",
+            "Example/Live",
+            env={"GITHUB_REPOSITORY": "example/live"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("refuses the current repository", result.stderr)
+
+    def test_refuses_local_checkout_repository(self) -> None:
+        result = run_script(
+            "--repository",
+            "Lamy210/template",
+            "--confirm-disposable",
+            "Lamy210/template",
+            env={"GITHUB_REPOSITORY": ""},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("refuses the local checkout repository", result.stderr)
+
     def test_contract_requires_positive_default_and_negative_branch_tag_controls(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("gh workflow run", text)
@@ -246,6 +268,14 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("default branch admitted by release Environment policy", text)
         self.assertIn("probe job must fail", text)
         self.assertIn("--method DELETE", text)
+        self.assertIn('git -C "${repo_root}" remote get-url origin', text)
+        self.assertIn("github_repository_from_remote", text)
+        self.assertIn("same_repository", text)
+        self.assertIn("refuses the local checkout repository", text)
+        self.assertLess(
+            text.index('git -C "${repo_root}" remote get-url origin'),
+            text.index("--method POST"),
+        )
 
     def test_run_and_job_discovery_is_fully_paginated(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
