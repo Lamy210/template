@@ -398,11 +398,14 @@ publisher_sha="${shas[1]}"
 
 gh api "${api_headers[@]}" "repos/${repository}/compare/${source_sha}...${publisher_sha}" >"${temp_root}/compare.json"
 
+gh api "${api_headers[@]}" "repos/${repository}" >"${temp_root}/final-repository.json"
+
 gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch}" >"${temp_root}/final-default-commit.json"
 
 audit_args=(
   python3 "${repo_root}/scripts/release/audit-post-split-runtime-proof.py"
   --repository "${temp_root}/repository.json"
+  --final-repository "${temp_root}/final-repository.json"
   --default-commit "${temp_root}/default-commit.json"
   --final-default-commit "${temp_root}/final-default-commit.json"
   --source-run "${temp_root}/source-run.json"

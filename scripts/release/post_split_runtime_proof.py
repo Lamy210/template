@@ -383,6 +383,7 @@ def validate_post_split_runtime_proof(
     tag_ref: object | None = None,
     tag_objects: object | None = None,
     publisher_jobs: object | None = None,
+    final_repository: object | None = None,
     final_default_commit: object | None = None,
 ) -> list[str]:
     errors: list[str] = []
@@ -398,6 +399,40 @@ def validate_post_split_runtime_proof(
         errors.append("repository full_name must be in owner/repo form")
     if not isinstance(default_branch, str) or not default_branch:
         errors.append("repository default_branch must be a non-empty string")
+
+    if final_repository is not None:
+        if not isinstance(final_repository, dict):
+            errors.append("final repository response must be a JSON object")
+        else:
+            final_repository_id = final_repository.get("id")
+            final_full_name = final_repository.get("full_name")
+            final_default_branch = final_repository.get("default_branch")
+            if not _positive_int(final_repository_id):
+                errors.append("final repository id must be a positive integer")
+            elif _positive_int(repository_id) and final_repository_id != repository_id:
+                errors.append("repository id changed during runtime proof collection")
+            if not isinstance(final_full_name, str) or "/" not in final_full_name:
+                errors.append("final repository full_name must be in owner/repo form")
+            elif (
+                isinstance(repository_full_name, str)
+                and "/" in repository_full_name
+                and final_full_name != repository_full_name
+            ):
+                errors.append(
+                    "repository full_name changed during runtime proof collection"
+                )
+            if not isinstance(final_default_branch, str) or not final_default_branch:
+                errors.append(
+                    "final repository default_branch must be a non-empty string"
+                )
+            elif (
+                isinstance(default_branch, str)
+                and default_branch
+                and final_default_branch != default_branch
+            ):
+                errors.append(
+                    "repository default_branch changed during runtime proof collection"
+                )
 
     if not isinstance(source_run, dict):
         return errors + ["source run response must be a JSON object"]
