@@ -158,6 +158,10 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn("SOURCE_SHA: ${{ inputs.source_sha }}", publication)
         self.assertIn("PUBLISHER_SHA: ${{ github.sha }}", publication)
         self.assertIn(
+            "EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}",
+            publication,
+        )
+        self.assertIn(
             "run: bash scripts/release/publish-github-release.sh",
             publication,
         )
@@ -167,6 +171,10 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn(': "${GH_TOKEN:?GH_TOKEN is required}"', text)
         self.assertIn(': "${SOURCE_SHA:?SOURCE_SHA is required}"', text)
         self.assertIn(': "${PUBLISHER_SHA:?PUBLISHER_SHA is required}"', text)
+        self.assertIn(
+            ': "${EXPECTED_REPOSITORY_ID:?EXPECTED_REPOSITORY_ID is required}"',
+            text,
+        )
 
         binding_calls = [
             match.start()
@@ -189,6 +197,22 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertLess(binding_calls[1], success)
         self.assertIn(
             'SOURCE_TAG="${TAG_NAME}"',
+            text,
+        )
+
+        repository_identity_calls = [
+            match.start()
+            for match in re.finditer(
+                r"(?m)^mapfile -t (?:initial|final)_repository_identity < <\(repository_identity\)$",
+                text,
+            )
+        ]
+        self.assertEqual(2, len(repository_identity_calls))
+        self.assertLess(repository_identity_calls[0], binding_calls[0])
+        self.assertGreater(repository_identity_calls[1], binding_calls[1])
+        self.assertLess(repository_identity_calls[1], success)
+        self.assertIn(
+            "Repository identity changed during GitHub Release publication.",
             text,
         )
 
