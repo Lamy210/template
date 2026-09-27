@@ -207,6 +207,77 @@ def write_source_artifact_zip(
             archive.writestr("release-input/unexpected.txt", b"unexpected")
 
 
+def write_audit_cli_fixtures(
+    root: Path,
+    *,
+    final_default_commit_document: dict | None = None,
+) -> None:
+    fixtures = {
+        "repository.json": repository(),
+        "default-commit.json": default_commit(),
+        "final-default-commit.json": (
+            final_default_commit_document
+            if final_default_commit_document is not None
+            else default_commit()
+        ),
+        "source-run.json": source_run(),
+        "publisher-run.json": publisher_run(),
+        "publisher-jobs.json": [
+            {"total_count": 1, "jobs": publisher_jobs()}
+        ],
+        "source-artifacts.json": [
+            {"total_count": 1, "artifacts": source_artifacts()}
+        ],
+        "tag-ref.json": tag_ref(),
+        "tag-objects.json": [],
+        "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
+        "metadata.json": metadata(),
+        "compare.json": compare(),
+    }
+    for name, document in fixtures.items():
+        (root / name).write_text(json.dumps(document) + "\n", encoding="utf-8")
+
+
+def audit_cli_args(
+    root: Path,
+    *,
+    evidence_output: Path | None = None,
+) -> list[str]:
+    args = [
+        sys.executable,
+        "scripts/release/audit-post-split-runtime-proof.py",
+        "--repository",
+        str(root / "repository.json"),
+        "--default-commit",
+        str(root / "default-commit.json"),
+        "--final-default-commit",
+        str(root / "final-default-commit.json"),
+        "--source-run",
+        str(root / "source-run.json"),
+        "--publisher-run",
+        str(root / "publisher-run.json"),
+        "--publisher-jobs",
+        str(root / "publisher-jobs.json"),
+        "--source-artifacts",
+        str(root / "source-artifacts.json"),
+        "--tag-ref",
+        str(root / "tag-ref.json"),
+        "--tag-objects",
+        str(root / "tag-objects.json"),
+        "--artifacts",
+        str(root / "artifacts.json"),
+        "--metadata",
+        str(root / "metadata.json"),
+        "--archive-digest",
+        "sha256:" + "b" * 64,
+        "--compare",
+        str(root / "compare.json"),
+    ]
+    if evidence_output is not None:
+        args.extend(["--evidence-output", str(evidence_output)])
+    return args
+
+
 def validate_proof(*args: object, **kwargs: object) -> list[str]:
     kwargs.setdefault("source_artifacts", source_artifacts())
     kwargs.setdefault("tag_ref", tag_ref())
@@ -842,58 +913,9 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
     def test_cli_accepts_paginated_artifact_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            fixtures = {
-                "repository.json": repository(),
-                "default-commit.json": default_commit(),
-                "final-default-commit.json": default_commit(),
-                "source-run.json": source_run(),
-                "publisher-run.json": publisher_run(),
-                "publisher-jobs.json": [
-                    {"total_count": 1, "jobs": publisher_jobs()}
-                ],
-                "source-artifacts.json": [
-                    {"total_count": 1, "artifacts": source_artifacts()}
-                ],
-                "tag-ref.json": tag_ref(),
-                "tag-objects.json": [],
-                "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
-                "metadata.json": metadata(),
-                "compare.json": compare(),
-            }
-            for name, document in fixtures.items():
-                (root / name).write_text(json.dumps(document) + "\n", encoding="utf-8")
-
+            write_audit_cli_fixtures(root)
             result = subprocess.run(
-                [
-                    sys.executable,
-                    "scripts/release/audit-post-split-runtime-proof.py",
-                    "--repository",
-                    str(root / "repository.json"),
-                    "--default-commit",
-                    str(root / "default-commit.json"),
-                    "--final-default-commit",
-                    str(root / "final-default-commit.json"),
-                    "--source-run",
-                    str(root / "source-run.json"),
-                    "--publisher-run",
-                    str(root / "publisher-run.json"),
-                    "--publisher-jobs",
-                    str(root / "publisher-jobs.json"),
-                    "--source-artifacts",
-                    str(root / "source-artifacts.json"),
-                    "--tag-ref",
-                    str(root / "tag-ref.json"),
-                    "--tag-objects",
-                    str(root / "tag-objects.json"),
-                    "--artifacts",
-                    str(root / "artifacts.json"),
-                    "--metadata",
-                    str(root / "metadata.json"),
-                    "--archive-digest",
-                    "sha256:" + "b" * 64,
-                    "--compare",
-                    str(root / "compare.json"),
-                ],
+                audit_cli_args(root),
                 cwd=REPO_ROOT,
                 text=True,
                 capture_output=True,
@@ -906,60 +928,10 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
     def test_cli_writes_evidence_only_after_successful_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            fixtures = {
-                "repository.json": repository(),
-                "default-commit.json": default_commit(),
-                "final-default-commit.json": default_commit(),
-                "source-run.json": source_run(),
-                "publisher-run.json": publisher_run(),
-                "publisher-jobs.json": [
-                    {"total_count": 1, "jobs": publisher_jobs()}
-                ],
-                "source-artifacts.json": [
-                    {"total_count": 1, "artifacts": source_artifacts()}
-                ],
-                "tag-ref.json": tag_ref(),
-                "tag-objects.json": [],
-                "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
-                "metadata.json": metadata(),
-                "compare.json": compare(),
-            }
-            for name, document in fixtures.items():
-                (root / name).write_text(json.dumps(document) + "\n", encoding="utf-8")
-
+            write_audit_cli_fixtures(root)
             output = root / "proof.json"
-            args = [
-                sys.executable,
-                "scripts/release/audit-post-split-runtime-proof.py",
-                "--repository",
-                str(root / "repository.json"),
-                "--default-commit",
-                str(root / "default-commit.json"),
-                "--final-default-commit",
-                str(root / "final-default-commit.json"),
-                "--source-run",
-                str(root / "source-run.json"),
-                "--publisher-run",
-                str(root / "publisher-run.json"),
-                "--publisher-jobs",
-                str(root / "publisher-jobs.json"),
-                "--source-artifacts",
-                str(root / "source-artifacts.json"),
-                "--tag-ref",
-                str(root / "tag-ref.json"),
-                "--tag-objects",
-                str(root / "tag-objects.json"),
-                "--artifacts",
-                str(root / "artifacts.json"),
-                "--metadata",
-                str(root / "metadata.json"),
-                "--archive-digest",
-                "sha256:" + "b" * 64,
-                "--compare",
-                str(root / "compare.json"),
-                "--evidence-output",
-                str(output),
-            ]
+            args = audit_cli_args(root, evidence_output=output)
+
             first = subprocess.run(
                 args,
                 cwd=REPO_ROOT,
@@ -969,6 +941,7 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             )
             self.assertEqual(0, first.returncode, first.stderr)
             document = json.loads(output.read_text(encoding="utf-8"))
+
             second = subprocess.run(
                 args,
                 cwd=REPO_ROOT,
@@ -980,7 +953,10 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         self.assertEqual(2, second.returncode)
         self.assertIn("already exists", second.stderr)
         self.assertEqual(2, document["schemaVersion"])
-        self.assertEqual("sha256:" + "c" * 64, document["publisher"]["validatorArtifactDigest"])
+        self.assertEqual(
+            "sha256:" + "c" * 64,
+            document["publisher"]["validatorArtifactDigest"],
+        )
         self.assertEqual("sha256:" + "a" * 64, document["source"]["artifactDigest"])
         self.assertEqual("sha256:" + "b" * 64, document["source"]["archiveDigest"])
 
@@ -989,61 +965,13 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             root = Path(temporary_directory)
             bad_final = default_commit()
             bad_final["sha"] = "2" * 40
-            fixtures = {
-                "repository.json": repository(),
-                "default-commit.json": default_commit(),
-                "final-default-commit.json": bad_final,
-                "source-run.json": source_run(),
-                "publisher-run.json": publisher_run(),
-                "publisher-jobs.json": [
-                    {"total_count": 1, "jobs": publisher_jobs()}
-                ],
-                "source-artifacts.json": [
-                    {"total_count": 1, "artifacts": source_artifacts()}
-                ],
-                "tag-ref.json": tag_ref(),
-                "tag-objects.json": [],
-                "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
-                "metadata.json": metadata(),
-                "compare.json": compare(),
-            }
-            for name, document in fixtures.items():
-                (root / name).write_text(json.dumps(document) + "\n", encoding="utf-8")
-
+            write_audit_cli_fixtures(
+                root,
+                final_default_commit_document=bad_final,
+            )
             output = root / "proof.json"
             result = subprocess.run(
-                [
-                    sys.executable,
-                    "scripts/release/audit-post-split-runtime-proof.py",
-                    "--repository",
-                    str(root / "repository.json"),
-                    "--default-commit",
-                    str(root / "default-commit.json"),
-                    "--final-default-commit",
-                    str(root / "final-default-commit.json"),
-                    "--source-run",
-                    str(root / "source-run.json"),
-                    "--publisher-run",
-                    str(root / "publisher-run.json"),
-                    "--publisher-jobs",
-                    str(root / "publisher-jobs.json"),
-                    "--source-artifacts",
-                    str(root / "source-artifacts.json"),
-                    "--tag-ref",
-                    str(root / "tag-ref.json"),
-                    "--tag-objects",
-                    str(root / "tag-objects.json"),
-                    "--artifacts",
-                    str(root / "artifacts.json"),
-                    "--metadata",
-                    str(root / "metadata.json"),
-                    "--archive-digest",
-                    "sha256:" + "b" * 64,
-                    "--compare",
-                    str(root / "compare.json"),
-                    "--evidence-output",
-                    str(output),
-                ],
+                audit_cli_args(root, evidence_output=output),
                 cwd=REPO_ROOT,
                 text=True,
                 capture_output=True,
