@@ -194,6 +194,11 @@ repository_id="${repository_identity[0]}"
 repository_full_name="${repository_identity[1]}"
 default_branch="${repository_identity[2]}"
 
+if ! same_repository "${repository_full_name}" "${repository}"; then
+  echo "Repository API identity does not match --repository: ${repository_full_name}" >&2
+  exit 3
+fi
+
 encoded_default_branch="$(urlencode "${default_branch}")"
 commit_json="$(gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch}")"
 default_sha="$(
