@@ -320,6 +320,9 @@ def validate_unprivileged_release_build_workflow(text: str) -> list[str]:
         if token in text:
             errors.append(f"release build workflow contains forbidden privileged token: {token}")
 
+    if re.search(r"\\$\\{\\{\\s*secrets(?:\\.|\\[)", text):
+        errors.append("release build workflow must not reference the secrets context")
+
     if re.search(r"(?m)^\s*environment\s*:", text):
         errors.append("release build workflow must not declare any Environment")
 
