@@ -56,23 +56,85 @@ if [[ "${confirmed_repository}" != "${repository}" ]]; then
   echo "--confirm-disposable must exactly equal --repository." >&2
   exit 2
 fi
-if [[ -n "${GITHUB_REPOSITORY:-}" && "${GITHUB_REPOSITORY}" == "${repository}" ]]; then
-  echo "This proof refuses the current repository. Use a separate disposable repository." >&2
-  exit 2
-fi
 if [[ ! "${workflow_name}" =~ ^[A-Za-z0-9_.-]+\.ya?ml$ ]]; then
   echo "--workflow must be a workflow filename such as release-environment-proof.yml." >&2
   exit 2
 fi
 
-for command_name in gh python3; do
+for command_name in gh git python3; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
     exit 2
   }
 done
 
-nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$$}"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+same_repository() {
+  python3 - "$1" "$2" <<'PY'
+import re
+import sys
+
+left, right = sys.argv[1:]
+pattern = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+if pattern.fullmatch(left) is None or pattern.fullmatch(right) is None:
+    raise SystemExit(1)
+raise SystemExit(0 if left.casefold() == right.casefold() else 1)
+PY
+}
+
+github_repository_from_remote() {
+  python3 - "$1" <<'PY'
+import re
+import sys
+from urllib.parse import urlparse
+
+value = sys.argv[1].strip()
+if not value:
+    raise SystemExit(0)
+
+path = None
+scp = re.fullmatch(r"[^@]+@github\.com:(.+)", value, re.IGNORECASE)
+if scp is not None:
+    path = scp.group(1)
+else:
+    parsed = urlparse(value)
+    if parsed.hostname is None or parsed.hostname.casefold() != "github.com":
+        raise SystemExit(0)
+    path = parsed.path.lstrip("/")
+
+path = path.rstrip("/")
+if path.endswith(".git"):
+    path = path[:-4]
+parts = path.split("/")
+if len(parts) != 2 or any(
+    re.fullmatch(r"[A-Za-z0-9_.-]+", part) is None for part in parts
+):
+    raise SystemExit("GitHub origin URL does not resolve to owner/repo")
+print("/".join(parts))
+PY
+}
+
+if [[ -n "${GITHUB_REPOSITORY:-}" ]] &&
+  same_repository "${GITHUB_REPOSITORY}" "${repository}"; then
+  echo "This proof refuses the current repository from GITHUB_REPOSITORY. Use a separate disposable repository." >&2
+  exit 2
+fi
+
+origin_url="$(git -C "${repo_root}" remote get-url origin 2>/dev/null || true)"
+if [[ -n "${origin_url}" ]]; then
+  if ! local_repository="$(github_repository_from_remote "${origin_url}")"; then
+    echo "Unable to resolve the local GitHub origin safely: ${origin_url}" >&2
+    exit 2
+  fi
+  if [[ -n "${local_repository}" ]] &&
+    same_repository "${local_repository}" "${repository}"; then
+    echo "This proof refuses the local checkout repository. Use a separate disposable repository." >&2
+    exit 2
+  fi
+fi
+
+nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$}"
 if [[ ! "${nonce}" =~ ^[A-Za-z0-9._-]+$ ]]; then
   echo "PROOF_NONCE must contain only letters, numbers, dot, underscore, or hyphen." >&2
   exit 2
