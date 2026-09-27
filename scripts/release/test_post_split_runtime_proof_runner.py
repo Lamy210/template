@@ -53,6 +53,21 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("refuses the current repository", result.stderr)
 
+    def test_refuses_current_repository_case_insensitively(self) -> None:
+        result = run_script(
+            "--repository",
+            "Example/Live",
+            "--confirm-disposable",
+            "Example/Live",
+            "--source-ref",
+            "old-main",
+            "--tag",
+            "v0.0.1",
+            env={"GITHUB_REPOSITORY": "example/live"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("refuses the current repository", result.stderr)
+
     def test_rejects_noncanonical_stable_tag_before_github_access(self) -> None:
         result = run_script(
             "--repository",
@@ -100,6 +115,10 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
             "release-publisher.yml",
             "validate-unprivileged-release-build-workflow.py",
             "source-release-build-workflow.json",
+            'git -C "${repo_root}" remote get-url origin',
+            "github_repository_from_remote",
+            "same_repository",
+            "refuses the local checkout repository",
             "snapshot_run_ids",
             "validated-release-input-",
             "actions/runs/",
@@ -124,6 +143,11 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
             text.index("validate-unprivileged-release-build-workflow.py"),
             text.index("--method POST"),
             "historical workflow privilege preflight must happen before tag creation",
+        )
+        self.assertLess(
+            text.index('git -C "${repo_root}" remote get-url origin'),
+            text.index("--method POST"),
+            "local checkout identity guard must run before tag creation",
         )
 
     def test_runner_retains_proof_tag_as_audit_evidence(self) -> None:
