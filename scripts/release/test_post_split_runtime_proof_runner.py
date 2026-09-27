@@ -98,6 +98,8 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
             "contents/.github/workflows/",
             "release-build.yml",
             "release-publisher.yml",
+            "validate-unprivileged-release-build-workflow.py",
+            "source-release-build-workflow.json",
             "snapshot_run_ids",
             "validated-release-input-",
             "actions/runs/",
@@ -117,6 +119,11 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertIn(
             'audit_args+=(--evidence-output "${evidence_output}")',
             text,
+        )
+        self.assertLess(
+            text.index("validate-unprivileged-release-build-workflow.py"),
+            text.index("--method POST"),
+            "historical workflow privilege preflight must happen before tag creation",
         )
 
     def test_runner_retains_proof_tag_as_audit_evidence(self) -> None:

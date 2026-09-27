@@ -206,7 +206,11 @@ if publisher_sha == source_sha:
     raise SystemExit("source and publisher SHAs must differ")
 ' "${source_sha}" "${publisher_sha}" <<<"${compare_json}"
 
-gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${release_build_workflow}?ref=${source_sha}" >/dev/null
+source_workflow_json="${temp_root}/source-release-build-workflow.json"
+gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${release_build_workflow}?ref=${source_sha}" >"${source_workflow_json}"
+python3 "${repo_root}/scripts/release/validate-unprivileged-release-build-workflow.py" \
+  --github-content-json "${source_workflow_json}"
+
 gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${release_publisher_workflow}?ref=${publisher_sha}" >/dev/null
 
 if gh api "${api_headers[@]}" "repos/${repository}/git/ref/tags/${tag_name}" >/dev/null 2>&1; then
