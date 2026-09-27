@@ -336,6 +336,7 @@ def validate_unprivileged_release_build_workflow(text: str) -> list[str]:
 
     errors.extend(_step_uses_errors(lines))
 
+    active_text = "\n".join(stripped for _, _, stripped in lines)
     required_tokens = (
         "scripts/release/write-build-provenance.py",
         EXPECTED_ARTIFACT_NAME,
@@ -344,7 +345,7 @@ def validate_unprivileged_release_build_workflow(text: str) -> list[str]:
         "actions/upload-artifact@",
     )
     for token in required_tokens:
-        if token not in text:
+        if token not in active_text:
             errors.append(f"release build workflow is missing proof contract token: {token}")
 
     return errors
