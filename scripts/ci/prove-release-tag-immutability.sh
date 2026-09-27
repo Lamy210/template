@@ -67,10 +67,6 @@ if [[ "${confirmed_repository}" != "${repository}" ]]; then
   echo "--confirm-disposable must exactly equal --repository." >&2
   exit 2
 fi
-if [[ -n "${GITHUB_REPOSITORY:-}" && "${GITHUB_REPOSITORY,,}" == "${repository,,}" ]]; then
-  echo "This proof refuses the current repository from GITHUB_REPOSITORY. Use a separate disposable repository." >&2
-  exit 2
-fi
 if [[ ! "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "--tag must be canonical stable SemVer in vX.Y.Z form." >&2
   exit 2
@@ -92,6 +88,25 @@ for command_name in gh git python3; do
 done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+same_repository() {
+  python3 - "$1" "$2" <<'PY'
+import re
+import sys
+
+left, right = sys.argv[1:]
+pattern = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+if pattern.fullmatch(left) is None or pattern.fullmatch(right) is None:
+    raise SystemExit(1)
+raise SystemExit(0 if left.casefold() == right.casefold() else 1)
+PY
+}
+
+if [[ -n "${GITHUB_REPOSITORY:-}" ]] &&
+  same_repository "${GITHUB_REPOSITORY}" "${repository}"; then
+  echo "This proof refuses the current repository from GITHUB_REPOSITORY. Use a separate disposable repository." >&2
+  exit 2
+fi
 
 github_repository_from_remote() {
   python3 - "$1" <<'PY'
@@ -131,7 +146,8 @@ if [[ -n "${origin_url}" ]]; then
     echo "Unable to resolve the local GitHub origin safely: ${origin_url}" >&2
     exit 2
   fi
-  if [[ -n "${local_repository}" && "${local_repository,,}" == "${repository,,}" ]]; then
+  if [[ -n "${local_repository}" ]] &&
+    same_repository "${local_repository}" "${repository}"; then
     echo "This proof refuses the local checkout repository. Use a separate disposable repository." >&2
     exit 2
   fi
@@ -190,29 +206,33 @@ if ! initial_identity_output="$(repository_identity)"; then
   echo "Unable to bind disposable repository identity before mutation." >&2
   exit 3
 fi
-mapfile -t initial_identity <<<"${initial_identity_output}"
-if (("${#initial_identity[@]}" != 2)); then
+initial_repository_id="$(printf '%s\n' "${initial_identity_output}" | sed -n '1p')"
+initial_repository_name="$(printf '%s\n' "${initial_identity_output}" | sed -n '2p')"
+initial_repository_extra="$(printf '%s\n' "${initial_identity_output}" | sed -n '3p')"
+if [[ -z "${initial_repository_id}" || -z "${initial_repository_name}" || -n "${initial_repository_extra}" ]]; then
   echo "Disposable repository identity output was malformed." >&2
   exit 3
 fi
-initial_repository_id="${initial_identity[0]}"
-initial_repository_name="${initial_identity[1]}"
 
 require_repository_identity_stable() {
   local current_identity_output
-  local -a current_identity
+  local current_repository_id
+  local current_repository_name
+  local current_repository_extra
 
   if ! current_identity_output="$(repository_identity)"; then
     echo "Unable to rebind disposable repository identity." >&2
     return 1
   fi
-  mapfile -t current_identity <<<"${current_identity_output}"
-  if (("${#current_identity[@]}" != 2)); then
+  current_repository_id="$(printf '%s\n' "${current_identity_output}" | sed -n '1p')"
+  current_repository_name="$(printf '%s\n' "${current_identity_output}" | sed -n '2p')"
+  current_repository_extra="$(printf '%s\n' "${current_identity_output}" | sed -n '3p')"
+  if [[ -z "${current_repository_id}" || -z "${current_repository_name}" || -n "${current_repository_extra}" ]]; then
     echo "Disposable repository identity rebind output was malformed." >&2
     return 1
   fi
-  if [[ "${current_identity[0]}" != "${initial_repository_id}" ||
-        "${current_identity[1]}" != "${initial_repository_name}" ]]; then
+  if [[ "${current_repository_id}" != "${initial_repository_id}" ||
+        "${current_repository_name}" != "${initial_repository_name}" ]]; then
     echo "Disposable repository identity changed during release-tag proof." >&2
     return 1
   fi
