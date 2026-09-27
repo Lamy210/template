@@ -132,6 +132,32 @@ def metadata() -> dict:
     }
 
 
+def tag_ref(*, object_type: str = "commit", object_sha: str = SOURCE_SHA) -> dict:
+    return {
+        "ref": "refs/tags/v1.2.3",
+        "object": {
+            "type": object_type,
+            "sha": object_sha,
+        },
+    }
+
+
+def annotated_tag_object(
+    sha: str,
+    *,
+    target_type: str,
+    target_sha: str,
+) -> dict:
+    return {
+        "sha": sha,
+        "tag": "v1.2.3",
+        "object": {
+            "type": target_type,
+            "sha": target_sha,
+        },
+    }
+
+
 def compare() -> dict:
     return {
         "status": "ahead",
@@ -168,6 +194,8 @@ def write_source_artifact_zip(
 
 def validate_proof(*args: object, **kwargs: object) -> list[str]:
     kwargs.setdefault("source_artifacts", source_artifacts())
+    kwargs.setdefault("tag_ref", tag_ref())
+    kwargs.setdefault("tag_objects", [])
     return validate_post_split_runtime_proof(*args, **kwargs)
 
 
@@ -279,6 +307,153 @@ class RuntimeProofSourceArtifactByteTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("source Artifact bytes are bound", result.stdout)
+
+
+class RuntimeProofLiveTagTests(unittest.TestCase):
+    def test_accepts_lightweight_tag_bound_to_source_sha(self) -> None:
+        self.assertEqual(
+            [],
+            validate_proof(
+                repository(),
+                default_commit(),
+                source_run(),
+                publisher_run(),
+                artifacts(),
+                metadata(),
+                "sha256:" + "b" * 64,
+                compare(),
+            ),
+        )
+
+    def test_accepts_annotated_tag_chain_bound_to_source_sha(self) -> None:
+        first = "2" * 40
+        second = "3" * 40
+        self.assertEqual(
+            [],
+            validate_proof(
+                repository(),
+                default_commit(),
+                source_run(),
+                publisher_run(),
+                artifacts(),
+                metadata(),
+                "sha256:" + "b" * 64,
+                compare(),
+                tag_ref=tag_ref(object_type="tag", object_sha=first),
+                tag_objects=[
+                    annotated_tag_object(
+                        first,
+                        target_type="tag",
+                        target_sha=second,
+                    ),
+                    annotated_tag_object(
+                        second,
+                        target_type="commit",
+                        target_sha=SOURCE_SHA,
+                    ),
+                ],
+            ),
+        )
+
+    def test_rejects_live_tag_moved_from_source_sha(self) -> None:
+        errors = validate_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            metadata(),
+            "sha256:" + "b" * 64,
+            compare(),
+            tag_ref=tag_ref(object_sha="4" * 40),
+        )
+        self.assertTrue(
+            any("different SHA than the source run" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_wrong_tag_ref_name(self) -> None:
+        document = tag_ref()
+        document["ref"] = "refs/tags/v9.9.9"
+        errors = validate_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            metadata(),
+            "sha256:" + "b" * 64,
+            compare(),
+            tag_ref=document,
+        )
+        self.assertTrue(
+            any("tag ref does not match source run tag" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_missing_annotated_tag_object(self) -> None:
+        errors = validate_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            metadata(),
+            "sha256:" + "b" * 64,
+            compare(),
+            tag_ref=tag_ref(object_type="tag", object_sha="5" * 40),
+            tag_objects=[],
+        )
+        self.assertTrue(
+            any("tag object is missing" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_annotated_tag_cycle(self) -> None:
+        first = "6" * 40
+        second = "7" * 40
+        errors = validate_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            metadata(),
+            "sha256:" + "b" * 64,
+            compare(),
+            tag_ref=tag_ref(object_type="tag", object_sha=first),
+            tag_objects=[
+                annotated_tag_object(first, target_type="tag", target_sha=second),
+                annotated_tag_object(second, target_type="tag", target_sha=first),
+            ],
+        )
+        self.assertTrue(
+            any("contains a cycle" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_unconsumed_tag_object_evidence(self) -> None:
+        errors = validate_proof(
+            repository(),
+            default_commit(),
+            source_run(),
+            publisher_run(),
+            artifacts(),
+            metadata(),
+            "sha256:" + "b" * 64,
+            compare(),
+            tag_objects=[
+                annotated_tag_object(
+                    "8" * 40,
+                    target_type="commit",
+                    target_sha=SOURCE_SHA,
+                )
+            ],
+        )
+        self.assertTrue(
+            any("unexpected annotated release tag objects" in error for error in errors),
+            errors,
+        )
 
 
 class PostSplitRuntimeProofTests(unittest.TestCase):
@@ -611,6 +786,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "source-artifacts.json": [
                     {"total_count": 1, "artifacts": source_artifacts()}
                 ],
+                "tag-ref.json": tag_ref(),
+                "tag-objects.json": [],
                 "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
                 "metadata.json": metadata(),
                 "compare.json": compare(),
@@ -634,6 +811,10 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     str(root / "publisher-run.json"),
                     "--source-artifacts",
                     str(root / "source-artifacts.json"),
+                    "--tag-ref",
+                    str(root / "tag-ref.json"),
+                    "--tag-objects",
+                    str(root / "tag-objects.json"),
                     "--artifacts",
                     str(root / "artifacts.json"),
                     "--metadata",
@@ -664,6 +845,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "source-artifacts.json": [
                     {"total_count": 1, "artifacts": source_artifacts()}
                 ],
+                "tag-ref.json": tag_ref(),
+                "tag-objects.json": [],
                 "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
                 "metadata.json": metadata(),
                 "compare.json": compare(),
@@ -687,6 +870,10 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 str(root / "publisher-run.json"),
                 "--source-artifacts",
                 str(root / "source-artifacts.json"),
+                "--tag-ref",
+                str(root / "tag-ref.json"),
+                "--tag-objects",
+                str(root / "tag-objects.json"),
                 "--artifacts",
                 str(root / "artifacts.json"),
                 "--metadata",
@@ -736,6 +923,8 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                 "source-artifacts.json": [
                     {"total_count": 1, "artifacts": source_artifacts()}
                 ],
+                "tag-ref.json": tag_ref(),
+                "tag-objects.json": [],
                 "artifacts.json": [{"total_count": 1, "artifacts": artifacts()}],
                 "metadata.json": metadata(),
                 "compare.json": compare(),
@@ -760,6 +949,10 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
                     str(root / "publisher-run.json"),
                     "--source-artifacts",
                     str(root / "source-artifacts.json"),
+                    "--tag-ref",
+                    str(root / "tag-ref.json"),
+                    "--tag-objects",
+                    str(root / "tag-objects.json"),
                     "--artifacts",
                     str(root / "artifacts.json"),
                     "--metadata",
@@ -809,6 +1002,12 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             "actions/runs/",
             "/artifacts?per_page=100",
             "source-artifacts.json",
+            "/git/ref/tags/",
+            "/git/tags/",
+            "tag-ref.json",
+            "tag-objects.json",
+            "--tag-ref",
+            "--tag-objects",
             "source-artifact.zip",
             "verify-runtime-proof-source-artifact.py",
             "--expected-artifact-digest",
