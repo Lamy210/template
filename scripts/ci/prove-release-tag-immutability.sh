@@ -254,10 +254,11 @@ except (json.JSONDecodeError, UnicodeDecodeError) as error:
     raise SystemExit(f"tag ref response is invalid JSON: {error}")
 if not isinstance(document, dict):
     raise SystemExit("tag ref response must be an object")
-if document.get("ref") != expected_ref:
+actual_ref = document.get("ref")
+if actual_ref != expected_ref:
     raise SystemExit(
         f"tag ref identity mismatch: expected {expected_ref!r}, "
-        f"got {document.get('ref')!r}"
+        f"got {actual_ref!r}"
     )
 obj = document.get("object")
 if not isinstance(obj, dict):
