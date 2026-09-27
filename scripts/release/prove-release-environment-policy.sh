@@ -191,7 +191,7 @@ print(sha)
 ' <<<"${commit_json}"
 )"
 
-gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${workflow_name}?ref=${encoded_default_branch}" |
+gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${workflow_name}?ref=${default_sha}" |
   python3 "${repo_root}/scripts/release/validate-release-environment-proof-workflow.py" --expected-path ".github/workflows/${workflow_name}" --trusted-workflow "${repo_root}/examples/release-environment-proof.yml"
 
 temp_root="$(mktemp -d "${TMPDIR:-/tmp}/release-environment-proof.XXXXXX")"
@@ -234,6 +234,7 @@ list_workflow_runs() {
     "repos/${repository}/actions/workflows/${encoded_workflow}/runs?event=workflow_dispatch&per_page=100" |
     python3 -c '
 import json
+import re
 import sys
 
 pages = json.load(sys.stdin)
