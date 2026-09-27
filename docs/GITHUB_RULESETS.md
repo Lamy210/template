@@ -83,10 +83,13 @@ The command proves the three required runtime behaviors in order:
 The script is deliberately destructive and fail-closed:
 
 - `--confirm-disposable` must exactly repeat the target repository;
-- it refuses to target `GITHUB_REPOSITORY` when that environment variable names the same repository;
+- it refuses the current repository case-insensitively through `GITHUB_REPOSITORY`;
+- outside Actions, it also refuses a target that matches the current checkout's resolvable GitHub `origin`;
+- before mutation it binds the target's canonical repository ID/full name, then re-resolves that identity before update, before delete, and after the final read-back; repository rename/redirect or ID drift aborts the proof;
 - the tag must be canonical stable SemVer;
 - both commit SHAs must be canonical, distinct 40-character lowercase hexadecimal values and must exist;
 - the chosen tag must not already exist;
+- every created/update/delete read-back must return exactly `refs/tags/<tag>`, resolve directly to a commit object, and still point to the expected initial SHA;
 - if update or deletion unexpectedly succeeds, the proof fails immediately;
 - a failed update/deletion counts as protection only when GitHub reports a repository-rule violation; authentication failures, permission failures, network/API errors, or other ambiguous failures fail the proof instead of being treated as immutability evidence.
 
