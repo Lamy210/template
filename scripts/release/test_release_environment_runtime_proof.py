@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 import subprocess
@@ -153,7 +154,8 @@ def write_fake_gh(root: Path) -> Path:
             fi
 
             if [[ "${args}" == *"contents/.github/workflows/release-environment-proof.yml"* ]]; then
-              printf '%s\n' '{"type":"file"}'
+              printf '{"type":"file","path":".github/workflows/release-environment-proof.yml","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","encoding":"base64","content":"%s"}\n' \
+                "${GH_STUB_WORKFLOW_BASE64}"
               exit 0
             fi
 
@@ -196,6 +198,9 @@ def fake_env(root: Path, scenario: str) -> dict[str, str]:
         "GITHUB_REPOSITORY": "example/template",
         "GH_STUB_STATE": str(root / "dispatch-state"),
         "GH_STUB_SCENARIO": scenario,
+        "GH_STUB_WORKFLOW_BASE64": base64.b64encode(
+            WORKFLOW.read_bytes()
+        ).decode("ascii"),
         "PROOF_NONCE": "proof",
         "PROOF_POLL_ATTEMPTS": "1",
         "PROOF_POLL_SECONDS": "0",
@@ -276,6 +281,16 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
             text.index('git -C "${repo_root}" remote get-url origin'),
             text.index("--method POST"),
         )
+        self.assertIn("validate-release-environment-proof-workflow.py", text)
+        self.assertIn("examples/release-environment-proof.yml", text)
+        self.assertLess(
+            text.index("validate-release-environment-proof-workflow.py"),
+            text.index("--method POST"),
+        )
+        self.assertIn(
+            'nonce="${PROOF_NONCE:-$(date -u +%Y%m%d%H%M%S)-$}"',
+            text,
+        )
 
     def test_run_and_job_discovery_is_fully_paginated(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
@@ -303,6 +318,30 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("expected_ref", text)
         self.assertIn('"databaseId": run_id', text)
         self.assertIn('"displayTitle": title', text)
+
+    def test_refuses_modified_remote_proof_workflow_before_ref_creation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            write_fake_gh(root)
+            env = fake_env(root, "success")
+            env["GH_STUB_WORKFLOW_BASE64"] = base64.b64encode(
+                WORKFLOW.read_bytes() + b"# unexpected remote change\n"
+            ).decode("ascii")
+
+            result = run_script(
+                "--repository",
+                "example/disposable",
+                "--confirm-disposable",
+                "example/disposable",
+                env=env,
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn(
+                "does not exactly match trusted example",
+                result.stderr,
+            )
+            self.assertFalse((root / "dispatch-state").exists())
 
     def test_fake_github_proves_branch_and_tag_are_denied_across_pages(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
