@@ -460,7 +460,7 @@ bash scripts/release/prove-post-split-ancestor-runtime.sh \
 
 The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
 
-When `--evidence-output` is supplied, the runner delegates evidence creation to the read-only auditor. The auditor writes schema-v2 JSON **only after** the complete runtime proof succeeds. The record captures the audited repository ID/name/default branch, initial and final default-head SHAs, strict-ancestor compare result, source and publisher workflow/run identity, source Artifact ID/digest, validator Artifact ID/digest, unsigned archive digest, and validated application identity. It contains no operator timestamp or credentials. The output path must not already exist, so a previous proof record is never silently overwritten.
+When `--evidence-output` is supplied, the runner delegates evidence creation to the read-only auditor. The auditor writes schema-v2 JSON **only after** the complete runtime proof succeeds. The record captures the audited repository ID/name/default branch, initial and final default-head SHAs, strict-ancestor compare result, source and publisher workflow/run identity, the independently re-fetched source Artifact ID/digest, validator Artifact ID/digest, unsigned archive digest, and validated application identity. It contains no operator timestamp or credentials. The output path must not already exist, so a previous proof record is never silently overwritten.
 
 The same evidence option is available when auditing an already-known run pair directly:
 
@@ -504,6 +504,7 @@ bash scripts/release/audit-post-split-runtime-proof.sh \
 The read-only proof collector verifies all of the following from GitHub API evidence and the publisher-owned validator artifact:
 
 - source run is the successful same-repository `Release Build` push workflow at `.github/workflows/release-build.yml`;
+- the source run exposes exactly one non-expired `unsigned-macos-release-<run>-<attempt>` Artifact, whose live Artifact ID/digest/run/SHA/repository binding matches the validator-owned metadata;
 - publisher run is the same-repository `workflow_run`-triggered `Release Publisher` at `.github/workflows/release-publisher.yml`;
 - source SHA is a **strict ancestor** of the publisher SHA;
 - publisher SHA equals the repository's default-branch head both before and after remote proof evidence collection, and any head drift during collection is rejected;
