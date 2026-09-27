@@ -184,6 +184,22 @@ gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/
 
 gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${publisher_run_id}" >"${temp_root}/publisher-run.json"
 
+publisher_run_attempt="$(
+  python3 - "${temp_root}/publisher-run.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    document = json.load(handle)
+attempt = document.get("run_attempt")
+if type(attempt) is not int or attempt <= 0:
+    raise SystemExit("publisher run attempt is missing or invalid")
+print(attempt)
+PY
+)"
+
+gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${publisher_run_id}/attempts/${publisher_run_attempt}/jobs?per_page=100" >"${temp_root}/publisher-jobs.json"
+
 gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${publisher_run_id}/artifacts?per_page=100" >"${temp_root}/artifacts.json"
 
 artifact_identity_file="${temp_root}/artifact-identity.txt"
@@ -374,6 +390,7 @@ audit_args=(
   --final-default-commit "${temp_root}/final-default-commit.json"
   --source-run "${temp_root}/source-run.json"
   --publisher-run "${temp_root}/publisher-run.json"
+  --publisher-jobs "${temp_root}/publisher-jobs.json"
   --source-artifacts "${temp_root}/source-artifacts.json"
   --tag-ref "${temp_root}/tag-ref.json"
   --tag-objects "${temp_root}/tag-objects.json"

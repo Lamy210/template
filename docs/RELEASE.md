@@ -490,7 +490,7 @@ Before enabling the two-stage publisher for production, prove the architecture w
 2. Choose an older **post-split ancestor** that already contains `.github/workflows/release-build.yml` but predates the current publisher-control changes.
 3. Create a canonical stable SemVer tag such as `v0.0.1` pointing to that ancestor.
 4. Wait for that tag's **Release Build** run to complete successfully.
-5. Wait for the downstream **Release Publisher** validation job to produce its `validated-release-input-...` artifact. The later signing/publication job may fail when the disposable repository intentionally has no Apple credentials; that does not invalidate this control-code proof.
+5. Wait for the downstream **Release Publisher** job `Validate release input without secrets` to succeed and produce its `validated-release-input-...` artifact. The later signing/publication job may fail when the disposable repository intentionally has no Apple credentials; that does not invalidate this control-code proof.
 6. Record the Release Build run ID and Release Publisher run ID.
 7. Before advancing the disposable repository default branch again, run:
 
@@ -508,6 +508,7 @@ The read-only proof collector verifies all of the following from GitHub API evid
 - the source run exposes exactly one non-expired `unsigned-macos-release-<run>-<attempt>` Artifact, whose live Artifact ID/digest/run/SHA/repository binding matches the validator-owned metadata;
 - the auditor re-downloads that exact source Artifact by ID, verifies the GitHub Artifact ZIP digest and exact two-file source payload, and requires its `release-input/unsigned-macos-app.tar.gz` SHA-256 to equal the unsigned archive embedded in the validator Artifact;
 - publisher run is the same-repository `workflow_run`-triggered `Release Publisher` at `.github/workflows/release-publisher.yml`;
+- the exact publisher run attempt contains exactly one `Validate release input without secrets` job, and that job must be completed successfully with the same run ID, run attempt, and publisher SHA;
 - source SHA is a **strict ancestor** of the publisher SHA;
 - publisher SHA equals the repository's default-branch head both before and after remote proof evidence collection, and any head drift during collection is rejected;
 - the validator Artifact name is bound to the exact publisher run/attempt and source run/attempt;
