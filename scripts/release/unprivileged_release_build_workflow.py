@@ -195,13 +195,36 @@ def _permission_block_errors(
     return errors
 
 
+def _uses_value(stripped: str) -> str | None:
+    if not stripped.startswith("uses:"):
+        return None
+
+    value = stripped.removeprefix("uses:").strip()
+    if not value:
+        return ""
+
+    if value[0] in {'"', "'"}:
+        quote = value[0]
+        end = value.find(quote, 1)
+        if end < 0:
+            return ""
+        trailing = value[end + 1 :].strip()
+        if trailing and not trailing.startswith("#"):
+            return ""
+        return value[1:end]
+
+    return value.split(maxsplit=1)[0]
+
+
 def _step_uses_errors(lines: list[tuple[int, str, str]]) -> list[str]:
     errors: list[str] = []
     for index, (line_number, raw, stripped) in enumerate(lines):
-        match = re.fullmatch(r"uses:\s*(\S+)(?:\s+#.*)?", stripped)
-        if match is None:
+        value = _uses_value(stripped)
+        if value is None:
             continue
-        value = match.group(1)
+        if not value:
+            errors.append(f"uses on line {line_number} must have one literal action target")
+            continue
         if value.startswith("./"):
             continue
         action = re.fullmatch(r"([^@\s]+)@([0-9a-f]{40})", value)
@@ -218,7 +241,7 @@ def _step_uses_errors(lines: list[tuple[int, str, str]]) -> list[str]:
                 next_indent = _indent(next_raw)
                 if next_indent < uses_indent:
                     break
-                if next_indent == uses_indent and next_stripped.startswith("uses:"):
+                if next_indent == uses_indent and _uses_value(next_stripped) is not None:
                     break
                 if next_indent == uses_indent - 2 and next_stripped.startswith("- "):
                     break
@@ -328,10 +351,19 @@ def validate_unprivileged_release_build_workflow(text: str) -> list[str]:
         if token in text:
             errors.append(f"release build workflow contains forbidden privileged token: {token}")
 
-    if re.search(r"\$\{\{\s*secrets(?:\.|\[)", text):
+    if re.search(r"\$\{\{[^}]*\bsecrets\b", text, re.IGNORECASE):
         errors.append("release build workflow must not reference the secrets context")
 
-    if re.search(r"(?m)^\s*environment\s*:", text):
+    if re.search(
+        r"""(?mi)^\s*(?:"(?:permissions|environment|uses|secrets)"|'(?:permissions|environment|uses|secrets)')\s*:""",
+        text,
+    ):
+        errors.append("privilege-sensitive workflow keys must not be quoted")
+
+    if re.search(r"(?m)^\s*<<\s*:", text):
+        errors.append("workflow must not use YAML merge keys")
+
+    if re.search(r"""(?mi)^\s*(?:"environment"|'environment'|environment)\s*:""", text):
         errors.append("release build workflow must not declare any Environment")
 
     errors.extend(_step_uses_errors(lines))
