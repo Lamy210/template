@@ -547,6 +547,29 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             self.assertFalse(output.exists())
 
+    def test_live_wrapper_rejects_existing_evidence_before_github_access(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output = Path(temporary_directory) / "proof.json"
+            output.write_text("{}\n", encoding="utf-8")
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(LIVE_AUDIT),
+                    "example/disposable",
+                    "101",
+                    "202",
+                    "--evidence-output",
+                    str(output),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("must not already exist", result.stderr)
+
     def test_live_wrapper_is_read_only_and_downloads_exact_publisher_artifact(self) -> None:
         text = LIVE_AUDIT.read_text(encoding="utf-8")
         for token in (
