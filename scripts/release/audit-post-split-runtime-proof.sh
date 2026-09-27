@@ -92,6 +92,23 @@ gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch
 
 gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${source_run_id}" >"${temp_root}/source-run.json"
 
+source_sha="$(
+  python3 - "${temp_root}/source-run.json" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    document = json.load(handle)
+sha = document.get("head_sha")
+if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{40}", sha) is None:
+    raise SystemExit("source run head_sha is invalid")
+print(sha)
+PY
+)"
+
+gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/release-build.yml?ref=${source_sha}" >"${temp_root}/source-workflow.json"
+
 source_tag="$(
   python3 - "${temp_root}/source-run.json" <<'PY'
 import json
@@ -389,6 +406,7 @@ audit_args=(
   --default-commit "${temp_root}/default-commit.json"
   --final-default-commit "${temp_root}/final-default-commit.json"
   --source-run "${temp_root}/source-run.json"
+  --source-workflow "${temp_root}/source-workflow.json"
   --publisher-run "${temp_root}/publisher-run.json"
   --publisher-jobs "${temp_root}/publisher-jobs.json"
   --source-artifacts "${temp_root}/source-artifacts.json"
