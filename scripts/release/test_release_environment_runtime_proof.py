@@ -69,7 +69,7 @@ def write_fake_gh(root: Path) -> Path:
               local run_id="$1"
               local probe_conclusion
               case "${GH_STUB_SCENARIO}" in
-                success)
+                success | repository-drift | final-head-drift)
                   if [[ "${run_id}" == 100 ]]; then
                     probe_conclusion="success"
                   else
@@ -101,7 +101,7 @@ def write_fake_gh(root: Path) -> Path:
               local run_id="$1"
               local conclusion
               case "${GH_STUB_SCENARIO}" in
-                success)
+                success | repository-drift | final-head-drift)
                   if [[ "${run_id}" == 100 ]]; then
                     conclusion="success"
                   else
@@ -164,7 +164,12 @@ def write_fake_gh(root: Path) -> Path:
             fi
 
             if [[ "${args}" == *"commits/main"* ]]; then
-              printf '%s\n' '{"sha":"1111111111111111111111111111111111111111"}'
+              count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+              if [[ "${GH_STUB_SCENARIO}" == "final-head-drift" && "${count}" -ge 3 ]]; then
+                printf '%s\n' '{"sha":"2222222222222222222222222222222222222222"}'
+              else
+                printf '%s\n' '{"sha":"1111111111111111111111111111111111111111"}'
+              fi
               exit 0
             fi
 
@@ -183,7 +188,12 @@ def write_fake_gh(root: Path) -> Path:
             fi
 
             if [[ "${args}" == *"repos/example/disposable"* ]]; then
-              printf '%s\n' '{"default_branch":"main"}'
+              count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+              if [[ "${GH_STUB_SCENARIO}" == "repository-drift" && "${count}" -ge 3 ]]; then
+                printf '%s\n' '{"id":123,"full_name":"example/disposable","default_branch":"release-control"}'
+              else
+                printf '%s\n' '{"id":123,"full_name":"example/disposable","default_branch":"main"}'
+              fi
               exit 0
             fi
 
@@ -332,6 +342,10 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                 'find_run_id "${title}" "${ref}" "${default_sha}" "${baseline_run_ids}"'
             ),
         )
+        self.assertIn("repository id changed during Environment proof", text)
+        self.assertIn("repository full_name changed during Environment proof", text)
+        self.assertIn("repository default_branch changed during Environment proof", text)
+        self.assertIn("default branch head changed during Environment proof", text)
 
     def test_refuses_modified_remote_proof_workflow_before_ref_creation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -373,6 +387,50 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn(
             "Unable to locate fresh dispatched workflow run",
             result.stderr,
+        )
+
+    def test_fails_if_repository_default_branch_changes_before_success(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            write_fake_gh(root)
+            result = run_script(
+                "--repository",
+                "example/disposable",
+                "--confirm-disposable",
+                "example/disposable",
+                env=fake_env(root, "repository-drift"),
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(
+            "repository default_branch changed during Environment proof",
+            result.stderr,
+        )
+        self.assertNotIn(
+            "release Environment negative runtime proof passed",
+            result.stdout,
+        )
+
+    def test_fails_if_default_branch_head_changes_before_success(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            write_fake_gh(root)
+            result = run_script(
+                "--repository",
+                "example/disposable",
+                "--confirm-disposable",
+                "example/disposable",
+                env=fake_env(root, "final-head-drift"),
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(
+            "default branch head changed during Environment proof",
+            result.stderr,
+        )
+        self.assertNotIn(
+            "release Environment negative runtime proof passed",
+            result.stdout,
         )
 
     def test_fake_github_proves_branch_and_tag_are_denied_across_pages(self) -> None:
