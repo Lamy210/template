@@ -92,6 +92,8 @@ gh api "${api_headers[@]}" "repos/${repository}/commits/${encoded_default_branch
 
 gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${source_run_id}" >"${temp_root}/source-run.json"
 
+gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${source_run_id}/artifacts?per_page=100" >"${temp_root}/source-artifacts.json"
+
 gh api "${api_headers[@]}" "repos/${repository}/actions/runs/${publisher_run_id}" >"${temp_root}/publisher-run.json"
 
 gh api "${api_headers[@]}" --paginate --slurp "repos/${repository}/actions/runs/${publisher_run_id}/artifacts?per_page=100" >"${temp_root}/artifacts.json"
@@ -212,6 +214,7 @@ audit_args=(
   --final-default-commit "${temp_root}/final-default-commit.json"
   --source-run "${temp_root}/source-run.json"
   --publisher-run "${temp_root}/publisher-run.json"
+  --source-artifacts "${temp_root}/source-artifacts.json"
   --artifacts "${temp_root}/artifacts.json"
   --metadata "${temp_root}/metadata.json"
   --archive-digest "${unsigned_archive_digest}"
