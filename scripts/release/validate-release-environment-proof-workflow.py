@@ -23,13 +23,18 @@ def main() -> int:
             "to exactly match the trusted local example."
         )
     )
-    parser.add_argument("--github-content-json", required=True, type=Path)
+    parser.add_argument("--github-content-json", type=Path)
     parser.add_argument("--expected-path", required=True)
     parser.add_argument("--trusted-workflow", required=True, type=Path)
     args = parser.parse_args()
 
     try:
-        document = json.loads(args.github_content_json.read_text(encoding="utf-8"))
+        if args.github_content_json is None:
+            document = json.load(sys.stdin)
+        else:
+            document = json.loads(
+                args.github_content_json.read_text(encoding="utf-8")
+            )
     except (OSError, json.JSONDecodeError) as error:
         return fail(f"unable to read GitHub Contents response: {error}")
 
