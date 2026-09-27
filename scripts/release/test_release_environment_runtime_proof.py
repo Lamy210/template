@@ -45,18 +45,22 @@ def write_fake_gh(root: Path) -> Path:
             emit_runs() {
               local count
               count="$(cat "${GH_STUB_STATE}" 2>/dev/null || printf '0')"
+              if [[ "${GH_STUB_SCENARIO}" == "default-head-drift" && "${count}" == 1 ]]; then
+                printf '%s\n' '[{"total_count":1,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","head_sha":"2222222222222222222222222222222222222222","event":"workflow_dispatch"}]}]'
+                return
+              fi
               case "${count}" in
                 0)
                   printf '%s\n' '[{"total_count":0,"workflow_runs":[]}]'
                   ;;
                 1)
-                  printf '%s\n' '[{"total_count":1,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","event":"workflow_dispatch"}]}]'
+                  printf '%s\n' '[{"total_count":1,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","head_sha":"1111111111111111111111111111111111111111","event":"workflow_dispatch"}]}]'
                   ;;
                 2)
-                  printf '%s\n' '[{"total_count":2,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","event":"workflow_dispatch"}]},{"total_count":2,"workflow_runs":[{"id":101,"display_title":"Release Environment Negative Proof / proof-branch","head_branch":"environment-proof/proof","event":"workflow_dispatch"}]}]'
+                  printf '%s\n' '[{"total_count":2,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","head_sha":"1111111111111111111111111111111111111111","event":"workflow_dispatch"}]},{"total_count":2,"workflow_runs":[{"id":101,"display_title":"Release Environment Negative Proof / proof-branch","head_branch":"environment-proof/proof","head_sha":"1111111111111111111111111111111111111111","event":"workflow_dispatch"}]}]'
                   ;;
                 *)
-                  printf '%s\n' '[{"total_count":3,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","event":"workflow_dispatch"},{"id":101,"display_title":"Release Environment Negative Proof / proof-branch","head_branch":"environment-proof/proof","event":"workflow_dispatch"}]},{"total_count":3,"workflow_runs":[{"id":102,"display_title":"Release Environment Negative Proof / proof-tag","head_branch":"environment-proof-proof","event":"workflow_dispatch"}]}]'
+                  printf '%s\n' '[{"total_count":3,"workflow_runs":[{"id":100,"display_title":"Release Environment Negative Proof / proof-default","head_branch":"main","head_sha":"1111111111111111111111111111111111111111","event":"workflow_dispatch"},{"id":101,"display_title":"Release Environment Negative Proof / proof-branch","head_branch":"environment-proof/proof","head_sha":"1111111111111111111111111111111111111111","event":"workflow_dispatch"}]},{"total_count":3,"workflow_runs":[{"id":102,"display_title":"Release Environment Negative Proof / proof-tag","head_branch":"environment-proof-proof","head_sha":"1111111111111111111111111111111111111111","event":"workflow_dispatch"}]}]'
                   ;;
               esac
             }
@@ -318,6 +322,10 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("expected_ref", text)
         self.assertIn('"databaseId": run_id', text)
         self.assertIn('"displayTitle": title', text)
+        self.assertIn('"headSha": head_sha', text)
+        self.assertIn("expected_sha", text)
+        self.assertIn('item.get("headSha") == expected_sha', text)
+        self.assertIn('?ref=${default_sha}', text)
 
     def test_refuses_modified_remote_proof_workflow_before_ref_creation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -342,6 +350,24 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                 result.stderr,
             )
             self.assertFalse((root / "dispatch-state").exists())
+
+    def test_fails_if_default_branch_dispatch_uses_different_sha(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            write_fake_gh(root)
+            result = run_script(
+                "--repository",
+                "example/disposable",
+                "--confirm-disposable",
+                "example/disposable",
+                env=fake_env(root, "default-head-drift"),
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(
+            "Unable to locate fresh dispatched workflow run",
+            result.stderr,
+        )
 
     def test_fake_github_proves_branch_and_tag_are_denied_across_pages(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
