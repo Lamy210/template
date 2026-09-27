@@ -176,6 +176,27 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertIn('conclusion == "success"', text)
         self.assertIn("validator artifact", text)
 
+    def test_fresh_run_discovery_is_fully_paginated_and_event_bound(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn("gh run list", text)
+        self.assertIn(
+            '"repos/${repository}/actions/workflows/${encoded_workflow}/runs?event=${event}&per_page=100"',
+            text,
+        )
+        self.assertIn("--paginate --slurp", text)
+        self.assertIn("workflow-run discovery pages disagree on total_count", text)
+        self.assertIn(
+            "workflow-run discovery total_count={declared_total} does not match",
+            text,
+        )
+        self.assertIn("workflow-run discovery contains duplicate id", text)
+        self.assertIn("event != expected_event", text)
+        self.assertIn('"databaseId": run_id', text)
+        self.assertIn('"headBranch": head_branch', text)
+        self.assertIn('"headSha": head_sha', text)
+        self.assertNotIn('sys.stdout.write("\\\\n")', text)
+        self.assertGreaterEqual(text.count('sys.stdout.write("\\n")'), 2)
+
     def test_run_baselines_snapshot_complete_workflow_history(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertIn(

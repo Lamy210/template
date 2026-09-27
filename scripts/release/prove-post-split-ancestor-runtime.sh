@@ -282,7 +282,75 @@ fi
 list_runs() {
   local workflow="$1"
   local event="$2"
-  gh run list --repo "${repository}" --workflow "${workflow}" --event "${event}" --limit 100 --json databaseId,headBranch,headSha,status,conclusion
+  local encoded_workflow
+  encoded_workflow="$(urlencode "${workflow}")"
+
+  gh api "${api_headers[@]}" --paginate --slurp \
+    "repos/${repository}/actions/workflows/${encoded_workflow}/runs?event=${event}&per_page=100" |
+    python3 -c '
+import json
+import re
+import sys
+
+expected_event = sys.argv[1]
+pages = json.load(sys.stdin)
+if not isinstance(pages, list) or not pages:
+    raise SystemExit("workflow-run discovery pagination response must be a non-empty array")
+
+runs = []
+declared_total = None
+for page in pages:
+    if not isinstance(page, dict) or not isinstance(page.get("workflow_runs"), list):
+        raise SystemExit("workflow-run discovery page is malformed")
+    total_count = page.get("total_count")
+    if type(total_count) is not int or total_count < 0:
+        raise SystemExit("workflow-run discovery total_count is malformed")
+    if declared_total is None:
+        declared_total = total_count
+    elif total_count != declared_total:
+        raise SystemExit("workflow-run discovery pages disagree on total_count")
+    runs.extend(page["workflow_runs"])
+
+if declared_total != len(runs):
+    raise SystemExit(
+        f"workflow-run discovery total_count={declared_total} does not match "
+        f"fetched entries={len(runs)}"
+    )
+
+normalized = []
+seen = set()
+for item in runs:
+    if not isinstance(item, dict):
+        raise SystemExit("workflow-run discovery entry must be an object")
+    run_id = item.get("id")
+    head_branch = item.get("head_branch")
+    head_sha = item.get("head_sha")
+    event = item.get("event")
+    if type(run_id) is not int or run_id <= 0:
+        raise SystemExit("workflow-run discovery entry has invalid id")
+    if run_id in seen:
+        raise SystemExit(f"workflow-run discovery contains duplicate id: {run_id}")
+    seen.add(run_id)
+    if not isinstance(head_branch, str) or not head_branch:
+        raise SystemExit(f"workflow-run discovery entry {run_id} has invalid head_branch")
+    if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+        raise SystemExit(f"workflow-run discovery entry {run_id} has invalid head_sha")
+    if event != expected_event:
+        raise SystemExit(
+            f"workflow-run discovery entry {run_id} event={event!r}, "
+            f"expected {expected_event!r}"
+        )
+    normalized.append(
+        {
+            "databaseId": run_id,
+            "headBranch": head_branch,
+            "headSha": head_sha,
+        }
+    )
+
+json.dump(normalized, sys.stdout, separators=(",", ":"))
+sys.stdout.write("\n")
+' "${event}"
 }
 
 snapshot_run_ids() {
