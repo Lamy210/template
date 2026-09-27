@@ -26,7 +26,7 @@ JSON
 fi
 
 if [[ "${args}" == *"/actions/runs/9100/artifacts"* ]]; then
-  printf '{"artifacts":[]}'
+  printf '[{"total_count":0,"artifacts":[]}]'
   exit 0
 fi
 
@@ -61,6 +61,7 @@ fi
 
 grep -F 'branch=release%2F1.x&event=push&status=success&per_page=73' "${STUB_LOG}" >/dev/null
 grep -F 'actions/runs/9100/artifacts' "${STUB_LOG}" >/dev/null
+grep -F 'api --paginate --slurp repos/Lamy210/template/actions/runs/9100/artifacts?per_page=100' "${STUB_LOG}" >/dev/null
 
 assert_usage_error() {
   local value="$1"
