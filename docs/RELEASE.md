@@ -460,6 +460,8 @@ bash scripts/release/prove-post-split-ancestor-runtime.sh \
 
 The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
 
+The runner waits for the Release Build run to complete successfully, but it does **not** wait for the entire Release Publisher workflow to finish. It waits only for the exact publisher attempt's `Validate release input without secrets` job to complete successfully and for the matching validator Artifact to exist, then immediately runs the read-only auditor. This is intentional: a disposable repository may leave the downstream signing job waiting on the protected `release` Environment or may let it fail because Apple credentials are absent. Neither condition invalidates the control-code proof once the secret-free validation boundary has succeeded.
+
 When `--evidence-output` is supplied, the runner delegates evidence creation to the read-only auditor. The auditor writes schema-v4 JSON **only after** the complete runtime proof succeeds. The record captures the audited repository ID/name/default branch, initial and final default-head SHAs, strict-ancestor compare result, source and publisher workflow/run identity, the exact successful secret-free publisher validation job identity, the live release-tag ref target plus bounded annotated-tag chain and resolved source SHA, the independently re-fetched and byte-verified source Artifact ID/digest, validator Artifact ID/digest, unsigned archive digest, and validated application identity. It contains no operator timestamp or credentials. The output path must not already exist, so a previous proof record is never silently overwritten.
 
 The same evidence option is available when auditing an already-known run pair directly:
@@ -490,7 +492,7 @@ Before enabling the two-stage publisher for production, prove the architecture w
 2. Choose an older **post-split ancestor** that already contains `.github/workflows/release-build.yml` but predates the current publisher-control changes.
 3. Create a canonical stable SemVer tag such as `v0.0.1` pointing to that ancestor.
 4. Wait for that tag's **Release Build** run to complete successfully.
-5. Wait for the downstream **Release Publisher** job `Validate release input without secrets` to succeed and produce its `validated-release-input-...` artifact. The later signing/publication job may fail when the disposable repository intentionally has no Apple credentials; that does not invalidate this control-code proof.
+5. Wait only for the downstream **Release Publisher** job `Validate release input without secrets` to succeed and produce its `validated-release-input-...` artifact. The overall publisher workflow does not need to finish first. A later signing/publication job may remain blocked on Environment approval or fail when the disposable repository intentionally has no Apple credentials; neither condition invalidates this control-code proof.
 6. Record the Release Build run ID and Release Publisher run ID.
 7. Before advancing the disposable repository default branch again, run:
 
