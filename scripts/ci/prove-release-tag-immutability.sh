@@ -257,7 +257,7 @@ if not isinstance(document, dict):
 if document.get("ref") != expected_ref:
     raise SystemExit(
         f"tag ref identity mismatch: expected {expected_ref!r}, "
-        f"got {document.get("ref")!r}"
+        f"got {document.get('ref')!r}"
     )
 obj = document.get("object")
 if not isinstance(obj, dict):
