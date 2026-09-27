@@ -71,6 +71,7 @@ set -euo pipefail
 : "${TEST_UNRELATED_SHA:?TEST_UNRELATED_SHA is required}"
 args="$*"
 annotated_sha='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+nested_sha='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
 case "${args}" in
   *"/git/ref/tags/v1.0.0"*)
@@ -82,8 +83,39 @@ case "${args}" in
   *"/git/ref/tags/v1.0.1"*)
     printf '{"ref":"refs/tags/v1.0.1","object":{"type":"tag","sha":"%s"}}' "${annotated_sha}"
     ;;
+  *"/git/ref/tags/v1.0.2"*)
+    printf '{"ref":"refs/tags/v9.9.9","object":{"type":"commit","sha":"%s"}}' "${TEST_FIRST_SHA}"
+    ;;
+  *"/git/ref/tags/v1.0.3"*)
+    printf '{"ref":"refs/tags/v1.0.3","object":{"type":"tag","sha":"%s"}}' "${annotated_sha}"
+    ;;
+  *"/git/ref/tags/v1.0.4"*)
+    printf '{"ref":"refs/tags/v1.0.4","object":{"type":"tag","sha":"%s"}}' "${annotated_sha}"
+    ;;
+  *"/git/ref/tags/v1.0.5"*)
+    printf '{"ref":"refs/tags/v1.0.5","object":{"type":"tag","sha":"%s"}}' "${annotated_sha}"
+    ;;
   *"/git/tags/${annotated_sha}"*)
-    printf '{"sha":"%s","object":{"type":"commit","sha":"%s"}}' "${annotated_sha}" "${TEST_FIRST_SHA}"
+    case "${SOURCE_TAG}" in
+      v1.0.1)
+        printf '{"sha":"%s","tag":"v1.0.1","object":{"type":"commit","sha":"%s"}}' "${annotated_sha}" "${TEST_FIRST_SHA}"
+        ;;
+      v1.0.3)
+        printf '{"sha":"%s","tag":"v9.9.9","object":{"type":"commit","sha":"%s"}}' "${annotated_sha}" "${TEST_FIRST_SHA}"
+        ;;
+      v1.0.4)
+        printf '{"sha":"cccccccccccccccccccccccccccccccccccccccc","tag":"v1.0.4","object":{"type":"commit","sha":"%s"}}' "${TEST_FIRST_SHA}"
+        ;;
+      v1.0.5)
+        printf '{"sha":"%s","tag":"v1.0.5","object":{"type":"tag","sha":"%s"}}' "${annotated_sha}" "${nested_sha}"
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
+    ;;
+  *"/git/tags/${nested_sha}"*)
+    printf '{"sha":"%s","tag":"inner-release-tag","object":{"type":"commit","sha":"%s"}}' "${nested_sha}" "${TEST_FIRST_SHA}"
     ;;
   *"/git/ref/tags/v9.9.9"*)
     printf '{"ref":"refs/tags/v9.9.9","object":{"type":"commit","sha":"%s"}}' "${TEST_UNRELATED_SHA}"
@@ -119,6 +151,24 @@ resolved="$(run_verify v1.0.0 "${first}" "${second}")"
 
 annotated_resolved="$(run_verify v1.0.1 "${first}" "${second}")"
 [[ "${annotated_resolved}" == "${first}" ]]
+
+nested_resolved="$(run_verify v1.0.5 "${first}" "${second}")"
+[[ "${nested_resolved}" == "${first}" ]]
+
+if run_verify v1.0.2 "${first}" "${second}" >/dev/null 2>&1; then
+  echo 'mismatched Git ref identity was accepted' >&2
+  exit 1
+fi
+
+if run_verify v1.0.3 "${first}" "${second}" >/dev/null 2>&1; then
+  echo 'mismatched outer annotated tag name was accepted' >&2
+  exit 1
+fi
+
+if run_verify v1.0.4 "${first}" "${second}" >/dev/null 2>&1; then
+  echo 'mismatched annotated tag object SHA was accepted' >&2
+  exit 1
+fi
 
 if run_verify v01.0.0 "${first}" "${second}" >/dev/null 2>&1; then
   echo 'leading-zero stable SemVer tag was accepted' >&2
