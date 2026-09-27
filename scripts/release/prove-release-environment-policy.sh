@@ -191,8 +191,8 @@ print(sha)
 ' <<<"${commit_json}"
 )"
 
-gh api "${api_headers[@]}"   "repos/${repository}/contents/.github/workflows/${workflow_name}?ref=${encoded_default_branch}" |
-  python3 "${repo_root}/scripts/release/validate-release-environment-proof-workflow.py"     --expected-path ".github/workflows/${workflow_name}"     --trusted-workflow "${repo_root}/examples/release-environment-proof.yml"
+gh api "${api_headers[@]}" "repos/${repository}/contents/.github/workflows/${workflow_name}?ref=${encoded_default_branch}" |
+  python3 "${repo_root}/scripts/release/validate-release-environment-proof-workflow.py" --expected-path ".github/workflows/${workflow_name}" --trusted-workflow "${repo_root}/examples/release-environment-proof.yml"
 
 temp_root="$(mktemp -d "${TMPDIR:-/tmp}/release-environment-proof.XXXXXX")"
 branch_name="environment-proof/${nonce}"
