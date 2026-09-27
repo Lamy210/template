@@ -300,6 +300,7 @@ jobs:
           ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
           PUBLISHER_RUN_ID: ${{ github.run_id }}
           PUBLISHER_SHA: ${{ github.sha }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
           DMG_PATH: release-output/${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
@@ -467,6 +468,7 @@ jobs:
           TAG_NAME: ${{ inputs.source_tag }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           PUBLISHER_SHA: ${{ github.sha }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
           DMG_PATH: release-output/${{ inputs.dmg_name }}
           RELEASE_PROVENANCE_PATH: release-output/release-provenance.json
         run: bash scripts/release/publish-github-release.sh

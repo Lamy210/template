@@ -17,6 +17,7 @@ TAG_NAME="v1.2.3"
 GITHUB_REPOSITORY="example/release-repo"
 SOURCE_SHA="1111111111111111111111111111111111111111"
 PUBLISHER_SHA="2222222222222222222222222222222222222222"
+EXPECTED_REPOSITORY_ID="123"
 
 mkdir -p "${LOCAL_DIR}" "${REMOTE_DIR}" "${FAKE_BIN}"
 printf 'stable-release-payload\n' >"${DMG_PATH}"
@@ -51,6 +52,15 @@ set -euo pipefail
 printf '%s\n' "$*" >>"${GH_FAKE_LOG}"
 
 if [[ "$1" == "api" ]]; then
+  if [[ "$*" == "api repos/${GITHUB_REPOSITORY}" ]]; then
+    repository_full_name="${GITHUB_REPOSITORY}"
+    if [[ "${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" == "true" && -f "${GH_FAKE_STATE_FILE}" ]]; then
+      repository_full_name="example/renamed-release-repo"
+    fi
+    printf '{"id":%s,"full_name":"%s"}\n' "${GH_FAKE_REPOSITORY_ID:-123}" "${repository_full_name}"
+    exit 0
+  fi
+
   if [[ " $* " == *" /repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME} "* ]]; then
     resolved_sha="${SOURCE_SHA:?SOURCE_SHA is required}"
     if [[ "${GH_FAKE_TAG_DRIFT_AFTER_CREATE:-false}" == "true" && -f "${GH_FAKE_STATE_FILE}" ]]; then
@@ -177,11 +187,14 @@ run_publisher() {
     GH_FAKE_RELEASE_LIST_FAIL="${GH_FAKE_RELEASE_LIST_FAIL:-false}" \
     GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE="${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" \
     GH_FAKE_TAG_DRIFT_AFTER_CREATE="${GH_FAKE_TAG_DRIFT_AFTER_CREATE:-false}" \
+    GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE="${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" \
+    GH_FAKE_REPOSITORY_ID="${GH_FAKE_REPOSITORY_ID:-123}" \
     PATH="${FAKE_BIN}:${PATH}" \
     GH_TOKEN="test-token" \
     TAG_NAME="${TAG_NAME}" \
     SOURCE_SHA="${SOURCE_SHA}" \
     PUBLISHER_SHA="${PUBLISHER_SHA}" \
+    EXPECTED_REPOSITORY_ID="${EXPECTED_REPOSITORY_ID}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
     DMG_PATH="${DMG_PATH}" \
     RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
@@ -197,6 +210,7 @@ run_publisher_without_repository() {
     TAG_NAME="${TAG_NAME}" \
     SOURCE_SHA="${SOURCE_SHA}" \
     PUBLISHER_SHA="${PUBLISHER_SHA}" \
+    EXPECTED_REPOSITORY_ID="${EXPECTED_REPOSITORY_ID}" \
     DMG_PATH="${DMG_PATH}" \
     RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
     env -u GITHUB_REPOSITORY bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
@@ -210,6 +224,7 @@ run_publisher_without_provenance() {
     TAG_NAME="${TAG_NAME}" \
     SOURCE_SHA="${SOURCE_SHA}" \
     PUBLISHER_SHA="${PUBLISHER_SHA}" \
+    EXPECTED_REPOSITORY_ID="${EXPECTED_REPOSITORY_ID}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
     DMG_PATH="${DMG_PATH}" \
     bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
@@ -237,6 +252,30 @@ if [[ -s "${LOG_PATH}" ]]; then
   exit 1
 fi
 GITHUB_REPOSITORY="${original_repository}"
+
+: >"${LOG_PATH}"
+if EXPECTED_REPOSITORY_ID=invalid GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted a malformed expected repository ID." >&2
+  exit 1
+fi
+if [[ -s "${LOG_PATH}" ]]; then
+  echo "Publisher contacted GitHub before rejecting a malformed repository ID." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if EXPECTED_REPOSITORY_ID=999 GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted a repository API ID mismatch." >&2
+  exit 1
+fi
+if grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher reached release creation after repository ID mismatch." >&2
+  exit 1
+fi
+if ! grep -F "api repos/${GITHUB_REPOSITORY}" "${LOG_PATH}" >/dev/null; then
+  echo "Repository ID mismatch probe did not query canonical repository identity." >&2
+  exit 1
+fi
 
 : >"${LOG_PATH}"
 if GH_FAKE_RELEASE_EXISTS=false run_publisher_without_provenance; then
@@ -387,6 +426,21 @@ if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
 fi
 if [[ "$(grep -Fc "/git/ref/tags/${TAG_NAME}" "${LOG_PATH}")" -lt 2 ]]; then
   echo "Publisher did not rebind the release tag both before and after publication." >&2
+  exit 1
+fi
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=false GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE=true run_publisher; then
+  echo "Publisher accepted a repository rename during publication." >&2
+  exit 1
+fi
+if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Repository-drift publication probe did not create a release first." >&2
+  exit 1
+fi
+if [[ "$(grep -Fc "api repos/${GITHUB_REPOSITORY}" "${LOG_PATH}")" -lt 2 ]]; then
+  echo "Publisher did not rebind repository identity both before and after publication." >&2
   exit 1
 fi
 rm -f "${STATE_FILE}"

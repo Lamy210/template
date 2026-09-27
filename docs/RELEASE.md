@@ -312,7 +312,9 @@ Stable releases are append-never/replace-never.
 
 - requires and validates explicit `GITHUB_REPOSITORY=owner/repo` identity, and passes it to every GitHub Release read/write/download operation instead of relying on ambient Git remote state;
 - validates the stable SemVer tag, literal `.dmg` basename, and complete immutable three-asset name set before any GitHub Release lookup or mutation;
-- requires the validated source SHA and trusted publisher SHA, then re-runs the live tag/source/history verifier immediately before GitHub Release state is read or mutated and again after all remote assets have been re-downloaded and byte-checked;
+- requires the validated source SHA, trusted publisher SHA, and stable `github.repository_id`; before publication it resolves the canonical repository API object and requires both repository ID and case-insensitive full-name identity to match the workflow context;
+- re-runs the live tag/source/history verifier immediately before GitHub Release state is read or mutated and again after all remote assets have been re-downloaded and byte-checked;
+- after remote asset verification, re-resolves repository identity and refuses success if repository ID/full name changed during publication;
 - requires the canonical `release-provenance.json` asset; omission or renaming fails before any GitHub call;
 - requires the DMG, checksum, and provenance inputs to be regular non-symlink files;
 - enumerates releases through the paginated GitHub API in the explicitly bound repository before deciding that a tag has no release; API/auth/network failure is treated as unknown state and fails closed rather than as absence;
