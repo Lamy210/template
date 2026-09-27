@@ -44,6 +44,18 @@ class HistoricalReleaseBuildWorkflowTests(unittest.TestCase):
         text = workflow_text()
         self.assertEqual(text, decode_github_contents_document(github_document(text)))
 
+    def test_decodes_wrapped_github_contents_base64(self) -> None:
+        text = workflow_text()
+        document = github_document(text)
+        content = document["content"]
+        self.assertIsInstance(content, str)
+        document["content"] = "\n".join(
+            content[index : index + 60]
+            for index in range(0, len(content), 60)
+        )
+
+        self.assertEqual(text, decode_github_contents_document(document))
+
     def test_rejects_malformed_github_contents_identity(self) -> None:
         mutations = (
             ("type", lambda document: document.__setitem__("type", "symlink")),
