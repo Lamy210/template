@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
 from scripts.release.post_split_proof_evidence import (
     EvidenceError,
     build_evidence,
+    validate_evidence_document,
     write_evidence,
 )
 
@@ -25,6 +28,8 @@ VALIDATOR_ARTIFACT_DIGEST = "sha256:" + "c" * 64
 SOURCE_ARTIFACT_ID = 404
 SOURCE_ARTIFACT_DIGEST = "sha256:" + "a" * 64
 ARCHIVE_DIGEST = "sha256:" + "b" * 64
+REPO_ROOT = Path(__file__).resolve().parents[2]
+VERIFY_SCRIPT = REPO_ROOT / "scripts/release/verify-post-split-proof-evidence.py"
 
 
 def inputs() -> dict[str, object]:
@@ -79,9 +84,13 @@ def inputs() -> dict[str, object]:
     }
 
 
+def valid_evidence() -> dict[str, object]:
+    return build_evidence(**inputs())
+
+
 class PostSplitProofEvidenceTests(unittest.TestCase):
     def test_builds_closed_deterministic_verified_evidence(self) -> None:
-        evidence = build_evidence(**inputs())
+        evidence = valid_evidence()
 
         self.assertEqual(
             {
@@ -137,10 +146,15 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
     def test_rejects_unverified_or_malformed_facts(self) -> None:
         mutations = (
             ("repository id", lambda data: data["repository"].__setitem__("id", True)),
-            ("source tag", lambda data: data["source_run"].__setitem__("head_branch", "main")),
+            (
+                "source tag",
+                lambda data: data["source_run"].__setitem__("head_branch", "main"),
+            ),
             (
                 "default head drift",
-                lambda data: data["final_default_commit"].__setitem__("sha", "2" * 40),
+                lambda data: data["final_default_commit"].__setitem__(
+                    "sha", "2" * 40
+                ),
             ),
             (
                 "validator digest",
@@ -164,8 +178,103 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                 with self.assertRaises(EvidenceError):
                     build_evidence(**data)
 
+    def test_validates_closed_schema_and_internal_consistency(self) -> None:
+        self.assertEqual([], validate_evidence_document(valid_evidence()))
+
+        mutations = (
+            (
+                "unexpected top-level field",
+                lambda document: document.__setitem__("unexpected", True),
+                "unexpected fields",
+            ),
+            (
+                "missing source field",
+                lambda document: document["source"].pop("artifactDigest"),
+                "source missing fields",
+            ),
+            (
+                "schema downgrade",
+                lambda document: document.__setitem__("schemaVersion", 1),
+                "schemaVersion",
+            ),
+            (
+                "source workflow drift",
+                lambda document: document["source"].__setitem__(
+                    "workflowPath", ".github/workflows/other.yml"
+                ),
+                "source.workflowPath",
+            ),
+            (
+                "publisher workflow drift",
+                lambda document: document["publisher"].__setitem__(
+                    "workflowName", "Other Publisher"
+                ),
+                "publisher.workflowName",
+            ),
+            (
+                "default-head drift",
+                lambda document: document["defaultHead"].__setitem__(
+                    "finalSHA", "2" * 40
+                ),
+                "defaultHead.finalSHA must equal publisher.sha",
+            ),
+            (
+                "ancestor drift",
+                lambda document: document["ancestor"].__setitem__(
+                    "mergeBaseSHA", "3" * 40
+                ),
+                "ancestor.mergeBaseSHA must equal source.sha",
+            ),
+            (
+                "version drift",
+                lambda document: document["application"].__setitem__(
+                    "version", "9.9.9"
+                ),
+                "source.tag and application.version are inconsistent",
+            ),
+            (
+                "boolean identity",
+                lambda document: document["publisher"].__setitem__("runId", True),
+                "publisher.runId",
+            ),
+            (
+                "same source/publisher sha",
+                lambda document: document["publisher"].__setitem__(
+                    "sha", document["source"]["sha"]
+                ),
+                "source.sha must differ from publisher.sha",
+            ),
+            (
+                "same source/validator artifact id",
+                lambda document: document["publisher"].__setitem__(
+                    "validatorArtifactId", document["source"]["artifactId"]
+                ),
+                "source.artifactId must differ",
+            ),
+        )
+
+        for label, mutate, expected_error in mutations:
+            with self.subTest(label=label):
+                document = json.loads(json.dumps(valid_evidence()))
+                mutate(document)
+                errors = validate_evidence_document(document)
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+
+    def test_writer_refuses_invalid_evidence(self) -> None:
+        evidence = valid_evidence()
+        evidence["source"]["workflowName"] = "Wrong Build"
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "proof.json"
+            with self.assertRaises(EvidenceError):
+                write_evidence(output, evidence)
+            self.assertFalse(output.exists())
+
     def test_writer_is_exclusive_and_never_clobbers_prior_evidence(self) -> None:
-        evidence = build_evidence(**inputs())
+        evidence = valid_evidence()
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "proof.json"
             write_evidence(output, evidence)
@@ -173,6 +282,56 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
             with self.assertRaises(EvidenceError):
                 write_evidence(output, evidence)
             self.assertEqual(first_bytes, output.read_bytes())
+
+    def test_offline_verifier_cli_accepts_valid_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "proof.json"
+            path.write_text(
+                json.dumps(valid_evidence(), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, str(VERIFY_SCRIPT), str(path)],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("structurally valid and internally consistent", result.stdout)
+
+    def test_offline_verifier_cli_rejects_invalid_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "proof.json"
+            evidence = valid_evidence()
+            evidence["defaultHead"]["finalSHA"] = "2" * 40
+            path.write_text(json.dumps(evidence) + "\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(VERIFY_SCRIPT), str(path)],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("defaultHead.finalSHA must equal publisher.sha", result.stderr)
+
+    def test_offline_verifier_cli_reports_malformed_json_separately(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "proof.json"
+            path.write_text("{not-json\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(VERIFY_SCRIPT), str(path)],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("unable to read proof evidence", result.stderr)
 
 
 if __name__ == "__main__":
