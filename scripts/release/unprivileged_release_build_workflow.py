@@ -58,8 +58,13 @@ def decode_github_contents_document(
     if not isinstance(content, str) or not content:
         raise WorkflowValidationError("GitHub Contents workflow content must be non-empty")
 
+    normalized_content = "".join(content.split())
+    if not normalized_content:
+        raise WorkflowValidationError(
+            "GitHub Contents workflow content must contain base64 payload"
+        )
     try:
-        payload = base64.b64decode(content, validate=True)
+        payload = base64.b64decode(normalized_content, validate=True)
     except (binascii.Error, ValueError) as error:
         raise WorkflowValidationError(
             f"GitHub Contents workflow content is not valid base64: {error}"
