@@ -10,30 +10,47 @@ from scripts.homebrew.tap_remote import validate_tap_remote_urls
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/homebrew/validate-tap-remote.py"
-HTTPS = "https://github.com/example/homebrew-tap"
+HTTPS_WEB = "https://github.com/example/homebrew-tap"
+HTTPS_CLONE = f"{HTTPS_WEB}.git"
 SSH = "git@github.com:example/homebrew-tap.git"
 
 
 class TapRemoteTests(unittest.TestCase):
-    def validate(self, fetch_url: str, push_url: str) -> list[str]:
+    def validate(
+        self,
+        fetch_url: str,
+        push_url: str,
+        *,
+        canonical_https_url: str = HTTPS_CLONE,
+        canonical_ssh_url: str = SSH,
+    ) -> list[str]:
         return validate_tap_remote_urls(
             fetch_url=fetch_url,
             push_url=push_url,
-            canonical_https_url=HTTPS,
-            canonical_ssh_url=SSH,
+            canonical_https_url=canonical_https_url,
+            canonical_ssh_url=canonical_ssh_url,
         )
 
     def test_accepts_canonical_https_clone_url(self) -> None:
-        self.assertEqual([], self.validate(f"{HTTPS}.git", f"{HTTPS}.git"))
+        self.assertEqual([], self.validate(HTTPS_CLONE, HTTPS_CLONE))
 
     def test_accepts_canonical_https_web_form(self) -> None:
-        self.assertEqual([], self.validate(HTTPS, HTTPS))
+        self.assertEqual([], self.validate(HTTPS_WEB, HTTPS_WEB))
 
     def test_accepts_canonical_ssh_url(self) -> None:
         self.assertEqual([], self.validate(SSH, SSH))
 
     def test_accepts_fetch_and_push_using_different_canonical_protocols(self) -> None:
-        self.assertEqual([], self.validate(f"{HTTPS}.git", SSH))
+        self.assertEqual([], self.validate(HTTPS_CLONE, SSH))
+
+    def test_accepts_repository_case_differences(self) -> None:
+        self.assertEqual(
+            [],
+            self.validate(
+                "https://github.com/EXAMPLE/HOMEBREW-TAP.git",
+                "git@github.com:EXAMPLE/HOMEBREW-TAP.git",
+            ),
+        )
 
     def test_rejects_sibling_repository(self) -> None:
         errors = self.validate(
@@ -53,29 +70,98 @@ class TapRemoteTests(unittest.TestCase):
     def test_rejects_embedded_credentials(self) -> None:
         errors = self.validate(
             "https://token@github.com/example/homebrew-tap.git",
-            f"{HTTPS}.git",
+            HTTPS_CLONE,
+        )
+        self.assertTrue(any("fetch URL" in error for error in errors))
+
+    def test_rejects_double_git_suffix(self) -> None:
+        errors = self.validate(
+            f"{HTTPS_CLONE}.git",
+            HTTPS_CLONE,
         )
         self.assertTrue(any("fetch URL" in error for error in errors))
 
     def test_rejects_multiple_effective_push_urls(self) -> None:
         errors = self.validate(
-            f"{HTTPS}.git",
-            f"{HTTPS}.git\nhttps://github.com/example/other.git",
+            HTTPS_CLONE,
+            f"{HTTPS_CLONE}\nhttps://github.com/example/other.git",
         )
         self.assertTrue(any("single canonical line" in error for error in errors))
 
     def test_rejects_multiline_remote(self) -> None:
-        errors = self.validate(f"{HTTPS}.git\nhttps://evil.example/repo.git", SSH)
+        errors = self.validate(
+            f"{HTTPS_CLONE}\nhttps://evil.example/repo.git",
+            SSH,
+        )
         self.assertTrue(any("single canonical line" in error for error in errors))
+
+    def test_rejects_noncanonical_https_identity(self) -> None:
+        for value in (
+            HTTPS_WEB,
+            "http://github.com/example/homebrew-tap.git",
+            "https://token@github.com/example/homebrew-tap.git",
+            f"{HTTPS_CLONE}?x=1",
+            f"{HTTPS_CLONE}#fragment",
+        ):
+            with self.subTest(value=value):
+                errors = self.validate(
+                    HTTPS_CLONE,
+                    SSH,
+                    canonical_https_url=value,
+                )
+                self.assertTrue(
+                    any("canonical HTTPS URL" in error for error in errors),
+                    errors,
+                )
+
+    def test_rejects_noncanonical_ssh_identity(self) -> None:
+        for value in (
+            "ssh://git@github.com/example/homebrew-tap.git",
+            "git@github.com:example/homebrew-tap",
+            "-oProxyCommand=evil",
+        ):
+            with self.subTest(value=value):
+                errors = self.validate(
+                    HTTPS_CLONE,
+                    SSH,
+                    canonical_ssh_url=value,
+                )
+                self.assertTrue(
+                    any("canonical SSH URL" in error for error in errors),
+                    errors,
+                )
+
+    def test_rejects_mismatched_canonical_repository_pair(self) -> None:
+        errors = self.validate(
+            HTTPS_CLONE,
+            SSH,
+            canonical_ssh_url="git@github.com:example/other-tap.git",
+        )
+        self.assertTrue(
+            any("same repository" in error for error in errors),
+            errors,
+        )
+
+    def test_rejects_dot_repository_components(self) -> None:
+        errors = self.validate(
+            HTTPS_CLONE,
+            SSH,
+            canonical_https_url="https://github.com/example/...git",
+            canonical_ssh_url="git@github.com:example/...git",
+        )
+        self.assertTrue(
+            any("invalid repository component" in error for error in errors),
+            errors,
+        )
 
     def test_cli_rejects_unbound_push_remote(self) -> None:
         result = subprocess.run(
             [
                 sys.executable,
                 str(CLI),
-                f"--fetch-url={HTTPS}.git",
+                f"--fetch-url={HTTPS_CLONE}",
                 "--push-url=https://github.com/example/other.git",
-                f"--canonical-https-url={HTTPS}",
+                f"--canonical-https-url={HTTPS_CLONE}",
                 f"--canonical-ssh-url={SSH}",
             ],
             cwd=REPO_ROOT,
