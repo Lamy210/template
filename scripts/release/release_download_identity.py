@@ -108,6 +108,7 @@ def validate_release_download_identity(
     expected_repository: str,
     expected_tag: str,
     expected_asset_names: list[str],
+    require_immutable: bool = False,
 ) -> tuple[list[str], ReleaseDownloadIdentity | None]:
     errors: list[str] = []
 
@@ -115,6 +116,9 @@ def validate_release_download_identity(
         errors.append("expected repository must use canonical owner/repo form")
     if not isinstance(expected_tag, str) or TAG_RE.fullmatch(expected_tag) is None:
         errors.append("expected tag must match stable SemVer form vX.Y.Z")
+    if type(require_immutable) is not bool:
+        errors.append("require_immutable must be boolean")
+
     if not expected_asset_names:
         errors.append("expected asset set must not be empty")
     elif len(set(expected_asset_names)) != len(expected_asset_names):
@@ -145,6 +149,8 @@ def validate_release_download_identity(
     immutable = document.get("immutable")
     if type(immutable) is not bool:
         errors.append("release immutable flag must be boolean")
+    elif require_immutable and not immutable:
+        errors.append("release must be natively immutable")
 
     if (
         type(release_id) is int
