@@ -50,6 +50,7 @@ git clone --no-tags "${origin}" "${clone}" >/dev/null 2>&1
 
 STUB_BIN="${TEMP_ROOT}/bin"
 mkdir -p "${STUB_BIN}"
+REPOSITORY_STATE="${TEMP_ROOT}/repository-state"
 
 cat >"${STUB_BIN}/git" <<STUB
 #!/usr/bin/env bash
@@ -69,9 +70,36 @@ set -euo pipefail
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 : "${TEST_FIRST_SHA:?TEST_FIRST_SHA is required}"
 : "${TEST_UNRELATED_SHA:?TEST_UNRELATED_SHA is required}"
+: "${GH_STUB_SCENARIO:?GH_STUB_SCENARIO is required}"
+: "${GH_STUB_REPOSITORY_STATE:?GH_STUB_REPOSITORY_STATE is required}"
 args="$*"
 annotated_sha='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 nested_sha='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+if [[ "${args}" == "api --method GET repos/Lamy210/template" ]]; then
+  count="$(cat "${GH_STUB_REPOSITORY_STATE}" 2>/dev/null || printf '0')"
+  count=$((count + 1))
+  printf '%s\n' "${count}" >"${GH_STUB_REPOSITORY_STATE}"
+
+  repository_id=1367784801
+  full_name="Lamy210/template"
+  case "${GH_STUB_SCENARIO}" in
+    wrong-repository-id)
+      repository_id=9999
+      ;;
+    wrong-repository-name)
+      full_name="Lamy210/other"
+      ;;
+    repository-drift)
+      if ((count >= 2)); then
+        repository_id=9999
+      fi
+      ;;
+  esac
+
+  printf '{"id":%s,"full_name":"%s"}' "${repository_id}" "${full_name}"
+  exit 0
+fi
 
 case "${args}" in
   *"/git/ref/tags/v1.0.0"*)
@@ -132,13 +160,18 @@ run_verify() {
   local tag="$1"
   local source_sha="$2"
   local publisher_sha="$3"
+  local scenario="${4:-success}"
+  rm -f "${REPOSITORY_STATE}"
   (
     cd "${clone}"
     PATH="${STUB_BIN}:${PATH}" \
       GH_TOKEN="test-token" \
       GITHUB_REPOSITORY="Lamy210/template" \
+      EXPECTED_REPOSITORY_ID="1367784801" \
       TEST_FIRST_SHA="${first}" \
       TEST_UNRELATED_SHA="${unrelated}" \
+      GH_STUB_SCENARIO="${scenario}" \
+      GH_STUB_REPOSITORY_STATE="${REPOSITORY_STATE}" \
       SOURCE_TAG="${tag}" \
       SOURCE_SHA="${source_sha}" \
       PUBLISHER_SHA="${publisher_sha}" \
@@ -154,6 +187,21 @@ annotated_resolved="$(run_verify v1.0.1 "${first}" "${second}")"
 
 nested_resolved="$(run_verify v1.0.5 "${first}" "${second}")"
 [[ "${nested_resolved}" == "${first}" ]]
+
+if run_verify v1.0.0 "${first}" "${second}" wrong-repository-id >/dev/null 2>&1; then
+  echo 'mismatched source repository ID was accepted' >&2
+  exit 1
+fi
+
+if run_verify v1.0.0 "${first}" "${second}" wrong-repository-name >/dev/null 2>&1; then
+  echo 'mismatched source repository full_name was accepted' >&2
+  exit 1
+fi
+
+if run_verify v1.0.0 "${first}" "${second}" repository-drift >/dev/null 2>&1; then
+  echo 'source repository identity drift during tag verification was accepted' >&2
+  exit 1
+fi
 
 if run_verify v1.0.2 "${first}" "${second}" >/dev/null 2>&1; then
   echo 'mismatched Git ref identity was accepted' >&2
@@ -192,6 +240,20 @@ fi
 
 if run_verify v1.0.0 INVALID "${second}" >/dev/null 2>&1; then
   echo 'invalid source SHA was accepted' >&2
+  exit 1
+fi
+
+if (
+  cd "${clone}"
+  PATH="${STUB_BIN}:${PATH}" \
+    GH_TOKEN="test-token" \
+    GITHUB_REPOSITORY="Lamy210/template" \
+    SOURCE_TAG="v1.0.0" \
+    SOURCE_SHA="${first}" \
+    PUBLISHER_SHA="${second}" \
+    env -u EXPECTED_REPOSITORY_ID bash "${VERIFIER}"
+) >/dev/null 2>&1; then
+  echo 'missing EXPECTED_REPOSITORY_ID was accepted' >&2
   exit 1
 fi
 
