@@ -262,6 +262,7 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
+            self.assertEqual(0, first.returncode, first.stderr)
             original = output.read_text(encoding="utf-8")
             second = subprocess.run(
                 command,
@@ -272,7 +273,6 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
             )
             after_second = output.read_text(encoding="utf-8")
 
-        self.assertEqual(0, first.returncode, first.stderr)
         self.assertEqual(1, second.returncode)
         self.assertEqual(original, after_second)
 
