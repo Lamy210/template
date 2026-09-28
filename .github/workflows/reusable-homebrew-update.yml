@@ -141,27 +141,18 @@ jobs:
           SOURCE_TAG: ${{ inputs.source_tag }}
           DMG_NAME: ${{ inputs.dmg_name }}
           EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
           EXPECTED_PUBLISHER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          mkdir -p release-assets
-          gh release view "${SOURCE_TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --json assets,isDraft,isPrerelease,tagName \
-            >release-assets/release.json
-          python3 source/scripts/release/verify-release-state.py \
-            --metadata release-assets/release.json \
+          bash source/scripts/release/download-exact-release-assets.sh \
+            --repository "${EXPECTED_REPOSITORY}" \
+            --repository-id "${EXPECTED_REPOSITORY_ID}" \
             --tag "${SOURCE_TAG}" \
+            --output-dir release-assets \
             --asset "${DMG_NAME}" \
             --asset "${DMG_NAME}.sha256" \
             --asset release-provenance.json
-
-          for asset_name in "${DMG_NAME}" "${DMG_NAME}.sha256" release-provenance.json; do
-            gh release download "${SOURCE_TAG}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --pattern "${asset_name}" \
-              --dir release-assets
-          done
 
           sha256="$(
             python3 source/scripts/release/verify-published-release-assets.py \
