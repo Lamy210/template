@@ -130,7 +130,9 @@ fi
 temp_root="$(mktemp -d)"
 staging_dir=""
 cleanup() {
-  rm -rf "${temp_root}"
+  if [[ -n "${temp_root}" && -d "${temp_root}" ]]; then
+    rm -rf "${temp_root}"
+  fi
   if [[ -n "${staging_dir}" && -d "${staging_dir}" ]]; then
     rm -rf "${staging_dir}"
   fi
@@ -343,6 +345,12 @@ fi
 
 cp "${manifest_before}" "${staging_dir}/release-download-manifest.json"
 
+if ! rm -rf "${temp_root}"; then
+  echo "Failed to clean temporary release metadata before publishing verified assets." >&2
+  exit 1
+fi
+temp_root=""
+
 if [[ -e "${output_dir}" || -L "${output_dir}" ]]; then
   echo "Output directory appeared during verified downloads: ${output_dir}" >&2
   exit 1
@@ -368,6 +376,4 @@ then
   exit 1
 fi
 staging_dir=""
-
 trap - EXIT
-rm -rf "${temp_root}"
