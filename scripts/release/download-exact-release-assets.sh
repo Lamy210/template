@@ -121,8 +121,19 @@ resolver="${repo_root}/scripts/release/resolve-release-download.py"
 }
 
 temp_root="$(mktemp -d)"
+output_parent="$(dirname "${output_dir}")"
+output_name="$(basename "${output_dir}")"
+if [[ ! -d "${output_parent}" ]]; then
+  echo "Output parent directory does not exist: ${output_parent}" >&2
+  exit 2
+fi
+staging_dir="$(mktemp -d "${output_parent%/}/.${output_name}.partial.XXXXXX")"
+
 cleanup() {
   rm -rf "${temp_root}"
+  if [[ -n "${staging_dir:-}" && -d "${staging_dir}" ]]; then
+    rm -rf "${staging_dir}"
+  fi
 }
 trap cleanup EXIT
 
@@ -247,16 +258,124 @@ for asset in assets:
     print(f"{asset_id}\t{name}\t{digest}\t{size}")
 PY
 
-mkdir "${output_dir}"
+while IFS=  [[ -n "${asset_id}" && -n "${asset_name}" && -n "${expected_digest}" && -n "${expected_size}" ]] || {
+    echo "Release download plan contains an empty field." >&2
+    exit 1
+  }
 
-while IFS=$'\t' read -r asset_id asset_name expected_digest expected_size; do
+  partial="${staging_dir}/.${asset_name}.partial"
+  destination="${staging_dir}/${asset_name}"
+  if ! gh api \
+    -H 'Accept: application/octet-stream' \
+    -H 'X-GitHub-Api-Version: 2026-03-10' \
+    --method GET \
+    "repos/${repository}/releases/assets/${asset_id}" >"${partial}"; then
+    echo "Failed to download exact release asset id ${asset_id} (${asset_name})." >&2
+    exit 1
+  fi
+
+  actual_digest="$(
+    python3 - "${partial}" <<'PY'
+from pathlib import Path
+import hashlib
+import sys
+
+path = Path(sys.argv[1])
+print("sha256:" + hashlib.sha256(path.read_bytes()).hexdigest())
+PY
+  )"
+  if [[ "${actual_digest}" != "${expected_digest}" ]]; then
+    echo "Downloaded release asset digest mismatch for ${asset_name}." >&2
+    exit 1
+  fi
+
+  actual_size="$(
+    python3 - "${partial}" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).stat().st_size)
+PY
+  )"
+  if [[ "${actual_size}" != "${expected_size}" ]]; then
+    echo "Downloaded release asset size mismatch for ${asset_name}." >&2
+    exit 1
+  fi
+
+  mv "${partial}" "${destination}"
+done <"${plan}"
+
+metadata_after="${temp_root}/release-after.json"
+manifest_after="${temp_root}/manifest-after.json"
+if ! gh api "${api_headers[@]}" --method GET \
+  "repos/${repository}/releases/${release_id}" >"${metadata_after}"; then
+  echo "Failed to re-resolve release id ${release_id} after downloads." >&2
+  exit 1
+fi
+
+resolver_args=(
+  --metadata "${metadata_after}"
+  --repository "${repository}"
+  --tag "${tag}"
+  --output "${manifest_after}"
+)
+for asset_name in "${assets[@]}"; do
+  resolver_args+=(--asset "${asset_name}")
+done
+python3 "${resolver}" "${resolver_args[@]}"
+
+if ! cmp -s "${manifest_before}" "${manifest_after}"; then
+  echo "Release or asset identity changed during exact downloads." >&2
+  exit 1
+fi
+
+if ! final_repository_identity="$(repository_identity)"; then
+  echo "Unable to rebind release repository identity after downloads." >&2
+  exit 1
+fi
+if [[ "${final_repository_identity}" != "${initial_repository_identity}" ]]; then
+  echo "Release repository identity changed during exact downloads." >&2
+  exit 1
+fi
+
+cp "${manifest_before}" "${staging_dir}/release-download-manifest.json"
+
+if [[ -e "${output_dir}" || -L "${output_dir}" ]]; then
+  echo "Output directory appeared during verified downloads: ${output_dir}" >&2
+  exit 1
+fi
+
+if ! python3 - "${staging_dir}" "${output_dir}" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+
+if not source.is_dir() or source.is_symlink():
+    raise SystemExit("staging output must be a real directory")
+if destination.exists() or destination.is_symlink():
+    raise SystemExit(f"final output already exists: {destination}")
+
+os.rename(source, destination)
+PY
+then
+  echo "Failed to publish verified release assets transactionally: ${output_dir}" >&2
+  exit 1
+fi
+staging_dir=""
+
+trap - EXIT
+rm -rf "${temp_root}"
+\t' read -r asset_id asset_name expected_digest expected_size; do
   [[ -n "${asset_id}" && -n "${asset_name}" && -n "${expected_digest}" && -n "${expected_size}" ]] || {
     echo "Release download plan contains an empty field." >&2
     exit 1
   }
 
-  partial="${output_dir}/.${asset_name}.partial"
-  destination="${output_dir}/${asset_name}"
+  partial="${staging_dir}/.${asset_name}.partial"
+  destination="${staging_dir}/${asset_name}"
   if ! gh api \
     -H 'Accept: application/octet-stream' \
     -H 'X-GitHub-Api-Version: 2026-03-10' \
