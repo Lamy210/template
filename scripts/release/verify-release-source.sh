@@ -58,7 +58,7 @@ git cat-file -e "${SOURCE_SHA}^{commit}" 2>/dev/null || {
 
 repository_identity() {
   local response
-  if ! response="$(gh api --method GET "repos/${GITHUB_REPOSITORY}")"; then
+  if ! response="$(gh api "repos/${GITHUB_REPOSITORY}")"; then
     echo "Failed to resolve source repository identity." >&2
     return 1
   fi
