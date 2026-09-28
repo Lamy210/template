@@ -83,9 +83,9 @@ GITHUB_REF_TYPE
 
 to determine the application release version.
 
-The updater downloads `${dmg_name}.sha256` from the immutable GitHub Release for exactly `source_tag`, renders the Cask from that version/checksum, and names the tap automation branch from the same validated identity.
+The updater resolves the GitHub REST Release object for exactly `source_tag` once, snapshots the positive numeric Release ID and the exact three expected asset IDs, GitHub-provided SHA-256 digests, sizes, and canonical API/download URLs, then downloads each asset through `/releases/assets/<asset_id>` rather than resolving it again by tag/name. Each downloaded file must match the snapshotted GitHub digest and size. After all downloads, the updater re-fetches the same numeric Release ID and requires the complete download manifest to remain byte-for-byte identical before using the DMG/checksum/provenance. The source repository numeric ID/full name is also rebound before and after this unit.
 
-This prevents the default-branch publisher's own ref context from being mistaken for the released application tag.
+The updater then renders the Cask from the same validated `source_tag` and published checksum and names the tap automation branch from that identity. This prevents the default-branch publisher's own ref context from being mistaken for the released application tag and prevents a release/asset replacement race between metadata lookup and download.
 
 The Cask filename template is also bound to the exact published DMG identity. Before the Homebrew tap credential is used, the updater expands the single required `#{version}` placeholder in `dmg_basename_template` with the validated `source_tag` version and requires the result to equal `dmg_name` byte-for-byte. A configuration such as:
 
@@ -105,6 +105,29 @@ bundle_id          == validated_bundle_id
 ```
 
 The trusted Homebrew `app_name` and `bundle_id` remain the values used to render the Cask. Validator-owned values are not allowed to silently redefine publisher policy; a disagreement fails closed instead.
+
+## Published asset download contract
+
+The exact downloader is:
+
+```text
+scripts/release/download-exact-release-assets.sh
+```
+
+It treats GitHub REST Release metadata as a closed identity snapshot before the tap credential is used. The snapshot requires:
+
+- one positive numeric Release ID;
+- the exact stable `source_tag`;
+- published/non-prerelease state;
+- a boolean native `immutable` flag recorded as evidence (native immutability is not yet required by this consumer contract);
+- exactly the expected DMG, checksum, and `release-provenance.json` names;
+- one unique positive asset ID per name;
+- `state=uploaded`;
+- positive size;
+- GitHub `sha256:<64 lowercase hex>` digest;
+- canonical repository-bound API URL and browser download URL.
+
+Downloads use the snapshotted asset IDs directly and verify both bytes and size. The same numeric Release ID is then resolved again and the canonical manifest must be unchanged. Tag-name pattern downloads such as `gh release download --pattern` are intentionally not part of this path.
 
 ## Published checksum contract
 
