@@ -621,6 +621,7 @@ jobs:
             python3 source/scripts/homebrew/select-tap-pull-request.py \
               --metadata "${pr_metadata}" \
               --repository "${TAP_REPOSITORY}" \
+              --repository-id "${EXPECTED_TAP_REPOSITORY_ID}" \
               --head "${BRANCH}" \
               --base "${TAP_DEFAULT_BRANCH}" \
               --head-sha "${PUSHED_SHA}" \
@@ -778,6 +779,7 @@ jobs:
             python3 source/scripts/homebrew/select-tap-pull-request.py \
               --metadata "${pr_metadata}" \
               --repository "${TAP_REPOSITORY}" \
+              --repository-id "${EXPECTED_TAP_REPOSITORY_ID}" \
               --head "${BRANCH}" \
               --base "${TAP_DEFAULT_BRANCH}" \
               --head-sha "${PUSHED_SHA}" \

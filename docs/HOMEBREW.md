@@ -166,7 +166,7 @@ On every run, the updater:
 5. renders only the intended Cask change;
 6. revalidates the same numeric repository ID, canonical repository/default-branch identity, and effective origin remote before branch mutation, after no-op cleanup, around pull-request mutation, and during final acceptance;
 7. updates an existing automation branch with an exact-SHA `--force-with-lease`, so a concurrent or unexpected remote rewrite causes the run to fail instead of being overwritten;
-8. immediately before creating a tap pull request, re-reads the automation branch and requires it to still equal the exact trusted pushed commit; it repeats the repository/remote/branch preflight after the create attempt before accepting the PR identity.
+8. immediately before creating a tap pull request, re-reads the automation branch and requires it to still equal the exact trusted pushed commit; every paginated PR payload is also bound to the captured tap repository numeric ID for both base and same-repository head identity, and the workflow repeats the repository/remote/branch preflight after the create attempt before accepting the PR identity.
 
 If the existing automation branch contains stale or unrelated commits, those commits are not carried forward. If the desired Cask is already identical, an existing remote automation branch is still reset to the trusted default-branch state using the same lease check.
 

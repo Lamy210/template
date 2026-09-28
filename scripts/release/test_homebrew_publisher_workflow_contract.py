@@ -449,6 +449,10 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--head "${BRANCH}"', block)
         self.assertIn('--base "${TAP_DEFAULT_BRANCH}"', block)
         self.assertIn('--head-sha "${PUSHED_SHA}"', block)
+        self.assertIn(
+            '--repository-id "${EXPECTED_TAP_REPOSITORY_ID}"',
+            block,
+        )
         self.assertIn("--rest-pages", block)
         self.assertIn("PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}", block)
         self.assertIn(
@@ -514,6 +518,14 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('if [[ "${remote_sha}" != "${PUSHED_SHA}" ]]', final_step)
         self.assertIn("Automation branch moved after the trusted push.", final_step)
         self.assertIn("source/scripts/homebrew/select-tap-pull-request.py", final_step)
+        self.assertIn(
+            '--repository-id "${EXPECTED_TAP_REPOSITORY_ID}"',
+            final_step,
+        )
+        self.assertIn(
+            "EXPECTED_TAP_REPOSITORY_ID: ${{ steps.tap_identity.outputs.repository_id }}",
+            final_step,
+        )
         self.assertNotIn("gh pr list", final_step)
         self.assertIn("gh api", final_step)
         self.assertIn("--method GET", final_step)

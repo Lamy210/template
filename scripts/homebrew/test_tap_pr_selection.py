@@ -9,6 +9,8 @@ from scripts.homebrew.tap_pr_selection import (
 
 
 REPOSITORY = "example/homebrew-tap"
+REPOSITORY_ID = 123
+FOREIGN_REPOSITORY_ID = 456
 HEAD = "automation/example-v1.2.3"
 BASE = "main"
 HEAD_SHA = "a" * 40
@@ -18,12 +20,21 @@ def pr(
     number: int,
     repository: str,
     *,
+    repository_id: int | None = None,
+    base_repository: str = REPOSITORY,
+    base_repository_id: int = REPOSITORY_ID,
     cross_repository: bool,
     head: str = HEAD,
     base: str = BASE,
     head_sha: str = HEAD_SHA,
 ) -> dict[str, object]:
     owner, name = repository.split("/", 1)
+    if repository_id is None:
+        repository_id = (
+            REPOSITORY_ID
+            if repository.lower() == REPOSITORY.lower()
+            else FOREIGN_REPOSITORY_ID
+        )
     return {
         "number": number,
         "headRefName": head,
@@ -31,8 +42,13 @@ def pr(
         "headRepository": {
             "name": name,
             "nameWithOwner": repository,
+            "databaseId": repository_id,
         },
         "headRepositoryOwner": {"login": owner},
+        "baseRepository": {
+            "nameWithOwner": base_repository,
+            "databaseId": base_repository_id,
+        },
         "isCrossRepository": cross_repository,
         "headRefOid": head_sha,
     }
@@ -42,14 +58,22 @@ def rest_pr(
     number: int,
     repository: str,
     *,
+    repository_id: int | None = None,
     state: str = "open",
     head: str = HEAD,
     base: str = BASE,
     head_sha: str = HEAD_SHA,
     base_repository: str = REPOSITORY,
+    base_repository_id: int = REPOSITORY_ID,
 ) -> dict[str, object]:
     head_owner, head_name = repository.split("/", 1)
     base_owner, base_name = base_repository.split("/", 1)
+    if repository_id is None:
+        repository_id = (
+            REPOSITORY_ID
+            if repository.lower() == REPOSITORY.lower()
+            else FOREIGN_REPOSITORY_ID
+        )
     return {
         "number": number,
         "state": state,
@@ -57,6 +81,7 @@ def rest_pr(
             "ref": head,
             "sha": head_sha,
             "repo": {
+                "id": repository_id,
                 "full_name": repository,
                 "name": head_name,
                 "owner": {"login": head_owner},
@@ -65,6 +90,7 @@ def rest_pr(
         "base": {
             "ref": base,
             "repo": {
+                "id": base_repository_id,
                 "full_name": base_repository,
                 "name": base_name,
                 "owner": {"login": base_owner},
@@ -78,9 +104,20 @@ class TapPullRequestSelectionTests(unittest.TestCase):
         return select_same_repository_pull_request(
             document,
             expected_repository=REPOSITORY,
+            expected_repository_id=REPOSITORY_ID,
             expected_head=HEAD,
             expected_base=BASE,
             expected_head_sha=HEAD_SHA,
+        )
+
+    def normalize(
+        self,
+        document: object,
+    ) -> tuple[list[str], list[dict[str, object]]]:
+        return normalize_rest_pull_request_pages(
+            document,
+            expected_repository=REPOSITORY,
+            expected_repository_id=REPOSITORY_ID,
         )
 
     def test_selects_one_same_repository_pull_request(self) -> None:
@@ -94,6 +131,7 @@ class TapPullRequestSelectionTests(unittest.TestCase):
         errors, number = select_same_repository_pull_request(
             [pr(42, "Example/Homebrew-Tap", cross_repository=False)],
             expected_repository="example/homebrew-tap",
+            expected_repository_id=REPOSITORY_ID,
             expected_head=HEAD,
             expected_base=BASE,
             expected_head_sha=HEAD_SHA,
@@ -153,12 +191,77 @@ class TapPullRequestSelectionTests(unittest.TestCase):
         errors, number = select_same_repository_pull_request(
             [pr(42, REPOSITORY, cross_repository=False)],
             expected_repository=REPOSITORY,
+            expected_repository_id=REPOSITORY_ID,
             expected_head=HEAD,
             expected_base=BASE,
             expected_head_sha="ABC",
         )
         self.assertIsNone(number)
         self.assertTrue(any("expected head commit" in error for error in errors))
+
+    def test_rejects_invalid_expected_repository_id(self) -> None:
+        for repository_id in (True, 0, -1):
+            with self.subTest(repository_id=repository_id):
+                errors, number = select_same_repository_pull_request(
+                    [pr(42, REPOSITORY, cross_repository=False)],
+                    expected_repository=REPOSITORY,
+                    expected_repository_id=repository_id,
+                    expected_head=HEAD,
+                    expected_base=BASE,
+                    expected_head_sha=HEAD_SHA,
+                )
+                self.assertIsNone(number)
+                self.assertTrue(
+                    any("expected repository id" in error for error in errors)
+                )
+
+    def test_rejects_base_repository_id_drift(self) -> None:
+        errors, number = self.select(
+            [
+                pr(
+                    42,
+                    REPOSITORY,
+                    cross_repository=False,
+                    base_repository_id=999,
+                )
+            ]
+        )
+        self.assertIsNone(number)
+        self.assertTrue(
+            any("unexpected base repository id" in error for error in errors)
+        )
+
+    def test_rejects_same_repository_head_id_drift(self) -> None:
+        errors, number = self.select(
+            [
+                pr(
+                    42,
+                    REPOSITORY,
+                    repository_id=999,
+                    cross_repository=False,
+                )
+            ]
+        )
+        self.assertIsNone(number)
+        self.assertTrue(
+            any("same-repository head" in error for error in errors)
+        )
+
+    def test_rejects_foreign_name_reusing_trusted_repository_id(self) -> None:
+        errors, number = self.select(
+            [
+                pr(
+                    7,
+                    "attacker/homebrew-tap",
+                    repository_id=REPOSITORY_ID,
+                    cross_repository=True,
+                )
+            ]
+        )
+        self.assertIsNone(number)
+        self.assertTrue(
+            any("reuses the expected repository id" in error for error in errors)
+        )
 
     def test_normalizes_paginated_rest_pages_and_selects_internal_candidate(self) -> None:
         pages = [
@@ -172,20 +275,24 @@ class TapPullRequestSelectionTests(unittest.TestCase):
             [rest_pr(42, REPOSITORY)],
         ]
 
-        errors, normalized = normalize_rest_pull_request_pages(
-            pages,
-            expected_repository=REPOSITORY,
-        )
+        errors, normalized = self.normalize(pages)
         self.assertEqual([], errors)
 
         errors, number = self.select(normalized)
         self.assertEqual([], errors)
         self.assertEqual(42, number)
+        self.assertEqual(
+            REPOSITORY_ID,
+            normalized[1]["headRepository"]["databaseId"],
+        )
+        self.assertEqual(
+            REPOSITORY_ID,
+            normalized[1]["baseRepository"]["databaseId"],
+        )
 
     def test_rest_normalization_rejects_duplicate_numbers_across_pages(self) -> None:
-        errors, normalized = normalize_rest_pull_request_pages(
-            [[rest_pr(42, REPOSITORY)], [rest_pr(42, REPOSITORY)]],
-            expected_repository=REPOSITORY,
+        errors, normalized = self.normalize(
+            [[rest_pr(42, REPOSITORY)], [rest_pr(42, REPOSITORY)]]
         )
 
         self.assertEqual(1, len(normalized))
@@ -193,7 +300,7 @@ class TapPullRequestSelectionTests(unittest.TestCase):
         self.assertTrue(any("duplicate pull request number" in error for error in errors))
 
     def test_rest_normalization_rejects_unexpected_base_repository(self) -> None:
-        errors, normalized = normalize_rest_pull_request_pages(
+        errors, normalized = self.normalize(
             [
                 [
                     rest_pr(
@@ -202,27 +309,60 @@ class TapPullRequestSelectionTests(unittest.TestCase):
                         base_repository="other/homebrew-tap",
                     )
                 ]
-            ],
-            expected_repository=REPOSITORY,
+            ]
         )
 
         self.assertEqual([], normalized)
         self.assertTrue(any("unexpected base repository" in error for error in errors))
 
+    def test_rest_normalization_rejects_unexpected_base_repository_id(self) -> None:
+        errors, normalized = self.normalize(
+            [[rest_pr(42, REPOSITORY, base_repository_id=999)]]
+        )
+
+        self.assertEqual([], normalized)
+        self.assertTrue(
+            any("unexpected base repository id" in error for error in errors)
+        )
+
+    def test_rest_normalization_rejects_same_repository_head_id_drift(self) -> None:
+        errors, normalized = self.normalize(
+            [[rest_pr(42, REPOSITORY, repository_id=999)]]
+        )
+
+        self.assertEqual([], normalized)
+        self.assertTrue(
+            any("same-repository head" in error for error in errors)
+        )
+
+    def test_rest_normalization_rejects_foreign_name_reusing_trusted_id(self) -> None:
+        errors, normalized = self.normalize(
+            [
+                [
+                    rest_pr(
+                        7,
+                        "attacker/homebrew-tap",
+                        repository_id=REPOSITORY_ID,
+                    )
+                ]
+            ]
+        )
+
+        self.assertEqual([], normalized)
+        self.assertTrue(
+            any("reuses the expected repository id" in error for error in errors)
+        )
+
     def test_rest_normalization_rejects_closed_pull_request(self) -> None:
-        errors, normalized = normalize_rest_pull_request_pages(
-            [[rest_pr(42, REPOSITORY, state="closed")]],
-            expected_repository=REPOSITORY,
+        errors, normalized = self.normalize(
+            [[rest_pr(42, REPOSITORY, state="closed")]]
         )
 
         self.assertEqual([], normalized)
         self.assertTrue(any("is not open" in error for error in errors))
 
     def test_rest_normalization_requires_paginated_page_arrays(self) -> None:
-        errors, normalized = normalize_rest_pull_request_pages(
-            [{"number": 42}],
-            expected_repository=REPOSITORY,
-        )
+        errors, normalized = self.normalize([{"number": 42}])
 
         self.assertEqual([], normalized)
         self.assertTrue(any("page 0 must be a JSON array" in error for error in errors))
