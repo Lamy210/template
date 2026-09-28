@@ -76,7 +76,7 @@ if [[ -z "${repository}" || -z "${repository_id}" || -z "${tag}" || -z "${output
   exit 2
 fi
 
-for command_name in gh python3 cmp mv mktemp rm cp; do
+for command_name in gh python3 cmp mv mktemp rm cp mkdir; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
     exit 2
@@ -203,6 +203,7 @@ document = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 assets = document.get("assets")
 if not isinstance(assets, list) or not assets:
     raise SystemExit("release download manifest has no assets")
+
 for asset in assets:
     if not isinstance(asset, dict):
         raise SystemExit("release download manifest asset must be an object")
@@ -223,7 +224,9 @@ PY
 
 mkdir "${output_dir}"
 
-while IFS=    echo "Release download plan contains an empty field." >&2
+while IFS=$'\t' read -r asset_id asset_name expected_digest expected_size; do
+  [[ -n "${asset_id}" && -n "${asset_name}" && -n "${expected_digest}" && -n "${expected_size}" ]] || {
+    echo "Release download plan contains an empty field." >&2
     exit 1
   }
 
@@ -245,14 +248,14 @@ import hashlib
 import sys
 
 path = Path(sys.argv[1])
-digest = hashlib.sha256(path.read_bytes()).hexdigest()
-print(f"sha256:{digest}")
+print("sha256:" + hashlib.sha256(path.read_bytes()).hexdigest())
 PY
   )"
   if [[ "${actual_digest}" != "${expected_digest}" ]]; then
     echo "Downloaded release asset digest mismatch for ${asset_name}." >&2
     exit 1
   fi
+
   actual_size="$(
     python3 - "${partial}" <<'PY'
 from pathlib import Path
@@ -265,6 +268,7 @@ PY
     echo "Downloaded release asset size mismatch for ${asset_name}." >&2
     exit 1
   fi
+
   mv "${partial}" "${destination}"
 done <"${plan}"
 
@@ -298,68 +302,6 @@ if ! final_repository_identity="$(repository_identity)"; then
 fi
 if [[ "${final_repository_identity}" != "${initial_repository_identity}" ]]; then
   echo "Release repository identity changed during exact downloads." >&2
-  exit 1
-fi
-
-cp "${manifest_before}" "${output_dir}/release-download-manifest.json"
-trap - EXIT
-rm -rf "${temp_root}"
-\t' read -r asset_id asset_name expected_digest expected_size; do
-  [[ -n "${asset_id}" && -n "${asset_name}" && -n "${expected_digest}" && -n "${expected_size}" ]] || {
-    echo "Release download plan contains an empty field." >&2
-    exit 1
-  }
-
-  partial="${output_dir}/.${asset_name}.partial"
-  destination="${output_dir}/${asset_name}"
-  if ! gh api \
-    -H 'Accept: application/octet-stream' \
-    -H 'X-GitHub-Api-Version: 2026-03-10' \
-    --method GET \
-    "repos/${repository}/releases/assets/${asset_id}" >"${partial}"; then
-    echo "Failed to download exact release asset id ${asset_id} (${asset_name})." >&2
-    exit 1
-  fi
-
-  actual_digest="$(
-    python3 - "${partial}" <<'PY'
-from pathlib import Path
-import hashlib
-import sys
-
-path = Path(sys.argv[1])
-digest = hashlib.sha256(path.read_bytes()).hexdigest()
-print(f"sha256:{digest}")
-PY
-  )"
-  if [[ "${actual_digest}" != "${expected_digest}" ]]; then
-    echo "Downloaded release asset digest mismatch for ${asset_name}." >&2
-    exit 1
-  fi
-  mv "${partial}" "${destination}"
-done <"${plan}"
-
-metadata_after="${temp_root}/release-after.json"
-manifest_after="${temp_root}/manifest-after.json"
-if ! gh api "${api_headers[@]}" --method GET \
-  "repos/${repository}/releases/${release_id}" >"${metadata_after}"; then
-  echo "Failed to re-resolve release id ${release_id} after downloads." >&2
-  exit 1
-fi
-
-resolver_args=(
-  --metadata "${metadata_after}"
-  --repository "${repository}"
-  --tag "${tag}"
-  --output "${manifest_after}"
-)
-for asset_name in "${assets[@]}"; do
-  resolver_args+=(--asset "${asset_name}")
-done
-python3 "${resolver}" "${resolver_args[@]}"
-
-if ! cmp -s "${manifest_before}" "${manifest_after}"; then
-  echo "Release or asset identity changed during exact downloads." >&2
   exit 1
 fi
 
