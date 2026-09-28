@@ -116,6 +116,24 @@ exit 90
 FAKE_GH
 chmod 0755 "${fake_bin}/gh"
 
+assert_no_output_or_staging() {
+  local output_dir="$1"
+  local parent
+  local name
+
+  if [[ -e "${output_dir}" || -L "${output_dir}" ]]; then
+    echo "Failed download left a published output directory: ${output_dir}" >&2
+    exit 1
+  fi
+
+  parent="$(dirname "${output_dir}")"
+  name="$(basename "${output_dir}")"
+  if compgen -G "${parent}/.${name}.partial.*" >/dev/null; then
+    echo "Failed download left a staging directory for: ${output_dir}" >&2
+    exit 1
+  fi
+}
+
 run_downloader() {
   local scenario="$1"
   local output_dir="$2"
@@ -164,6 +182,10 @@ cmp -s "${success_output}/MyApp-v1.2.3.dmg" "${temp_root}/dmg"
 cmp -s "${success_output}/MyApp-v1.2.3.dmg.sha256" "${temp_root}/checksum"
 cmp -s "${success_output}/release-provenance.json" "${temp_root}/provenance"
 [[ -f "${success_output}/release-download-manifest.json" ]]
+if compgen -G "${temp_root}/.success.partial.*" >/dev/null; then
+  echo "Successful exact download left a staging directory." >&2
+  exit 1
+fi
 grep -F "releases/assets/101" "${temp_root}/gh.log" >/dev/null
 grep -F "releases/assets/102" "${temp_root}/gh.log" >/dev/null
 grep -F "releases/assets/103" "${temp_root}/gh.log" >/dev/null
@@ -180,6 +202,7 @@ if run_downloader corrupt-dmg "${corrupt_output}" >"${temp_root}/corrupt.out" 2>
   exit 1
 fi
 grep -F "digest mismatch" "${temp_root}/corrupt.err" >/dev/null
+assert_no_output_or_staging "${corrupt_output}"
 
 : >"${temp_root}/gh.log"
 drift_output="${temp_root}/drift"
@@ -188,6 +211,7 @@ if run_downloader release-drift "${drift_output}" >"${temp_root}/drift.out" 2>"$
   exit 1
 fi
 grep -F "Release or asset identity changed" "${temp_root}/drift.err" >/dev/null
+assert_no_output_or_staging "${drift_output}"
 
 rm -f "${temp_root}/phase"
 : >"${temp_root}/gh.log"
@@ -197,5 +221,6 @@ if run_downloader repository-drift "${repository_drift_output}" >"${temp_root}/r
   exit 1
 fi
 grep -F "repository id mismatch" "${temp_root}/repository-drift.err" >/dev/null
+assert_no_output_or_staging "${repository_drift_output}"
 
 echo "exact release asset download regression passed"

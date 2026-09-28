@@ -101,7 +101,7 @@ for asset_name in "${assets[@]}"; do
   fi
 done
 
-for command_name in gh python3 cmp mv mktemp rm cp mkdir; do
+for command_name in gh python3 cmp mv mktemp rm cp dirname basename; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
     exit 2
@@ -120,11 +120,24 @@ resolver="${repo_root}/scripts/release/resolve-release-download.py"
   exit 2
 }
 
+output_parent="$(dirname "${output_dir}")"
+output_name="$(basename "${output_dir}")"
+if [[ ! -d "${output_parent}" ]]; then
+  echo "Output parent directory does not exist: ${output_parent}" >&2
+  exit 2
+fi
+
 temp_root="$(mktemp -d)"
+staging_dir=""
 cleanup() {
   rm -rf "${temp_root}"
+  if [[ -n "${staging_dir}" && -d "${staging_dir}" ]]; then
+    rm -rf "${staging_dir}"
+  fi
 }
 trap cleanup EXIT
+
+staging_dir="$(mktemp -d "${output_parent%/}/.${output_name}.partial.XXXXXX")"
 
 api_headers=(
   -H 'Accept: application/vnd.github+json'
@@ -247,16 +260,14 @@ for asset in assets:
     print(f"{asset_id}\t{name}\t{digest}\t{size}")
 PY
 
-mkdir "${output_dir}"
-
 while IFS=$'\t' read -r asset_id asset_name expected_digest expected_size; do
   [[ -n "${asset_id}" && -n "${asset_name}" && -n "${expected_digest}" && -n "${expected_size}" ]] || {
     echo "Release download plan contains an empty field." >&2
     exit 1
   }
 
-  partial="${output_dir}/.${asset_name}.partial"
-  destination="${output_dir}/${asset_name}"
+  partial="${staging_dir}/.${asset_name}.partial"
+  destination="${staging_dir}/${asset_name}"
   if ! gh api \
     -H 'Accept: application/octet-stream' \
     -H 'X-GitHub-Api-Version: 2026-03-10' \
@@ -330,6 +341,33 @@ if [[ "${final_repository_identity}" != "${initial_repository_identity}" ]]; the
   exit 1
 fi
 
-cp "${manifest_before}" "${output_dir}/release-download-manifest.json"
+cp "${manifest_before}" "${staging_dir}/release-download-manifest.json"
+
+if [[ -e "${output_dir}" || -L "${output_dir}" ]]; then
+  echo "Output directory appeared during verified downloads: ${output_dir}" >&2
+  exit 1
+fi
+
+if ! python3 - "${staging_dir}" "${output_dir}" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+
+if not source.is_dir() or source.is_symlink():
+    raise SystemExit("staging output must be a real directory")
+if destination.exists() or destination.is_symlink():
+    raise SystemExit(f"final output already exists: {destination}")
+
+os.rename(source, destination)
+PY
+then
+  echo "Failed to publish verified release assets transactionally: ${output_dir}" >&2
+  exit 1
+fi
+staging_dir=""
+
 trap - EXIT
 rm -rf "${temp_root}"
