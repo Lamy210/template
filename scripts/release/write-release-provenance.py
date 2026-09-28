@@ -11,6 +11,7 @@ from release_attestation import ExpectedRelease, build_release_attestation
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Write canonical final release provenance.")
     parser.add_argument("--source-repository", required=True)
+    parser.add_argument("--source-repository-id", required=True, type=int)
     parser.add_argument("--source-run-id", required=True, type=int)
     parser.add_argument("--source-run-attempt", required=True, type=int)
     parser.add_argument("--source-sha", required=True)
@@ -29,6 +30,7 @@ def main() -> int:
     args = parse_args()
     expected = ExpectedRelease(
         source_repository=args.source_repository,
+        source_repository_id=args.source_repository_id,
         source_run_id=args.source_run_id,
         source_run_attempt=args.source_run_attempt,
         source_sha=args.source_sha,
