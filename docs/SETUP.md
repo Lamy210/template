@@ -55,6 +55,24 @@ Recommended policy:
 
 A published tag must be immutable. A bad `v1.2.0` release is fixed by `v1.2.1`, not by moving `v1.2.0`.
 
+### Native GitHub immutable releases
+
+Enable GitHub's repository-level **release immutability** before the first production release when the account/repository supports it. This is defense in depth in addition to the `v*` tag Ruleset: after an immutable release is published, GitHub protects its associated tag and release assets from later mutation and creates release-attestation evidence.
+
+The setting applies only to releases published after it is enabled. Do not assume enabling it retroactively protects historical releases; keep the tag Ruleset, publication revalidation, and exact asset-ID/digest consumer checks in place.
+
+The setting can be enabled in repository **Settings → Releases → Enable release immutability**. It can also be enabled through GitHub's immutable-releases repository API by an administrator. Do not grant the normal CI `GITHUB_TOKEN` repository Administration permission merely to manage this setting.
+
+After configuration, run the read-only doctor with an operator credential that has **Administration (read)** for the repository:
+
+```bash
+bash scripts/ci/audit-live-immutable-releases.sh owner/repo
+```
+
+The doctor performs no mutations. It binds the repository numeric ID and canonical full name before and after reading the immutable-releases endpoint and fails closed when the setting cannot be proven enabled. GitHub returns the same endpoint as unavailable when the feature is disabled, while insufficient admin-read access also prevents this audit from proving the state; both conditions intentionally fail.
+
+This doctor is not run by `.github/workflows/governance-audit.yml`: that workflow deliberately retains the ordinary read-only `GITHUB_TOKEN` permission model rather than introducing a long-lived administration credential into Actions.
+
 ## 5. Protected `release` Environment
 
 Create a GitHub Environment named exactly:

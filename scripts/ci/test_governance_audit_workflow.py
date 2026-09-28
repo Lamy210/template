@@ -40,6 +40,11 @@ class GovernanceAuditWorkflowContractTests(unittest.TestCase):
         self.assertIn("bash scripts/ci/audit-live-release-tag-ruleset.sh", text)
         self.assertIn("${{ github.repository }}", text)
 
+    def test_admin_read_immutable_doctor_is_not_run_with_standard_token(self) -> None:
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertNotIn("audit-live-immutable-releases.sh", text)
+        self.assertNotIn("GOVERNANCE_ADMIN_TOKEN", text)
+
     def test_checkout_does_not_persist_credentials(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("persist-credentials: false", text)
