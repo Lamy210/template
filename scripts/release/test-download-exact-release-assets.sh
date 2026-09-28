@@ -89,7 +89,9 @@ if [[ "${args}" == *"repos/Example/MyApp/releases/tags/v1.2.3"* ]]; then
 fi
 if [[ "${args}" == *"repos/Example/MyApp/releases/700"* ]]; then
   : >"${GH_FAKE_PHASE_FILE}"
-  GH_FAKE_AFTER_DOWNLOAD=1 emit_release
+  GH_FAKE_AFTER_DOWNLOAD=1
+  export GH_FAKE_AFTER_DOWNLOAD
+  emit_release
   exit 0
 fi
 if [[ "${args}" == *"repos/Example/MyApp/releases/assets/101"* ]]; then
@@ -133,6 +135,26 @@ run_downloader() {
       --asset MyApp-v1.2.3.dmg.sha256 \
       --asset release-provenance.json
 }
+
+: >"${temp_root}/gh.log"
+if GH_FAKE_SCENARIO=success \
+  GH_FAKE_LOG="${temp_root}/gh.log" \
+  GH_FAKE_DMG="${temp_root}/dmg" \
+  GH_FAKE_CHECKSUM="${temp_root}/checksum" \
+  GH_FAKE_PROVENANCE="${temp_root}/provenance" \
+  GH_FAKE_PHASE_FILE="${temp_root}/phase" \
+  PATH="${fake_bin}:${PATH}" \
+  bash "${downloader}" \
+    --repository ../escape \
+    --repository-id 123 \
+    --tag v1.2.3 \
+    --output-dir "${temp_root}/bad" \
+    --asset MyApp-v1.2.3.dmg >"${temp_root}/preflight.out" 2>"${temp_root}/preflight.err"; then
+  echo "Exact release downloader accepted malformed repository input." >&2
+  exit 1
+fi
+[[ ! -s "${temp_root}/gh.log" ]]
+grep -F "canonical owner/repo" "${temp_root}/preflight.err" >/dev/null
 
 : >"${temp_root}/gh.log"
 success_output="${temp_root}/success"
