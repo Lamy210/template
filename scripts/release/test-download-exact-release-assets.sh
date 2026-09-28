@@ -127,13 +127,13 @@ run_downloader() {
     GH_FAKE_PHASE_FILE="${temp_root}/phase" \
     PATH="${fake_bin}:${PATH}" \
     bash "${downloader}" \
-      --repository Example/MyApp \
-      --repository-id 123 \
-      --tag v1.2.3 \
-      --output-dir "${output_dir}" \
-      --asset MyApp-v1.2.3.dmg \
-      --asset MyApp-v1.2.3.dmg.sha256 \
-      --asset release-provenance.json
+    --repository Example/MyApp \
+    --repository-id 123 \
+    --tag v1.2.3 \
+    --output-dir "${output_dir}" \
+    --asset MyApp-v1.2.3.dmg \
+    --asset MyApp-v1.2.3.dmg.sha256 \
+    --asset release-provenance.json
 }
 
 : >"${temp_root}/gh.log"
@@ -145,11 +145,11 @@ if GH_FAKE_SCENARIO=success \
   GH_FAKE_PHASE_FILE="${temp_root}/phase" \
   PATH="${fake_bin}:${PATH}" \
   bash "${downloader}" \
-    --repository ../escape \
-    --repository-id 123 \
-    --tag v1.2.3 \
-    --output-dir "${temp_root}/bad" \
-    --asset MyApp-v1.2.3.dmg >"${temp_root}/preflight.out" 2>"${temp_root}/preflight.err"; then
+  --repository ../escape \
+  --repository-id 123 \
+  --tag v1.2.3 \
+  --output-dir "${temp_root}/bad" \
+  --asset MyApp-v1.2.3.dmg >"${temp_root}/preflight.out" 2>"${temp_root}/preflight.err"; then
   echo "Exact release downloader accepted malformed repository input." >&2
   exit 1
 fi
