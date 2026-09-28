@@ -141,6 +141,7 @@ jobs:
           SOURCE_TAG: ${{ inputs.source_tag }}
           DMG_NAME: ${{ inputs.dmg_name }}
           EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
           EXPECTED_PUBLISHER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -170,6 +171,7 @@ jobs:
               --provenance release-assets/release-provenance.json \
               --tag "${SOURCE_TAG}" \
               --repository "${EXPECTED_REPOSITORY}" \
+              --repository-id "${EXPECTED_REPOSITORY_ID}" \
               --publisher-sha "${EXPECTED_PUBLISHER_SHA}" \
               --source-sha-output release-assets/source-sha.txt
           )"
