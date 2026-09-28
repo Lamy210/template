@@ -229,6 +229,7 @@ jobs:
       source_tag: ${{ needs.validate.outputs.source_tag }}
       validated_app_basename: ${{ needs.validate.outputs.validated_app_basename }}
       validated_bundle_id: ${{ needs.validate.outputs.validated_bundle_id }}
+      require_native_immutable_release: true
       tap_repository: Lamy210/homebrew-tap
       tap_default_branch: main
       cask_token: my-app
