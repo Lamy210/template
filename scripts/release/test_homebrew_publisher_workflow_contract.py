@@ -148,6 +148,10 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             block,
         )
         self.assertIn("PUBLISHER_SHA: ${{ github.sha }}", block)
+        self.assertIn(
+            "EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}",
+            block,
+        )
         self.assertIn("scripts/release/verify-release-source.sh", block)
         self.assertNotIn("secrets.tap_token", block)
 
