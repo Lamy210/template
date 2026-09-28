@@ -75,11 +75,20 @@ PY
 }
 
 args="$*"
+if [[ "${args}" == *" repos/Example/MyApp" ]]; then
+  repository_id=123
+  if [[ "${GH_FAKE_SCENARIO}" == "repository-drift" && -f "${GH_FAKE_PHASE_FILE}" ]]; then
+    repository_id=999
+  fi
+  printf '{"id":%s,"full_name":"Example/MyApp"}\n' "${repository_id}"
+  exit 0
+fi
 if [[ "${args}" == *"repos/Example/MyApp/releases/tags/v1.2.3"* ]]; then
   emit_release
   exit 0
 fi
 if [[ "${args}" == *"repos/Example/MyApp/releases/700"* ]]; then
+  : >"${GH_FAKE_PHASE_FILE}"
   GH_FAKE_AFTER_DOWNLOAD=1 emit_release
   exit 0
 fi
@@ -113,9 +122,11 @@ run_downloader() {
     GH_FAKE_DMG="${temp_root}/dmg" \
     GH_FAKE_CHECKSUM="${temp_root}/checksum" \
     GH_FAKE_PROVENANCE="${temp_root}/provenance" \
+    GH_FAKE_PHASE_FILE="${temp_root}/phase" \
     PATH="${fake_bin}:${PATH}" \
     bash "${downloader}" \
       --repository Example/MyApp \
+      --repository-id 123 \
       --tag v1.2.3 \
       --output-dir "${output_dir}" \
       --asset MyApp-v1.2.3.dmg \
@@ -155,5 +166,14 @@ if run_downloader release-drift "${drift_output}" >"${temp_root}/drift.out" 2>"$
   exit 1
 fi
 grep -F "Release or asset identity changed" "${temp_root}/drift.err" >/dev/null
+
+rm -f "${temp_root}/phase"
+: >"${temp_root}/gh.log"
+repository_drift_output="${temp_root}/repository-drift"
+if run_downloader repository-drift "${repository_drift_output}" >"${temp_root}/repository-drift.out" 2>"${temp_root}/repository-drift.err"; then
+  echo "Exact release downloader accepted repository identity drift." >&2
+  exit 1
+fi
+grep -F "repository id mismatch" "${temp_root}/repository-drift.err" >/dev/null
 
 echo "exact release asset download regression passed"
