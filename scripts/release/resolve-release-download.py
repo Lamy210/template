@@ -28,6 +28,11 @@ def main() -> int:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--asset", action="append", required=True, dest="assets")
+    parser.add_argument(
+        "--require-immutable",
+        action="store_true",
+        help="Require the GitHub Release object to report immutable=true.",
+    )
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
@@ -42,6 +47,7 @@ def main() -> int:
         expected_repository=args.repository,
         expected_tag=args.tag,
         expected_asset_names=args.assets,
+        require_immutable=args.require_immutable,
     )
     for error in errors:
         print(error, file=sys.stderr)
