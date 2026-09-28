@@ -159,12 +159,14 @@ The predictable `automation/<cask>-v<version>` branch name is an output location
 
 On every run, the updater:
 
-1. resolves the tap's canonical GitHub HTTPS/SSH clone URLs and requires exactly one effective `origin` fetch URL and one effective push URL, both canonical; Git URL rewrites, mirrors, or additional push destinations fail closed;
-2. fetches the tap repository and records the current remote automation-branch SHA if that branch already exists;
-3. rebuilds the local automation branch from the trusted tap default branch, never from the existing automation branch;
-4. renders only the intended Cask change;
-5. revalidates canonical repository identity plus the effective origin remote before branch mutation and final acceptance;
-6. updates an existing automation branch with an exact-SHA `--force-with-lease`, so a concurrent or unexpected remote rewrite causes the run to fail instead of being overwritten.
+1. resolves the tap through the GitHub REST repository endpoint before cloning, validates its canonical `full_name`, configured default branch, HTTPS/SSH clone URLs, and snapshots the positive numeric repository ID;
+2. clones the tap and immediately re-resolves the same repository metadata, requiring the numeric ID to equal the snapshot and the effective `origin` fetch/push URLs to match the canonical GitHub URLs; Git URL rewrites, mirrors, repository replacement, or additional push destinations fail closed;
+3. fetches the tap repository and records the current remote automation-branch SHA if that branch already exists;
+4. rebuilds the local automation branch from the trusted tap default branch, never from the existing automation branch;
+5. renders only the intended Cask change;
+6. revalidates the same numeric repository ID, canonical repository/default-branch identity, and effective origin remote before branch mutation, after no-op cleanup, around pull-request mutation, and during final acceptance;
+7. updates an existing automation branch with an exact-SHA `--force-with-lease`, so a concurrent or unexpected remote rewrite causes the run to fail instead of being overwritten;
+8. immediately before creating a tap pull request, re-reads the automation branch and requires it to still equal the exact trusted pushed commit; it repeats the repository/remote/branch preflight after the create attempt before accepting the PR identity.
 
 If the existing automation branch contains stale or unrelated commits, those commits are not carried forward. If the desired Cask is already identical, an existing remote automation branch is still reset to the trusted default-branch state using the same lease check.
 
@@ -214,3 +216,5 @@ After the Cask update is merged, existing Homebrew users can receive the new ver
 If release publication already exists with byte-identical assets, the release publisher treats publication as an idempotent no-op. A subsequent Homebrew invocation should render the same version/checksum and reuse or produce no change in the existing tap automation branch.
 
 If the release asset differs, publication fails closed and the Homebrew job does not run. Do not update the Cask to a replacement asset under an existing stable version; publish a new version instead.
+
+A retry also re-snapshots the tap repository numeric ID for that workflow run. Within one run, any change from the captured repository ID, canonical name/default branch, effective remote, or trusted automation-branch SHA aborts before another write is accepted.

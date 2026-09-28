@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -173,6 +174,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
     def test_tap_token_is_available_only_to_steps_that_need_tap_network_access(self) -> None:
         text = self.homebrew_text()
         for step_name in (
+            "Resolve canonical tap repository identity",
             "Clone tap repository",
             "Verify cloned tap repository identity",
             "Prepare tap update branch",
@@ -199,32 +201,51 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
                 self.assertTrue(block, f"missing step: {step_name}")
                 self.assertNotIn("secrets.tap_token", block)
 
-    def test_homebrew_rejects_repository_redirect_or_transfer_before_branch_operations(self) -> None:
+    def test_homebrew_snapshots_stable_tap_repository_id_before_clone(self) -> None:
         text = self.homebrew_text()
+        resolve = text.index("Resolve canonical tap repository identity")
         clone = text.index("Clone tap repository")
         verify = text.index("Verify cloned tap repository identity")
         prepare = text.index("Prepare tap update branch")
+        self.assertLess(resolve, clone)
         self.assertLess(clone, verify)
         self.assertLess(verify, prepare)
 
-        block = step_block(text, "Verify cloned tap repository identity")
+        block = step_block(text, "Resolve canonical tap repository identity")
         self.assertTrue(block)
-        self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", block)
-        self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
-        self.assertIn('gh repo view "${TAP_REPOSITORY}"', block)
-        self.assertIn("--json nameWithOwner,defaultBranchRef,url,sshUrl", block)
-        self.assertIn(".nameWithOwner, .defaultBranchRef.name, .url, .sshUrl", block)
+        self.assertIn("id: tap_identity", block)
+        self.assertIn('gh api "repos/${TAP_REPOSITORY}"', block)
+        self.assertIn(
+            "source/scripts/homebrew/tap_repository_identity.py",
+            block,
+        )
+        self.assertIn('--repository "${TAP_REPOSITORY}"', block)
+        self.assertIn('--default-branch "${TAP_DEFAULT_BRANCH}"', block)
+        self.assertIn("repository_id=%s", block)
+        self.assertIn('"${canonical_fields[0]}" >>"${GITHUB_OUTPUT}"', block)
+        self.assertNotIn("--repository-id", block)
+        self.assertNotIn("git push", block)
+        self.assertNotIn("gh pr create", block)
+
+    def test_homebrew_rebinds_stable_tap_id_after_clone(self) -> None:
+        block = step_block(self.homebrew_text(), "Verify cloned tap repository identity")
+        self.assertTrue(block)
+        self.assertIn(
+            "EXPECTED_TAP_REPOSITORY_ID: ${{ steps.tap_identity.outputs.repository_id }}",
+            block,
+        )
+        self.assertIn('gh api "repos/${TAP_REPOSITORY}"', block)
+        self.assertIn(
+            "source/scripts/homebrew/tap_repository_identity.py",
+            block,
+        )
+        self.assertIn(
+            '--repository-id "${EXPECTED_TAP_REPOSITORY_ID}"',
+            block,
+        )
         self.assertIn("source/scripts/homebrew/validate-tap-remote.py", block)
         self.assertIn("git -C tap remote get-url --all origin", block)
         self.assertIn("git -C tap remote get-url --push --all origin", block)
-        self.assertIn(
-            'if [[ "${canonical_repository,,}" != "${TAP_REPOSITORY,,}" ]]',
-            block,
-        )
-        self.assertIn(
-            "Tap repository resolved to a different canonical repository identity.",
-            block,
-        )
         self.assertNotIn("git push", block)
         self.assertNotIn("gh pr create", block)
 
@@ -233,6 +254,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         for step_name in (
             "Verify cloned tap repository identity",
             "Commit and push Cask branch",
+            "Open or reuse tap pull request",
             "Reverify tap branch and pull request identity",
             "Reverify no-op tap branch cleanup",
         ):
@@ -241,23 +263,27 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
                 self.assertTrue(block, f"missing step: {step_name}")
                 self.assertIn("remote get-url --all origin", block)
                 self.assertIn("remote get-url --push --all origin", block)
+                self.assertIn("validate-tap-remote.py", block)
 
-    def test_homebrew_binds_configured_tap_default_to_canonical_repository_default(self) -> None:
-        block = step_block(self.homebrew_text(), "Verify cloned tap repository identity")
-        self.assertTrue(block)
-        self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", block)
-        self.assertIn("--json nameWithOwner,defaultBranchRef", block)
-        self.assertIn(".defaultBranchRef.name", block)
-        self.assertIn(
-            'if [[ "${canonical_default_branch}" != "${TAP_DEFAULT_BRANCH}" ]]',
-            block,
-        )
-        self.assertIn(
-            "Configured tap_default_branch does not match the canonical repository default branch.",
-            block,
-        )
-        self.assertNotIn("git push", block)
-        self.assertNotIn("gh pr create", block)
+    def test_homebrew_binds_configured_tap_default_to_rest_identity(self) -> None:
+        for step_name in (
+            "Resolve canonical tap repository identity",
+            "Verify cloned tap repository identity",
+        ):
+            with self.subTest(step_name=step_name):
+                block = step_block(self.homebrew_text(), step_name)
+                self.assertTrue(block)
+                self.assertIn(
+                    "TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}",
+                    block,
+                )
+                self.assertIn("tap_repository_identity.py", block)
+                self.assertIn(
+                    '--default-branch "${TAP_DEFAULT_BRANCH}"',
+                    block,
+                )
+                self.assertNotIn("git push", block)
+                self.assertNotIn("gh pr create", block)
 
     def test_existing_automation_branch_is_rebuilt_from_trusted_tap_default(self) -> None:
         prepare = step_block(self.homebrew_text(), "Prepare tap update branch")
@@ -319,7 +345,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
             push.index("git push --set-upstream origin"),
         )
 
-    def test_homebrew_rebinds_canonical_tap_identity_before_push_and_success(self) -> None:
+    def test_homebrew_rebinds_stable_tap_id_before_push_and_success(self) -> None:
         text = self.homebrew_text()
         push = step_block(text, "Commit and push Cask branch")
         final_step = step_block(text, "Reverify tap branch and pull request identity")
@@ -329,13 +355,22 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         for block in (push, final_step):
             self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", block)
             self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", block)
-            self.assertIn('gh repo view "${TAP_REPOSITORY}"', block)
-            self.assertIn("--json nameWithOwner,defaultBranchRef,url,sshUrl", block)
-            self.assertIn(".nameWithOwner, .defaultBranchRef.name, .url, .sshUrl", block)
+            self.assertIn(
+                "EXPECTED_TAP_REPOSITORY_ID: ${{ steps.tap_identity.outputs.repository_id }}",
+                block,
+            )
+            self.assertIn('gh api "repos/${TAP_REPOSITORY}"', block)
+            self.assertIn("tap_repository_identity.py", block)
+            self.assertIn(
+                '--repository-id "${EXPECTED_TAP_REPOSITORY_ID}"',
+                block,
+            )
             self.assertIn("validate-tap-remote.py", block)
 
-        self.assertIn("Tap repository identity changed before branch push.", push)
-        self.assertIn("Tap default branch changed before branch push.", push)
+        self.assertIn(
+            "Tap repository stable identity changed before branch push.",
+            push,
+        )
         self.assertIn(
             "\n            verify_canonical_tap_identity\n",
             push,
@@ -346,11 +381,7 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "Tap repository identity changed before final verification.",
-            final_step,
-        )
-        self.assertIn(
-            "Tap default branch changed before final verification.",
+            "Tap repository stable identity changed before final verification.",
             final_step,
         )
         self.assertEqual(
@@ -371,10 +402,18 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("GH_TOKEN: ${{ secrets.tap_token }}", cleanup)
         self.assertIn("TAP_REPOSITORY: ${{ inputs.tap_repository }}", cleanup)
         self.assertIn("TAP_DEFAULT_BRANCH: ${{ inputs.tap_default_branch }}", cleanup)
+        self.assertIn(
+            "EXPECTED_TAP_REPOSITORY_ID: ${{ steps.tap_identity.outputs.repository_id }}",
+            cleanup,
+        )
         self.assertIn("BRANCH: ${{ steps.branch.outputs.branch }}", cleanup)
         self.assertIn("CLEANUP_SHA: ${{ steps.push.outputs.cleanup_sha }}", cleanup)
-        self.assertIn('gh repo view "${TAP_REPOSITORY}"', cleanup)
-        self.assertIn("--json nameWithOwner,defaultBranchRef,url,sshUrl", cleanup)
+        self.assertIn('gh api "repos/${TAP_REPOSITORY}"', cleanup)
+        self.assertIn("source/scripts/homebrew/tap_repository_identity.py", cleanup)
+        self.assertIn(
+            '--repository-id "${EXPECTED_TAP_REPOSITORY_ID}"',
+            cleanup,
+        )
         self.assertIn("source/scripts/homebrew/validate-tap-remote.py", cleanup)
         self.assertIn("git -C tap remote get-url --push --all origin", cleanup)
         self.assertIn('git ls-remote --exit-code --heads origin \\', cleanup)
@@ -412,12 +451,50 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn('--head-sha "${PUSHED_SHA}"', block)
         self.assertIn("--rest-pages", block)
         self.assertIn("PUSHED_SHA: ${{ steps.push.outputs.pushed_sha }}", block)
+        self.assertIn(
+            "EXPECTED_TAP_REPOSITORY_ID: ${{ steps.tap_identity.outputs.repository_id }}",
+            block,
+        )
+        self.assertIn("verify_pr_write_target() {", block)
+        self.assertIn("tap_repository_identity.py", block)
+        self.assertIn(
+            '--repository-id "${EXPECTED_TAP_REPOSITORY_ID}"',
+            block,
+        )
+        self.assertIn(
+            'git -C tap ls-remote --exit-code --branches origin "refs/heads/${BRANCH}"',
+            block,
+        )
+        self.assertIn('if [[ "${remote_sha}" != "${PUSHED_SHA}" ]]', block)
+        self.assertIn(
+            "Automation branch moved before pull request mutation.",
+            block,
+        )
         self.assertIn("Tap pull request query result failed identity validation.", block)
         self.assertNotIn('if gh pr view "${BRANCH}"', block)
         self.assertNotIn('gh pr view "${open_pr_number}"', block)
-        self.assertGreaterEqual(block.count('open_pr_number="$(query_open_pr_number)"'), 2)
+        self.assertGreaterEqual(
+            block.count('open_pr_number="$(query_open_pr_number)"'),
+            2,
+        )
+
+        preflights = [
+            match.start()
+            for match in re.finditer(
+                r"(?m)^\s+verify_pr_write_target$",
+                block,
+            )
+        ]
+        self.assertEqual(3, len(preflights))
+        first_query = block.index(
+            'open_pr_number="$(query_open_pr_number)"'
+        )
+        create = block.index("gh pr create")
+        self.assertLess(preflights[0], first_query)
+        self.assertLess(preflights[1], create)
+        self.assertGreater(preflights[2], create)
         self.assertLess(
-            block.index("gh pr create"),
+            create,
             block.rindex('open_pr_number="$(query_open_pr_number)"'),
         )
         self.assertIn("Tap pull request post-create identity validation failed.", block)
