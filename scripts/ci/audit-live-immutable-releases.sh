@@ -23,7 +23,7 @@ if [[ "${repository_owner}" == "." || "${repository_owner}" == ".." ||
   exit 2
 fi
 
-for command_name in gh python3 mktemp rm sed; do
+for command_name in gh python3 mktemp rm sed tail; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
     exit 2
