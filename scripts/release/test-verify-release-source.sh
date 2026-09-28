@@ -76,7 +76,7 @@ args="$*"
 annotated_sha='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 nested_sha='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
-if [[ "${args}" == "api --method GET repos/Lamy210/template" ]]; then
+if [[ "${args}" == "api repos/Lamy210/template" ]]; then
   count="$(cat "${GH_STUB_REPOSITORY_STATE}" 2>/dev/null || printf '0')"
   count=$((count + 1))
   printf '%s\n' "${count}" >"${GH_STUB_REPOSITORY_STATE}"
