@@ -23,6 +23,7 @@ def verify_published_release_assets(
     provenance_path: Path,
     expected_tag: str,
     expected_repository: str,
+    expected_repository_id: int,
     expected_publisher_sha: str,
 ) -> tuple[list[str], str | None, str | None]:
     errors: list[str] = []
@@ -40,6 +41,8 @@ def verify_published_release_assets(
     )
     if not repository_valid:
         errors.append("expected repository must be in owner/repo form")
+    if type(expected_repository_id) is not int or expected_repository_id <= 0:
+        errors.append("expected repository id must be a positive integer")
 
     if (
         not isinstance(expected_publisher_sha, str)
@@ -90,6 +93,10 @@ def verify_published_release_assets(
         if provenance.get("sourceRepository") != expected_repository:
             errors.append(
                 "published release provenance repository does not match trusted repository"
+            )
+        if provenance.get("sourceRepositoryId") != expected_repository_id:
+            errors.append(
+                "published release provenance repository ID does not match trusted repository"
             )
         if provenance.get("publisherSHA") != expected_publisher_sha:
             errors.append(
