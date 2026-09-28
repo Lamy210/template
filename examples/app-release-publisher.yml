@@ -106,6 +106,7 @@ jobs:
           SOURCE_TAG: ${{ steps.candidate.outputs.tag }}
           SOURCE_SHA: ${{ steps.candidate.outputs.source_sha }}
           PUBLISHER_SHA: ${{ github.sha }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           set -euo pipefail
           resolved_sha="$(bash scripts/release/verify-release-source.sh)"

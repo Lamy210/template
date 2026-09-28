@@ -203,7 +203,7 @@ The resolver writes source-artifact metadata itself; it does not accept source-o
 
 ## Tag and trusted-history binding
 
-`verify-release-source.sh` resolves the stable tag independently and requires it to point to the exact source SHA validated from the upstream workflow run.
+`verify-release-source.sh` resolves the stable tag independently and requires it to point to the exact source SHA validated from the upstream workflow run. Before reading the tag and again after annotated-tag dereferencing, it also requires the live GitHub repository to retain the captured numeric repository ID and canonical `owner/repo` identity, so a rename/replacement race cannot silently redirect the tag lookup.
 
 The source commit must also be reachable from the current trusted default-branch history. This policy permits intentionally releasing an older application commit that is still a trusted ancestor, while ensuring the **publisher control code remains current**.
 

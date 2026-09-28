@@ -148,6 +148,16 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertGreaterEqual(text.count("SOURCE_TAG: ${{ inputs.source_tag }}"), 2)
         self.assertGreaterEqual(text.count("SOURCE_SHA: ${{ inputs.source_sha }}"), 2)
         self.assertGreaterEqual(text.count("PUBLISHER_SHA: ${{ github.sha }}"), 2)
+        before_secrets_block = text[before_secrets:certificate]
+        before_publication_block = text[before_publication:publication]
+        self.assertIn(
+            "EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}",
+            before_secrets_block,
+        )
+        self.assertIn(
+            "EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}",
+            before_publication_block,
+        )
 
     def test_publication_step_passes_source_binding_identity(self) -> None:
         text = self.release_text()
@@ -173,6 +183,10 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         self.assertIn(': "${PUBLISHER_SHA:?PUBLISHER_SHA is required}"', text)
         self.assertIn(
             ': "${EXPECTED_REPOSITORY_ID:?EXPECTED_REPOSITORY_ID is required}"',
+            text,
+        )
+        self.assertIn(
+            'EXPECTED_REPOSITORY_ID="${EXPECTED_REPOSITORY_ID}"',
             text,
         )
 

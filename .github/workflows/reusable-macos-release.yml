@@ -222,6 +222,7 @@ jobs:
           SOURCE_TAG: ${{ inputs.source_tag }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           PUBLISHER_SHA: ${{ github.sha }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
         run: bash scripts/release/verify-release-source.sh >/dev/null
 
       - name: Validate trusted release output name before secrets
@@ -459,6 +460,7 @@ jobs:
           SOURCE_TAG: ${{ inputs.source_tag }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           PUBLISHER_SHA: ${{ github.sha }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
         run: bash scripts/release/verify-release-source.sh >/dev/null
 
       - name: Publish immutable GitHub Release
