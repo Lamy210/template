@@ -64,7 +64,7 @@ print(
             "tag_name": tag,
             "draft": False,
             "prerelease": False,
-            "immutable": False,
+            "immutable": scenario == "immutable-success",
             "url": f"https://api.github.com/repos/{repository}/releases/700",
             "assets": assets,
         },
@@ -119,6 +119,21 @@ chmod 0755 "${fake_bin}/gh"
 run_downloader() {
   local scenario="$1"
   local output_dir="$2"
+  local require_immutable="${3:-false}"
+  local immutable_args=()
+
+  case "${require_immutable}" in
+    true)
+      immutable_args+=(--require-immutable)
+      ;;
+    false)
+      ;;
+    *)
+      echo "test require_immutable must be true or false" >&2
+      return 2
+      ;;
+  esac
+
   GH_FAKE_SCENARIO="${scenario}" \
     GH_FAKE_LOG="${temp_root}/gh.log" \
     GH_FAKE_DMG="${temp_root}/dmg" \
@@ -130,6 +145,7 @@ run_downloader() {
     --repository Example/MyApp \
     --repository-id 123 \
     --tag v1.2.3 \
+    "${immutable_args[@]}" \
     --output-dir "${output_dir}" \
     --asset MyApp-v1.2.3.dmg \
     --asset MyApp-v1.2.3.dmg.sha256 \
@@ -172,6 +188,24 @@ if grep -F "release download" "${temp_root}/gh.log" >/dev/null; then
   echo "Exact release downloader unexpectedly used gh release download." >&2
   exit 1
 fi
+
+: >"${temp_root}/gh.log"
+mutable_rejected_output="${temp_root}/mutable-rejected"
+if run_downloader success "${mutable_rejected_output}" true >"${temp_root}/mutable-rejected.out" 2>"${temp_root}/mutable-rejected.err"; then
+  echo "Exact release downloader accepted mutable release under immutable-required policy." >&2
+  exit 1
+fi
+grep -F "natively immutable" "${temp_root}/mutable-rejected.err" >/dev/null
+if grep -F "releases/assets/" "${temp_root}/gh.log" >/dev/null; then
+  echo "Immutable-required policy downloaded assets before rejecting mutable release." >&2
+  exit 1
+fi
+
+: >"${temp_root}/gh.log"
+immutable_output="${temp_root}/immutable-success"
+run_downloader immutable-success "${immutable_output}" true
+cmp -s "${immutable_output}/MyApp-v1.2.3.dmg" "${temp_root}/dmg"
+grep -F '"immutable":true' "${immutable_output}/release-download-manifest.json" >/dev/null
 
 : >"${temp_root}/gh.log"
 corrupt_output="${temp_root}/corrupt"
