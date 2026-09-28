@@ -137,6 +137,7 @@ verify_publication_source_binding() {
   if ! SOURCE_TAG="${TAG_NAME}" \
     SOURCE_SHA="${SOURCE_SHA}" \
     PUBLISHER_SHA="${PUBLISHER_SHA}" \
+    EXPECTED_REPOSITORY_ID="${EXPECTED_REPOSITORY_ID}" \
     bash "${verifier}" >/dev/null; then
     echo "Release source binding failed during GitHub Release publication." >&2
     return 1
