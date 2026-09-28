@@ -6,6 +6,7 @@ usage() {
 Usage:
   download-exact-release-assets.sh \
     --repository owner/repo \
+    --repository-id 123456 \
     --tag v1.2.3 \
     --output-dir release-assets \
     --asset App-v1.2.3.dmg \
@@ -15,6 +16,7 @@ EOF
 }
 
 repository=""
+repository_id=""
 tag=""
 output_dir=""
 assets=()
@@ -27,6 +29,14 @@ while (($# > 0)); do
         exit 2
       }
       repository="$2"
+      shift 2
+      ;;
+    --repository-id)
+      [[ $# -ge 2 ]] || {
+        usage
+        exit 2
+      }
+      repository_id="$2"
       shift 2
       ;;
     --tag)
@@ -61,7 +71,7 @@ while (($# > 0)); do
   esac
 done
 
-if [[ -z "${repository}" || -z "${tag}" || -z "${output_dir}" || "${#assets[@]}" -eq 0 ]]; then
+if [[ -z "${repository}" || -z "${repository_id}" || -z "${tag}" || -z "${output_dir}" || "${#assets[@]}" -eq 0 ]]; then
   usage
   exit 2
 fi
@@ -95,6 +105,58 @@ api_headers=(
   -H 'Accept: application/vnd.github+json'
   -H 'X-GitHub-Api-Version: 2026-03-10'
 )
+
+repository_identity() {
+  local response
+  if ! response="$(gh api "${api_headers[@]}" --method GET "repos/${repository}")"; then
+    echo "Failed to resolve release repository identity." >&2
+    return 1
+  fi
+
+  python3 - "${repository}" "${repository_id}" "${response}" <<'PY'
+import json
+import re
+import sys
+
+expected_name, expected_id_text, response = sys.argv[1:]
+if re.fullmatch(r"[1-9][0-9]*", expected_id_text) is None:
+    raise SystemExit("expected repository id must be a positive integer")
+expected_id = int(expected_id_text)
+
+try:
+    document = json.loads(response)
+except json.JSONDecodeError as error:
+    raise SystemExit(f"repository identity response is invalid JSON: {error}")
+if not isinstance(document, dict):
+    raise SystemExit("repository identity response must be an object")
+
+repository_id = document.get("id")
+full_name = document.get("full_name")
+if type(repository_id) is not int or repository_id <= 0:
+    raise SystemExit("repository identity response has invalid id")
+if (
+    not isinstance(full_name, str)
+    or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", full_name) is None
+):
+    raise SystemExit("repository identity response has invalid full_name")
+if repository_id != expected_id:
+    raise SystemExit(
+        f"repository id mismatch: expected {expected_id}, got {repository_id}"
+    )
+if full_name.casefold() != expected_name.casefold():
+    raise SystemExit(
+        f"repository full_name mismatch: expected {expected_name!r}, got {full_name!r}"
+    )
+
+print(repository_id)
+print(full_name.casefold())
+PY
+}
+
+if ! initial_repository_identity="$(repository_identity)"; then
+  echo "Unable to bind release repository identity before downloads." >&2
+  exit 1
+fi
 
 metadata_before="${temp_root}/release-before.json"
 manifest_before="${temp_root}/manifest-before.json"
@@ -227,6 +289,15 @@ python3 "${resolver}" "${resolver_args[@]}"
 
 if ! cmp -s "${manifest_before}" "${manifest_after}"; then
   echo "Release or asset identity changed during exact downloads." >&2
+  exit 1
+fi
+
+if ! final_repository_identity="$(repository_identity)"; then
+  echo "Unable to rebind release repository identity after downloads." >&2
+  exit 1
+fi
+if [[ "${final_repository_identity}" != "${initial_repository_identity}" ]]; then
+  echo "Release repository identity changed during exact downloads." >&2
   exit 1
 fi
 
