@@ -18,7 +18,7 @@ fi
 repository_owner="${repository%%/*}"
 repository_name="${repository#*/}"
 if [[ "${repository_owner}" == "." || "${repository_owner}" == ".." ||
-      "${repository_name}" == "." || "${repository_name}" == ".." ]]; then
+  "${repository_name}" == "." || "${repository_name}" == ".." ]]; then
   echo "repository contains an invalid owner or repository component." >&2
   exit 2
 fi
@@ -97,7 +97,7 @@ initial_repository_id="$(printf '%s\n' "${initial_identity}" | sed -n '1p')"
 initial_repository_name="$(printf '%s\n' "${initial_identity}" | sed -n '2p')"
 initial_repository_extra="$(printf '%s\n' "${initial_identity}" | sed -n '3p')"
 if [[ -z "${initial_repository_id}" || -z "${initial_repository_name}" ||
-      -n "${initial_repository_extra}" ]]; then
+  -n "${initial_repository_extra}" ]]; then
   echo "Repository identity output was malformed." >&2
   exit 3
 fi
@@ -128,12 +128,12 @@ final_repository_id="$(printf '%s\n' "${final_identity}" | sed -n '1p')"
 final_repository_name="$(printf '%s\n' "${final_identity}" | sed -n '2p')"
 final_repository_extra="$(printf '%s\n' "${final_identity}" | sed -n '3p')"
 if [[ -z "${final_repository_id}" || -z "${final_repository_name}" ||
-      -n "${final_repository_extra}" ]]; then
+  -n "${final_repository_extra}" ]]; then
   echo "Final repository identity output was malformed." >&2
   exit 5
 fi
 if [[ "${final_repository_id}" != "${initial_repository_id}" ||
-      "${final_repository_name}" != "${initial_repository_name}" ]]; then
+  "${final_repository_name}" != "${initial_repository_name}" ]]; then
   echo "Repository identity changed during immutable-release audit." >&2
   exit 5
 fi
