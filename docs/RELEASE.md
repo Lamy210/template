@@ -75,6 +75,8 @@ Only then does it import Apple credentials and perform signing/notarization. Aft
 
 The publication job independently verifies that signer-produced artifact's ID, canonical name, GitHub digest, repository identity, publisher run, publisher attempt, and publisher SHA before downloading it. It then revalidates the trusted DMG basename and release provenance. The publication script itself rebinds the stable tag to the validated source SHA immediately before any GitHub Release lookup/create path and again after remote release-state/asset verification, so tag movement during publication fails closed rather than relying only on a preceding workflow step.
 
+GitHub's native immutable-releases repository setting is recommended as an additional server-side supply-chain control. The source-controlled release path does not grant itself Administration permission or silently enable/disable that repository setting. Configure it out of band before production releases and verify it with `scripts/ci/audit-live-immutable-releases.sh`. Because the native setting is not retroactive, the release pipeline and Homebrew consumer continue to bind tags, repository IDs, Release IDs, exact asset IDs, digests, and sizes independently rather than treating the setting as the only immutability control.
+
 The signing job must never execute scripts or hooks from the downloaded application archive. Release scripts and optional entitlements come from the trusted publisher/default-branch checkout. The publication job must never receive Apple signing/notarization credentials.
 
 ## Why the old monolithic workflow is retired
