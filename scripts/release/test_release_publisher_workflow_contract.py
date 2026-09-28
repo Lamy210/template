@@ -103,6 +103,17 @@ class ReleasePublisherWorkflowContractTests(unittest.TestCase):
     def test_independently_verifies_tag_binding_and_release_input(self) -> None:
         block = job_block(self.workflow_text(), "validate")
         self.assertIn("scripts/release/verify-release-source.sh", block)
+        source_bind_start = block.index(
+            "- name: Independently bind tag to source and trusted history"
+        )
+        source_bind_end = block.index(
+            "- name: Validate archive provenance and application identity"
+        )
+        source_bind = block[source_bind_start:source_bind_end]
+        self.assertIn(
+            "EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}",
+            source_bind,
+        )
         self.assertIn("scripts/release/validate-release-input.py", block)
         self.assertIn("--publisher-sha \"${GITHUB_SHA}\"", block)
         self.assertIn("--source-is-ancestor true", block)
