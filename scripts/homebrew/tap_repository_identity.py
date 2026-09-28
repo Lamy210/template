@@ -86,6 +86,18 @@ def validate_tap_repository_identity(
         ):
             errors.append(f"tap repository {field} must be a non-empty single line")
 
+    if isinstance(full_name, str) and REPOSITORY_RE.fullmatch(full_name) is not None:
+        canonical_clone_url = f"https://github.com/{full_name}.git"
+        canonical_ssh_url = f"git@github.com:{full_name}.git"
+        if clone_url != canonical_clone_url:
+            errors.append(
+                "tap repository clone_url does not match canonical full_name"
+            )
+        if ssh_url != canonical_ssh_url:
+            errors.append(
+                "tap repository ssh_url does not match canonical full_name"
+            )
+
     if errors:
         return errors, None
 
