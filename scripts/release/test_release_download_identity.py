@@ -67,12 +67,14 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
         repository: str = REPOSITORY,
         tag: str = TAG,
         assets: list[str] | None = None,
+        require_immutable: bool = False,
     ):
         return validate_release_download_identity(
             document,
             expected_repository=repository,
             expected_tag=tag,
             expected_asset_names=list(assets or ASSETS),
+            require_immutable=require_immutable,
         )
 
     def test_accepts_exact_release_and_emits_deterministic_manifest(self) -> None:
@@ -110,6 +112,28 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
             },
             release_download_manifest(identity),
         )
+
+    def test_require_native_immutable_policy_rejects_false_and_accepts_true(self) -> None:
+        errors, identity = self.validate(
+            release_document(),
+            require_immutable=True,
+        )
+        self.assertIsNone(identity)
+        self.assertTrue(
+            any("natively immutable" in error for error in errors),
+            errors,
+        )
+
+        immutable_document = release_document()
+        immutable_document["immutable"] = True
+        errors, identity = self.validate(
+            immutable_document,
+            require_immutable=True,
+        )
+        self.assertEqual([], errors)
+        self.assertIsNotNone(identity)
+        assert identity is not None
+        self.assertTrue(identity.immutable)
 
     def test_preserves_native_immutable_flag_without_requiring_it_yet(self) -> None:
         document = release_document()
@@ -230,6 +254,41 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
         self.assertTrue(any("stable SemVer" in error for error in errors))
         self.assertTrue(any("unique" in error for error in errors))
         self.assertTrue(any("unsafe" in error for error in errors))
+
+    def test_cli_require_immutable_rejects_mutable_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata = root / "release.json"
+            output = root / "manifest.json"
+            metadata.write_text(
+                json.dumps(release_document()) + "\n",
+                encoding="utf-8",
+            )
+            command = [
+                sys.executable,
+                str(CLI),
+                "--metadata",
+                str(metadata),
+                "--repository",
+                REPOSITORY,
+                "--tag",
+                TAG,
+                "--require-immutable",
+            ]
+            for name in ASSETS:
+                command.extend(["--asset", name])
+            command.extend(["--output", str(output)])
+
+            result = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("natively immutable", result.stderr)
 
     def test_cli_writes_once_and_refuses_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
