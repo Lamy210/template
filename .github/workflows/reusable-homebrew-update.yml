@@ -15,6 +15,11 @@ on:
         description: Bundle identifier already validated by the publisher, for comparison only.
         required: true
         type: string
+      require_native_immutable_release:
+        description: Require the published GitHub Release to report native immutable=true before Homebrew consumption.
+        required: false
+        default: false
+        type: boolean
       tap_repository:
         description: Homebrew tap repository in owner/repo form.
         required: true
@@ -143,16 +148,30 @@ jobs:
           EXPECTED_REPOSITORY: ${{ github.repository }}
           EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
           EXPECTED_PUBLISHER_SHA: ${{ github.sha }}
+          REQUIRE_NATIVE_IMMUTABLE_RELEASE: ${{ inputs.require_native_immutable_release }}
         run: |
           set -euo pipefail
-          bash source/scripts/release/download-exact-release-assets.sh \
-            --repository "${EXPECTED_REPOSITORY}" \
-            --repository-id "${EXPECTED_REPOSITORY_ID}" \
-            --tag "${SOURCE_TAG}" \
-            --output-dir release-assets \
-            --asset "${DMG_NAME}" \
-            --asset "${DMG_NAME}.sha256" \
+          download_args=(
+            --repository "${EXPECTED_REPOSITORY}"
+            --repository-id "${EXPECTED_REPOSITORY_ID}"
+            --tag "${SOURCE_TAG}"
+            --output-dir release-assets
+            --asset "${DMG_NAME}"
+            --asset "${DMG_NAME}.sha256"
             --asset release-provenance.json
+          )
+          case "${REQUIRE_NATIVE_IMMUTABLE_RELEASE}" in
+            true)
+              download_args+=(--require-immutable)
+              ;;
+            false)
+              ;;
+            *)
+              echo "require_native_immutable_release must resolve to boolean true/false." >&2
+              exit 1
+              ;;
+          esac
+          bash source/scripts/release/download-exact-release-assets.sh "${download_args[@]}"
 
           sha256="$(
             python3 source/scripts/release/verify-published-release-assets.py \
