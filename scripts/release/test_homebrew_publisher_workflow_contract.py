@@ -130,7 +130,13 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         self.assertIn("--provenance release-assets/release-provenance.json", block)
         self.assertIn('--repository "${EXPECTED_REPOSITORY}"', block)
         self.assertIn('--publisher-sha "${EXPECTED_PUBLISHER_SHA}"', block)
-        self.assertIn("--source-sha-output release-assets/source-sha.txt", block)
+        self.assertIn(
+            'verified_source_sha="${RUNNER_TEMP}/verified-release-source-sha.txt"',
+            block,
+        )
+        self.assertIn('--source-sha-output "${verified_source_sha}"', block)
+        self.assertIn('source_sha="$(cat "${verified_source_sha}")"', block)
+        self.assertNotIn("--source-sha-output release-assets/", block)
         self.assertIn('echo "SHA256=${sha256}" >>"${GITHUB_ENV}"', block)
         self.assertIn('echo "source_sha=${source_sha}" >>"${GITHUB_OUTPUT}"', block)
         self.assertNotIn("source/scripts/release/release_checksum.py", block)
