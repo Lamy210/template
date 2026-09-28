@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/release/verify-published-release-assets.py"
 TAG = "v1.2.3"
 REPOSITORY = "example/MyApp"
+REPOSITORY_ID = 123
 SOURCE_SHA = "1" * 40
 PUBLISHER_SHA = "2" * 40
 SOURCE_ARTIFACT_DIGEST = "sha256:" + "a" * 64
@@ -37,6 +38,7 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         document = build_release_attestation(
             ExpectedRelease(
                 source_repository=REPOSITORY,
+                source_repository_id=REPOSITORY_ID,
                 source_run_id=100,
                 source_run_attempt=1,
                 source_sha=SOURCE_SHA,
@@ -62,6 +64,7 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         provenance: Path,
         *,
         repository: str = REPOSITORY,
+        repository_id: int = REPOSITORY_ID,
         publisher_sha: str = PUBLISHER_SHA,
     ) -> tuple[list[str], str | None, str | None]:
         return verify_published_release_assets(
@@ -70,6 +73,7 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
             provenance_path=provenance,
             expected_tag=TAG,
             expected_repository=repository,
+            expected_repository_id=repository_id,
             expected_publisher_sha=publisher_sha,
         )
 
@@ -109,6 +113,16 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
             dmg,
             checksum,
             provenance,
+            repository_id=999,
+        )
+        self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
+        self.assertTrue(any("repository ID" in error for error in errors))
+
+        errors, digest, source_sha = self.verify(
+            dmg,
+            checksum,
+            provenance,
             publisher_sha="3" * 40,
         )
         self.assertIsNone(digest)
@@ -122,12 +136,14 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
             checksum,
             provenance,
             repository="../escape",
+            repository_id=0,
             publisher_sha="ABC",
         )
 
         self.assertIsNone(digest)
         self.assertIsNone(source_sha)
         self.assertTrue(any("owner/repo" in error for error in errors))
+        self.assertTrue(any("repository id" in error for error in errors))
         self.assertTrue(any("40 lowercase" in error for error in errors))
 
     def test_rejects_provenance_tag_drift(self) -> None:
@@ -171,6 +187,8 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
                 TAG,
                 "--repository",
                 REPOSITORY,
+                "--repository-id",
+                str(REPOSITORY_ID),
                 "--publisher-sha",
                 PUBLISHER_SHA,
                 "--source-sha-output",
@@ -207,6 +225,8 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
                 TAG,
                 "--repository",
                 REPOSITORY,
+                "--repository-id",
+                str(REPOSITORY_ID),
                 "--publisher-sha",
                 PUBLISHER_SHA,
                 "--source-sha-output",
