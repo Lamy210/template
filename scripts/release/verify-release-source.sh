@@ -6,6 +6,7 @@ set -euo pipefail
 : "${PUBLISHER_SHA:?PUBLISHER_SHA is required}"
 : "${GH_TOKEN:?GH_TOKEN is required}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+: "${EXPECTED_REPOSITORY_ID:?EXPECTED_REPOSITORY_ID is required}"
 
 if [[ ! "${SOURCE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "SOURCE_TAG must match stable SemVer vX.Y.Z: ${SOURCE_TAG}" >&2
@@ -21,6 +22,15 @@ if [[ ! "${PUBLISHER_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 if [[ ! "${GITHUB_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   echo "GITHUB_REPOSITORY must be in owner/repo form." >&2
+  exit 1
+fi
+if [[ ! "${EXPECTED_REPOSITORY_ID}" =~ ^[0-9]+$ ]]; then
+  echo "EXPECTED_REPOSITORY_ID must be a positive integer." >&2
+  exit 1
+fi
+EXPECTED_REPOSITORY_ID="$((10#${EXPECTED_REPOSITORY_ID}))"
+if ((EXPECTED_REPOSITORY_ID <= 0)); then
+  echo "EXPECTED_REPOSITORY_ID must be positive." >&2
   exit 1
 fi
 
@@ -45,6 +55,56 @@ git cat-file -e "${SOURCE_SHA}^{commit}" 2>/dev/null || {
   echo "Release source commit is unavailable in trusted publisher history checkout: ${SOURCE_SHA}" >&2
   exit 1
 }
+
+repository_identity() {
+  local response
+  if ! response="$(gh api --method GET "repos/${GITHUB_REPOSITORY}")"; then
+    echo "Failed to resolve source repository identity." >&2
+    return 1
+  fi
+
+  python3 - "${GITHUB_REPOSITORY}" "${EXPECTED_REPOSITORY_ID}" "${response}" <<'PY'
+import json
+import re
+import sys
+
+expected_name, expected_id_text, response = sys.argv[1:]
+expected_id = int(expected_id_text)
+
+try:
+    document = json.loads(response)
+except json.JSONDecodeError as error:
+    raise SystemExit(f"source repository identity response is invalid JSON: {error}")
+if not isinstance(document, dict):
+    raise SystemExit("source repository identity response must be an object")
+
+repository_id = document.get("id")
+full_name = document.get("full_name")
+if type(repository_id) is not int or repository_id <= 0:
+    raise SystemExit("source repository identity response has no positive integer id")
+if (
+    not isinstance(full_name, str)
+    or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", full_name) is None
+):
+    raise SystemExit("source repository identity response has no canonical full_name")
+if repository_id != expected_id:
+    raise SystemExit(
+        f"source repository id mismatch: expected {expected_id}, got {repository_id}"
+    )
+if full_name.casefold() != expected_name.casefold():
+    raise SystemExit(
+        f"source repository full_name mismatch: expected {expected_name!r}, got {full_name!r}"
+    )
+
+print(repository_id)
+print(full_name.casefold())
+PY
+}
+
+if ! initial_repository_identity="$(repository_identity)"; then
+  echo "Unable to bind source repository identity before release-tag verification." >&2
+  exit 1
+fi
 
 parse_ref_object() {
   python3 -c '
@@ -176,6 +236,15 @@ if [[ -z "${resolved_sha}" ]]; then
 fi
 if [[ "${resolved_sha}" != "${SOURCE_SHA}" ]]; then
   echo "Resolved release tag SHA ${resolved_sha} does not match source SHA ${SOURCE_SHA}." >&2
+  exit 1
+fi
+
+if ! final_repository_identity="$(repository_identity)"; then
+  echo "Unable to rebind source repository identity after release-tag verification." >&2
+  exit 1
+fi
+if [[ "${final_repository_identity}" != "${initial_repository_identity}" ]]; then
+  echo "Source repository identity changed during release-tag verification." >&2
   exit 1
 fi
 
