@@ -127,7 +127,7 @@ It treats GitHub REST Release metadata as a closed identity snapshot before the 
 - GitHub `sha256:<64 lowercase hex>` digest;
 - canonical repository-bound API URL and browser download URL.
 
-Downloads use the snapshotted asset IDs directly and verify both bytes and size. They are written only into a hidden staging directory beside the requested output path. The same numeric Release ID is then resolved again, the canonical manifest and repository identity must remain unchanged, and only after all checks succeed is the staging directory renamed into the final output directory. Any failed digest/size/API/identity check removes staging and leaves no partially trusted output directory behind. Tag-name pattern downloads such as `gh release download --pattern` are intentionally not part of this path.
+Downloads use the snapshotted asset IDs directly and verify both bytes and size. They are written only into a hidden staging directory beside the requested output path. The same numeric Release ID is then resolved again, the canonical manifest and repository identity must remain unchanged, and temporary metadata cleanup must succeed before the staging directory is renamed into the final output directory. That rename is the publication commit point: no fallible filesystem cleanup runs afterward. Any failed digest/size/API/identity/temporary-cleanup check removes staging and leaves no partially trusted output directory behind. Tag-name pattern downloads such as `gh release download --pattern` are intentionally not part of this path.
 
 ## Published checksum contract
 

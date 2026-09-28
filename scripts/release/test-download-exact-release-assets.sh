@@ -116,6 +116,20 @@ exit 90
 FAKE_GH
 chmod 0755 "${fake_bin}/gh"
 
+cat >"${fake_bin}/rm" <<'FAKE_RM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${RM_FAKE_FAIL_ONCE:-false}" == "true" &&
+      ! -f "${RM_FAKE_STATE_FILE:?RM_FAKE_STATE_FILE is required}" ]]; then
+  : >"${RM_FAKE_STATE_FILE}"
+  exit 96
+fi
+
+exec /bin/rm "$@"
+FAKE_RM
+chmod 0755 "${fake_bin}/rm"
+
 assert_no_output_or_staging() {
   local output_dir="$1"
   local parent
@@ -143,6 +157,8 @@ run_downloader() {
     GH_FAKE_CHECKSUM="${temp_root}/checksum" \
     GH_FAKE_PROVENANCE="${temp_root}/provenance" \
     GH_FAKE_PHASE_FILE="${temp_root}/phase" \
+    RM_FAKE_FAIL_ONCE="${RM_FAKE_FAIL_ONCE:-false}" \
+    RM_FAKE_STATE_FILE="${temp_root}/rm-state" \
     PATH="${fake_bin}:${PATH}" \
     bash "${downloader}" \
     --repository Example/MyApp \
@@ -194,6 +210,16 @@ if grep -F "release download" "${temp_root}/gh.log" >/dev/null; then
   echo "Exact release downloader unexpectedly used gh release download." >&2
   exit 1
 fi
+
+rm -f "${temp_root}/rm-state"
+: >"${temp_root}/gh.log"
+cleanup_failure_output="${temp_root}/cleanup-failure"
+if RM_FAKE_FAIL_ONCE=true run_downloader success "${cleanup_failure_output}" >"${temp_root}/cleanup-failure.out" 2>"${temp_root}/cleanup-failure.err"; then
+  echo "Exact release downloader published output after temporary metadata cleanup failed." >&2
+  exit 1
+fi
+grep -F "Failed to clean temporary release metadata before publishing verified assets." "${temp_root}/cleanup-failure.err" >/dev/null
+assert_no_output_or_staging "${cleanup_failure_output}"
 
 : >"${temp_root}/gh.log"
 corrupt_output="${temp_root}/corrupt"
