@@ -89,6 +89,51 @@ class TapRepositoryIdentityTests(unittest.TestCase):
                 self.assertIsNone(identity)
                 self.assertTrue(any("positive integer" in error for error in errors))
 
+    def test_rejects_repository_urls_that_do_not_match_full_name(self) -> None:
+        cases = (
+            (
+                "clone_url",
+                "https://github.com/Example/other-tap.git",
+                "clone_url",
+            ),
+            (
+                "clone_url",
+                "https://token@github.com/Example/homebrew-tap.git",
+                "clone_url",
+            ),
+            (
+                "clone_url",
+                "http://github.com/Example/homebrew-tap.git",
+                "clone_url",
+            ),
+            (
+                "ssh_url",
+                "git@github.com:Example/other-tap.git",
+                "ssh_url",
+            ),
+            (
+                "ssh_url",
+                "ssh://git@github.com/Example/homebrew-tap.git",
+                "ssh_url",
+            ),
+        )
+        for field, value, expected_error in cases:
+            with self.subTest(field=field, value=value):
+                errors, identity = validate_tap_repository_identity(
+                    {**repository_document(), field: value},
+                    expected_repository="Example/homebrew-tap",
+                    expected_default_branch="main",
+                )
+                self.assertIsNone(identity)
+                self.assertTrue(
+                    any(
+                        expected_error in error
+                        and "canonical full_name" in error
+                        for error in errors
+                    ),
+                    errors,
+                )
+
     def test_rejects_malformed_canonical_urls(self) -> None:
         for field, value in (
             ("clone_url", ""),
