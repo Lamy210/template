@@ -18,6 +18,7 @@ from scripts.release.release_attestation import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VERIFY_CLI = REPO_ROOT / "scripts/release/verify-release-provenance.py"
+REPOSITORY_ID = 123
 SOURCE_SHA = "0123456789abcdef0123456789abcdef01234567"
 PUBLISHER_SHA = "1123456789abcdef0123456789abcdef01234567"
 SOURCE_ARTIFACT_DIGEST = "sha256:" + "a" * 64
@@ -27,6 +28,7 @@ ARCHIVE_SHA256 = "sha256:" + "b" * 64
 def expected_release(dmg_path: Path) -> ExpectedRelease:
     return ExpectedRelease(
         source_repository="example/MyApp",
+        source_repository_id=REPOSITORY_ID,
         source_run_id=123456789,
         source_run_attempt=2,
         source_sha=SOURCE_SHA,
@@ -58,6 +60,7 @@ class ReleaseAttestationTests(unittest.TestCase):
                 {
                     "schemaVersion",
                     "sourceRepository",
+                    "sourceRepositoryId",
                     "sourceRunId",
                     "sourceRunAttempt",
                     "sourceSHA",
@@ -71,6 +74,8 @@ class ReleaseAttestationTests(unittest.TestCase):
                 },
                 set(document),
             )
+            self.assertEqual(2, document["schemaVersion"])
+            self.assertEqual(REPOSITORY_ID, document["sourceRepositoryId"])
             self.assertNotIn("publisherRunAttempt", document)
             self.assertNotIn("validatedAt", document)
 
@@ -92,6 +97,10 @@ class ReleaseAttestationTests(unittest.TestCase):
         bool_id = dict(valid)
         bool_id["publisherRunId"] = True
         mutations.append(bool_id)
+
+        bool_repository_id = dict(valid)
+        bool_repository_id["sourceRepositoryId"] = True
+        mutations.append(bool_repository_id)
 
         bad_sha = dict(valid)
         bad_sha["publisherSHA"] = "A" * 40
@@ -154,6 +163,8 @@ class ReleaseAttestationTests(unittest.TestCase):
                     str(dmg),
                     "--repository",
                     "example/MyApp",
+                    "--repository-id",
+                    str(REPOSITORY_ID),
                     "--source-run-id",
                     "123456789",
                     "--source-run-attempt",
@@ -195,6 +206,8 @@ class ReleaseAttestationTests(unittest.TestCase):
                 str(REPO_ROOT / "scripts/release/write-release-provenance.py"),
                 "--source-repository",
                 "example/MyApp",
+                "--source-repository-id",
+                str(REPOSITORY_ID),
                 "--source-run-id",
                 "123456789",
                 "--source-run-attempt",
