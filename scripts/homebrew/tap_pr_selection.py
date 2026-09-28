@@ -35,6 +35,7 @@ def normalize_rest_pull_request_pages(
     document: object,
     *,
     expected_repository: str,
+    expected_repository_id: int,
 ) -> tuple[list[str], list[dict[str, object]]]:
     errors: list[str] = []
     normalized: list[dict[str, object]] = []
@@ -44,6 +45,8 @@ def normalize_rest_pull_request_pages(
         or REPOSITORY_RE.fullmatch(expected_repository) is None
     ):
         return ["expected repository must be in owner/repo form"], normalized
+    if type(expected_repository_id) is not int or expected_repository_id <= 0:
+        return ["expected repository id must be a positive integer"], normalized
 
     if not isinstance(document, list) or not document:
         return ["paginated pull request response must be a non-empty JSON array"], normalized
@@ -105,6 +108,8 @@ def normalize_rest_pull_request_pages(
 
             head_full_name = head_repository.get("full_name")
             base_full_name = base_repository.get("full_name")
+            head_repository_id = head_repository.get("id")
+            base_repository_id = base_repository.get("id")
             if (
                 not isinstance(head_full_name, str)
                 or REPOSITORY_RE.fullmatch(head_full_name) is None
@@ -117,8 +122,34 @@ def normalize_rest_pull_request_pages(
             ):
                 errors.append(f"{label} has an invalid base repository identity")
                 continue
+            if type(base_repository_id) is not int or base_repository_id <= 0:
+                errors.append(f"{label} has an invalid base repository id")
+                continue
+            if type(head_repository_id) is not int or head_repository_id <= 0:
+                errors.append(f"{label} has an invalid head repository id")
+                continue
             if base_full_name.lower() != expected_repository_key:
                 errors.append(f"{label} targets an unexpected base repository")
+                continue
+            if base_repository_id != expected_repository_id:
+                errors.append(f"{label} targets an unexpected base repository id")
+                continue
+
+            same_head_repository = (
+                head_full_name.lower() == expected_repository_key
+            )
+            if same_head_repository and head_repository_id != expected_repository_id:
+                errors.append(
+                    f"{label} same-repository head has an unexpected repository id"
+                )
+                continue
+            if (
+                not same_head_repository
+                and head_repository_id == expected_repository_id
+            ):
+                errors.append(
+                    f"{label} foreign head name reuses the expected repository id"
+                )
                 continue
 
             head_owner, head_name = head_full_name.split("/", 1)
@@ -131,11 +162,14 @@ def normalize_rest_pull_request_pages(
                     "headRepository": {
                         "name": head_name,
                         "nameWithOwner": head_full_name,
+                        "databaseId": head_repository_id,
                     },
                     "headRepositoryOwner": {"login": head_owner},
-                    "isCrossRepository": (
-                        head_full_name.lower() != expected_repository_key
-                    ),
+                    "baseRepository": {
+                        "nameWithOwner": base_full_name,
+                        "databaseId": base_repository_id,
+                    },
+                    "isCrossRepository": not same_head_repository,
                 }
             )
 
@@ -146,6 +180,7 @@ def select_same_repository_pull_request(
     document: object,
     *,
     expected_repository: str,
+    expected_repository_id: int,
     expected_head: str,
     expected_base: str,
     expected_head_sha: str,
@@ -157,6 +192,8 @@ def select_same_repository_pull_request(
         errors.append("expected repository must be in owner/repo form")
     else:
         expected_repository_key = expected_repository.lower()
+    if type(expected_repository_id) is not int or expected_repository_id <= 0:
+        errors.append("expected repository id must be a positive integer")
     if not isinstance(expected_head, str) or not expected_head or "\n" in expected_head:
         errors.append("expected head branch must be a non-empty single line")
     if not isinstance(expected_base, str) or not expected_base or "\n" in expected_base:
@@ -191,6 +228,45 @@ def select_same_repository_pull_request(
             errors.append(f"pull request entry {index} has invalid head repository identity")
             continue
 
+        head_repository_document = item.get("headRepository")
+        base_repository_document = item.get("baseRepository")
+        head_repository_id = (
+            head_repository_document.get("databaseId")
+            if isinstance(head_repository_document, dict)
+            else None
+        )
+        base_repository_name = (
+            base_repository_document.get("nameWithOwner")
+            if isinstance(base_repository_document, dict)
+            else None
+        )
+        base_repository_id = (
+            base_repository_document.get("databaseId")
+            if isinstance(base_repository_document, dict)
+            else None
+        )
+        if type(head_repository_id) is not int or head_repository_id <= 0:
+            errors.append(f"pull request entry {index} has invalid head repository id")
+            continue
+        if (
+            not isinstance(base_repository_name, str)
+            or REPOSITORY_RE.fullmatch(base_repository_name) is None
+        ):
+            errors.append(f"pull request entry {index} has invalid base repository identity")
+            continue
+        if type(base_repository_id) is not int or base_repository_id <= 0:
+            errors.append(f"pull request entry {index} has invalid base repository id")
+            continue
+        if (
+            expected_repository_key is not None
+            and base_repository_name.lower() != expected_repository_key
+        ):
+            errors.append(f"pull request entry {index} targets an unexpected base repository")
+            continue
+        if base_repository_id != expected_repository_id:
+            errors.append(f"pull request entry {index} targets an unexpected base repository id")
+            continue
+
         head_ref_oid = item.get("headRefOid")
         if not isinstance(head_ref_oid, str) or SHA_RE.fullmatch(head_ref_oid) is None:
             errors.append(f"pull request entry {index} has an invalid head commit")
@@ -201,6 +277,10 @@ def select_same_repository_pull_request(
             expected_repository_key is not None
             and head_repository.lower() == expected_repository_key
         ):
+            if head_repository_id != expected_repository_id:
+                errors.append(
+                    f"pull request entry {index} same-repository head has an unexpected repository id"
+                )
             if is_cross_repository is not False:
                 errors.append(
                     f"pull request entry {index} claims cross-repository identity for the tap repository"
@@ -213,13 +293,19 @@ def select_same_repository_pull_request(
                 type(number) is int
                 and number > 0
                 and is_cross_repository is False
+                and head_repository_id == expected_repository_id
                 and head_ref_oid == expected_head_sha
             ):
                 candidates.append(number)
-        elif is_cross_repository is not True:
-            errors.append(
-                f"pull request entry {index} has a foreign head repository without cross-repository identity"
-            )
+        else:
+            if head_repository_id == expected_repository_id:
+                errors.append(
+                    f"pull request entry {index} foreign head name reuses the expected repository id"
+                )
+            if is_cross_repository is not True:
+                errors.append(
+                    f"pull request entry {index} has a foreign head repository without cross-repository identity"
+                )
 
     if len(candidates) > 1:
         errors.append(
