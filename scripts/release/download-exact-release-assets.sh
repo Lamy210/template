@@ -101,7 +101,7 @@ for asset_name in "${assets[@]}"; do
   fi
 done
 
-for command_name in gh python3 cmp mv mktemp rm cp mkdir dirname basename; do
+for command_name in gh python3 cmp mv mktemp rm cp dirname basename; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
     exit 2
