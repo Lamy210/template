@@ -154,6 +154,7 @@ jobs:
             --asset "${DMG_NAME}.sha256" \
             --asset release-provenance.json
 
+          verified_source_sha="${RUNNER_TEMP}/verified-release-source-sha.txt"
           sha256="$(
             python3 source/scripts/release/verify-published-release-assets.py \
               --dmg "release-assets/${DMG_NAME}" \
@@ -162,9 +163,9 @@ jobs:
               --tag "${SOURCE_TAG}" \
               --repository "${EXPECTED_REPOSITORY}" \
               --publisher-sha "${EXPECTED_PUBLISHER_SHA}" \
-              --source-sha-output release-assets/source-sha.txt
+              --source-sha-output "${verified_source_sha}"
           )"
-          source_sha="$(cat release-assets/source-sha.txt)"
+          source_sha="$(cat "${verified_source_sha}")"
           if [[ ! "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Verified provenance returned an invalid source SHA." >&2
             exit 1
