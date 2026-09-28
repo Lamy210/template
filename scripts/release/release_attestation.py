@@ -6,10 +6,11 @@ from pathlib import Path
 import re
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA_FIELDS = {
     "schemaVersion",
     "sourceRepository",
+    "sourceRepositoryId",
     "sourceRunId",
     "sourceRunAttempt",
     "sourceSHA",
@@ -30,6 +31,7 @@ REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 @dataclass(frozen=True)
 class ExpectedRelease:
     source_repository: str
+    source_repository_id: int
     source_run_id: int
     source_run_attempt: int
     source_sha: str
@@ -68,6 +70,7 @@ def validate_release_attestation(document: object) -> list[str]:
         errors.append("schemaVersion must equal integer 1")
 
     for field in (
+        "sourceRepositoryId",
         "sourceRunId",
         "sourceRunAttempt",
         "sourceArtifactId",
@@ -117,6 +120,7 @@ def verify_release_attestation(
 
     expected_values = {
         "sourceRepository": expected.source_repository,
+        "sourceRepositoryId": expected.source_repository_id,
         "sourceRunId": expected.source_run_id,
         "sourceRunAttempt": expected.source_run_attempt,
         "sourceSHA": expected.source_sha,
@@ -151,6 +155,7 @@ def build_release_attestation(expected: ExpectedRelease) -> dict[str, object]:
     document: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
         "sourceRepository": expected.source_repository,
+        "sourceRepositoryId": expected.source_repository_id,
         "sourceRunId": expected.source_run_id,
         "sourceRunAttempt": expected.source_run_attempt,
         "sourceSHA": expected.source_sha,
