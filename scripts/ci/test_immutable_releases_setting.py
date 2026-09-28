@@ -16,6 +16,7 @@ from scripts.ci.immutable_releases_setting import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/ci/validate-immutable-releases-setting.py"
 DOCTOR = REPO_ROOT / "scripts/ci/audit-live-immutable-releases.sh"
+QUALITY = REPO_ROOT / ".github/workflows/quality.yml"
 
 
 class ImmutableReleasesSettingTests(unittest.TestCase):
@@ -73,6 +74,14 @@ class ImmutableReleasesSettingTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, text)
+
+    def test_quality_requires_immutable_release_doctor_regressions(self) -> None:
+        text = QUALITY.read_text(encoding="utf-8")
+        self.assertIn("scripts.ci.test_immutable_releases_setting", text)
+        self.assertIn(
+            "bash scripts/ci/test-audit-live-immutable-releases.sh",
+            text,
+        )
 
     def test_cli_reports_closed_two_line_setting(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
