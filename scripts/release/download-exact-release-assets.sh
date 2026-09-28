@@ -76,6 +76,31 @@ if [[ -z "${repository}" || -z "${repository_id}" || -z "${tag}" || -z "${output
   exit 2
 fi
 
+if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  echo "repository must use canonical owner/repo form." >&2
+  exit 2
+fi
+repository_owner="${repository%%/*}"
+repository_name="${repository#*/}"
+if [[ "${repository_owner}" == "." || "${repository_owner}" == ".." || "${repository_name}" == "." || "${repository_name}" == ".." ]]; then
+  echo "repository contains an invalid owner or repository component." >&2
+  exit 2
+fi
+if [[ ! "${repository_id}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "repository-id must be a positive integer." >&2
+  exit 2
+fi
+if [[ ! "${tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "tag must use stable SemVer form vX.Y.Z." >&2
+  exit 2
+fi
+for asset_name in "${assets[@]}"; do
+  if [[ ! "${asset_name}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+    echo "asset name is unsafe or malformed: ${asset_name}" >&2
+    exit 2
+  fi
+done
+
 for command_name in gh python3 cmp mv mktemp rm cp mkdir; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
