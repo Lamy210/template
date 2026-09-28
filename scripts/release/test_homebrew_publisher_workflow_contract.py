@@ -32,7 +32,8 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
         text = self.homebrew_text()
         self.assertIn("source_tag:", text)
         self.assertIn("SOURCE_TAG: ${{ inputs.source_tag }}", text)
-        self.assertIn('gh release download "${SOURCE_TAG}"', text)
+        self.assertIn("download-exact-release-assets.sh", text)
+        self.assertNotIn("gh release download", text)
 
     def test_homebrew_rejects_noncanonical_stable_release_tags(self) -> None:
         block = step_block(self.homebrew_text(), "Validate release identity and inputs")
@@ -105,19 +106,28 @@ class HomebrewPublisherWorkflowContractTests(unittest.TestCase):
     def test_published_assets_are_rebound_before_cask_render(self) -> None:
         block = step_block(self.homebrew_text(), "Download and verify published release assets")
         self.assertTrue(block)
-        self.assertIn('gh release view "${SOURCE_TAG}"', block)
-        self.assertIn("--json assets,isDraft,isPrerelease,tagName", block)
-        self.assertIn("source/scripts/release/verify-release-state.py", block)
-        self.assertIn("--metadata release-assets/release.json", block)
+        self.assertIn(
+            "EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}",
+            block,
+        )
+        self.assertIn(
+            "source/scripts/release/download-exact-release-assets.sh",
+            block,
+        )
+        self.assertIn('--repository "${EXPECTED_REPOSITORY}"', block)
+        self.assertIn('--repository-id "${EXPECTED_REPOSITORY_ID}"', block)
+        self.assertIn('--tag "${SOURCE_TAG}"', block)
+        self.assertIn("--output-dir release-assets", block)
         self.assertIn('--asset "${DMG_NAME}"', block)
         self.assertIn('--asset "${DMG_NAME}.sha256"', block)
         self.assertIn("--asset release-provenance.json", block)
-        self.assertIn('"${DMG_NAME}" "${DMG_NAME}.sha256" release-provenance.json', block)
+        self.assertNotIn("gh release view", block)
+        self.assertNotIn("gh release download", block)
+        self.assertNotIn("source/scripts/release/verify-release-state.py", block)
         self.assertIn("source/scripts/release/verify-published-release-assets.py", block)
         self.assertIn('--dmg "release-assets/${DMG_NAME}"', block)
         self.assertIn('--checksum "release-assets/${DMG_NAME}.sha256"', block)
         self.assertIn("--provenance release-assets/release-provenance.json", block)
-        self.assertIn('--tag "${SOURCE_TAG}"', block)
         self.assertIn('--repository "${EXPECTED_REPOSITORY}"', block)
         self.assertIn('--publisher-sha "${EXPECTED_PUBLISHER_SHA}"', block)
         self.assertIn("--source-sha-output release-assets/source-sha.txt", block)
