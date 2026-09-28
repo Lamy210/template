@@ -154,7 +154,7 @@ if GH_FAKE_SCENARIO=success \
   exit 1
 fi
 [[ ! -s "${temp_root}/gh.log" ]]
-grep -F "canonical owner/repo" "${temp_root}/preflight.err" >/dev/null
+grep -F "invalid owner or repository component" "${temp_root}/preflight.err" >/dev/null
 
 : >"${temp_root}/gh.log"
 success_output="${temp_root}/success"
