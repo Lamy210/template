@@ -8,6 +8,7 @@ Usage:
     --repository owner/repo \
     --repository-id 123456 \
     --tag v1.2.3 \
+    [--require-immutable] \
     --output-dir release-assets \
     --asset App-v1.2.3.dmg \
     --asset App-v1.2.3.dmg.sha256 \
@@ -18,6 +19,7 @@ EOF
 repository=""
 repository_id=""
 tag=""
+require_immutable=false
 output_dir=""
 assets=()
 
@@ -46,6 +48,10 @@ while (($# > 0)); do
       }
       tag="$2"
       shift 2
+      ;;
+    --require-immutable)
+      require_immutable=true
+      shift
       ;;
     --output-dir)
       [[ $# -ge 2 ]] || {
@@ -202,6 +208,9 @@ resolver_args=(
 for asset_name in "${assets[@]}"; do
   resolver_args+=(--asset "${asset_name}")
 done
+if [[ "${require_immutable}" == true ]]; then
+  resolver_args+=(--require-immutable)
+fi
 python3 "${resolver}" "${resolver_args[@]}"
 
 release_id="$(
@@ -314,6 +323,9 @@ resolver_args=(
 for asset_name in "${assets[@]}"; do
   resolver_args+=(--asset "${asset_name}")
 done
+if [[ "${require_immutable}" == true ]]; then
+  resolver_args+=(--require-immutable)
+fi
 python3 "${resolver}" "${resolver_args[@]}"
 
 if ! cmp -s "${manifest_before}" "${manifest_after}"; then
