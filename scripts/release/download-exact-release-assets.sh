@@ -120,22 +120,24 @@ resolver="${repo_root}/scripts/release/resolve-release-download.py"
   exit 2
 }
 
-temp_root="$(mktemp -d)"
 output_parent="$(dirname "${output_dir}")"
 output_name="$(basename "${output_dir}")"
 if [[ ! -d "${output_parent}" ]]; then
   echo "Output parent directory does not exist: ${output_parent}" >&2
   exit 2
 fi
-staging_dir="$(mktemp -d "${output_parent%/}/.${output_name}.partial.XXXXXX")"
 
+temp_root="$(mktemp -d)"
+staging_dir=""
 cleanup() {
   rm -rf "${temp_root}"
-  if [[ -n "${staging_dir:-}" && -d "${staging_dir}" ]]; then
+  if [[ -n "${staging_dir}" && -d "${staging_dir}" ]]; then
     rm -rf "${staging_dir}"
   fi
 }
 trap cleanup EXIT
+
+staging_dir="$(mktemp -d "${output_parent%/}/.${output_name}.partial.XXXXXX")"
 
 api_headers=(
   -H 'Accept: application/vnd.github+json'
