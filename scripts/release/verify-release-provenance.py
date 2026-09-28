@@ -23,6 +23,7 @@ def main() -> int:
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--dmg", required=True, type=Path)
     parser.add_argument("--repository", required=True)
+    parser.add_argument("--repository-id", required=True, type=int)
     parser.add_argument("--source-run-id", required=True, type=int)
     parser.add_argument("--source-run-attempt", required=True, type=int)
     parser.add_argument("--source-sha", required=True)
@@ -36,6 +37,7 @@ def main() -> int:
 
     expected = ExpectedRelease(
         source_repository=args.repository,
+        source_repository_id=args.repository_id,
         source_run_id=args.source_run_id,
         source_run_attempt=args.source_run_attempt,
         source_sha=args.source_sha,
