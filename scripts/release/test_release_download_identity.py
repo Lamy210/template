@@ -270,10 +270,11 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
+            after_second = output.read_text(encoding="utf-8")
 
         self.assertEqual(0, first.returncode, first.stderr)
         self.assertEqual(1, second.returncode)
-        self.assertEqual(original, output.read_text(encoding="utf-8") if output.exists() else original)
+        self.assertEqual(original, after_second)
 
 
 if __name__ == "__main__":
