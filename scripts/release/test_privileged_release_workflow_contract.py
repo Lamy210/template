@@ -185,6 +185,10 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             ': "${EXPECTED_REPOSITORY_ID:?EXPECTED_REPOSITORY_ID is required}"',
             text,
         )
+        self.assertIn(
+            'EXPECTED_REPOSITORY_ID="${EXPECTED_REPOSITORY_ID}"',
+            text,
+        )
 
         binding_calls = [
             match.start()
