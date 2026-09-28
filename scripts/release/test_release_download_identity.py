@@ -1,0 +1,280 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+from scripts.release.release_download_identity import (
+    release_download_manifest,
+    validate_release_download_identity,
+)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CLI = REPO_ROOT / "scripts/release/resolve-release-download.py"
+REPOSITORY = "Example/MyApp"
+TAG = "v1.2.3"
+ASSETS = (
+    "MyApp-v1.2.3.dmg",
+    "MyApp-v1.2.3.dmg.sha256",
+    "release-provenance.json",
+)
+
+
+def digest(label: str) -> str:
+    return "sha256:" + hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+def asset(asset_id: int, name: str, *, repository: str = REPOSITORY) -> dict[str, object]:
+    return {
+        "id": asset_id,
+        "name": name,
+        "state": "uploaded",
+        "size": 100 + asset_id,
+        "digest": digest(name),
+        "url": f"https://api.github.com/repos/{repository}/releases/assets/{asset_id}",
+        "browser_download_url": (
+            f"https://github.com/{repository}/releases/download/{TAG}/{name}"
+        ),
+    }
+
+
+def release_document(*, repository: str = REPOSITORY) -> dict[str, object]:
+    return {
+        "id": 700,
+        "tag_name": TAG,
+        "draft": False,
+        "prerelease": False,
+        "immutable": False,
+        "url": f"https://api.github.com/repos/{repository}/releases/700",
+        "assets": [
+            asset(101, ASSETS[0], repository=repository),
+            asset(102, ASSETS[1], repository=repository),
+            asset(103, ASSETS[2], repository=repository),
+        ],
+    }
+
+
+class ReleaseDownloadIdentityTests(unittest.TestCase):
+    def validate(
+        self,
+        document: object,
+        *,
+        repository: str = REPOSITORY,
+        tag: str = TAG,
+        assets: list[str] | None = None,
+    ):
+        return validate_release_download_identity(
+            document,
+            expected_repository=repository,
+            expected_tag=tag,
+            expected_asset_names=list(assets or ASSETS),
+        )
+
+    def test_accepts_exact_release_and_emits_deterministic_manifest(self) -> None:
+        errors, identity = self.validate(release_document())
+
+        self.assertEqual([], errors)
+        self.assertIsNotNone(identity)
+        assert identity is not None
+        self.assertEqual(
+            {
+                "schemaVersion": 1,
+                "releaseId": 700,
+                "tag": TAG,
+                "immutable": False,
+                "assets": [
+                    {
+                        "id": 101,
+                        "name": ASSETS[0],
+                        "digest": digest(ASSETS[0]),
+                        "size": 201,
+                    },
+                    {
+                        "id": 102,
+                        "name": ASSETS[1],
+                        "digest": digest(ASSETS[1]),
+                        "size": 202,
+                    },
+                    {
+                        "id": 103,
+                        "name": ASSETS[2],
+                        "digest": digest(ASSETS[2]),
+                        "size": 203,
+                    },
+                ],
+            },
+            release_download_manifest(identity),
+        )
+
+    def test_preserves_native_immutable_flag_without_requiring_it_yet(self) -> None:
+        document = release_document()
+        document["immutable"] = True
+
+        errors, identity = self.validate(document)
+
+        self.assertEqual([], errors)
+        self.assertIsNotNone(identity)
+        assert identity is not None
+        self.assertTrue(identity.immutable)
+
+    def test_rejects_release_identity_and_state_drift(self) -> None:
+        cases = (
+            ("id", True, "positive integer"),
+            ("id", 0, "positive integer"),
+            ("tag_name", "v1.2.4", "tag identity"),
+            ("draft", True, "published"),
+            ("prerelease", True, "stable"),
+            ("immutable", None, "immutable flag"),
+            (
+                "url",
+                "https://api.github.com/repos/Example/Other/releases/700",
+                "API URL",
+            ),
+        )
+        for field, value, expected_error in cases:
+            with self.subTest(field=field, value=value):
+                document = release_document()
+                document[field] = value
+                errors, identity = self.validate(document)
+                self.assertIsNone(identity)
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+
+    def test_rejects_asset_identity_digest_and_url_drift(self) -> None:
+        mutations = (
+            ("id", True, "positive integer"),
+            ("state", "new", "uploaded state"),
+            ("size", 0, "positive size"),
+            ("digest", "sha256:BAD", "SHA-256 digest"),
+            (
+                "url",
+                "https://api.github.com/repos/Example/Other/releases/assets/101",
+                "API URL",
+            ),
+            (
+                "browser_download_url",
+                "https://github.com/Example/Other/releases/download/v1.2.3/"
+                + ASSETS[0],
+                "browser URL",
+            ),
+        )
+        for field, value, expected_error in mutations:
+            with self.subTest(field=field, value=value):
+                document = release_document()
+                assets = document["assets"]
+                assert isinstance(assets, list)
+                first = assets[0]
+                assert isinstance(first, dict)
+                first[field] = value
+                errors, identity = self.validate(document)
+                self.assertIsNone(identity)
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+
+    def test_rejects_duplicate_ids_names_and_asset_set_drift(self) -> None:
+        duplicate_id = release_document()
+        duplicate_id_assets = duplicate_id["assets"]
+        assert isinstance(duplicate_id_assets, list)
+        assert isinstance(duplicate_id_assets[1], dict)
+        duplicate_id_assets[1]["id"] = 101
+
+        duplicate_name = release_document()
+        duplicate_name_assets = duplicate_name["assets"]
+        assert isinstance(duplicate_name_assets, list)
+        assert isinstance(duplicate_name_assets[1], dict)
+        duplicate_name_assets[1] = asset(102, ASSETS[0])
+
+        missing = release_document()
+        missing_assets = missing["assets"]
+        assert isinstance(missing_assets, list)
+        missing["assets"] = missing_assets[:-1]
+
+        extra = release_document()
+        extra_assets = extra["assets"]
+        assert isinstance(extra_assets, list)
+        extra_assets.append(asset(104, "extra.zip"))
+
+        for label, document, expected_error in (
+            ("duplicate id", duplicate_id, "duplicated"),
+            ("duplicate name", duplicate_name, "duplicated"),
+            ("missing", missing, "asset set"),
+            ("extra", extra, "asset set"),
+        ):
+            with self.subTest(label=label):
+                errors, identity = self.validate(document)
+                self.assertIsNone(identity)
+                self.assertTrue(
+                    any(expected_error in error for error in errors),
+                    errors,
+                )
+
+    def test_rejects_malformed_expectations(self) -> None:
+        errors, identity = self.validate(
+            release_document(),
+            repository="../escape",
+            tag="v01.2.3",
+            assets=["unsafe/name.dmg", "unsafe/name.dmg"],
+        )
+
+        self.assertIsNone(identity)
+        self.assertTrue(any("owner/repo" in error for error in errors))
+        self.assertTrue(any("stable SemVer" in error for error in errors))
+        self.assertTrue(any("unique" in error for error in errors))
+        self.assertTrue(any("unsafe" in error for error in errors))
+
+    def test_cli_writes_once_and_refuses_overwrite(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata = root / "release.json"
+            output = root / "manifest.json"
+            metadata.write_text(
+                json.dumps(release_document()) + "\n",
+                encoding="utf-8",
+            )
+
+            command = [
+                sys.executable,
+                str(CLI),
+                "--metadata",
+                str(metadata),
+                "--repository",
+                REPOSITORY,
+                "--tag",
+                TAG,
+            ]
+            for name in ASSETS:
+                command.extend(["--asset", name])
+            command.extend(["--output", str(output)])
+
+            first = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            original = output.read_text(encoding="utf-8")
+            second = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, first.returncode, first.stderr)
+        self.assertEqual(1, second.returncode)
+        self.assertEqual(original, output.read_text(encoding="utf-8") if output.exists() else original)
+
+
+if __name__ == "__main__":
+    unittest.main()
