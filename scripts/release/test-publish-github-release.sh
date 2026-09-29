@@ -97,7 +97,7 @@ case "$2" in
     if [[ "${GH_FAKE_RELEASE_EXISTS:-false}" != "true" && ! -f "${GH_FAKE_STATE_FILE}" ]]; then
       exit 1
     fi
-    if [[ " $* " == *" --json assets,isDraft,isPrerelease,tagName "* ]]; then
+    if [[ " $* " == *" --json assets,isDraft,isImmutable,isPrerelease,tagName "* ]]; then
       : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
       python3 - "${GH_FAKE_REMOTE_DIR}" <<'PY'
 import json
@@ -110,6 +110,7 @@ assets = [{"name": path.name} for path in sorted(remote_dir.iterdir()) if path.i
 payload = {
     "assets": assets,
     "isDraft": os.environ.get("GH_FAKE_IS_DRAFT", "false") == "true",
+    "isImmutable": os.environ.get("GH_FAKE_IS_IMMUTABLE", "true") == "true",
     "isPrerelease": os.environ.get("GH_FAKE_IS_PRERELEASE", "false") == "true",
     "tagName": os.environ.get("GH_FAKE_TAG_NAME", "v1.2.3"),
 }
@@ -187,6 +188,7 @@ run_publisher() {
     GH_FAKE_RELEASE_LIST_FAIL="${GH_FAKE_RELEASE_LIST_FAIL:-false}" \
     GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE="${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" \
     GH_FAKE_TAG_DRIFT_AFTER_CREATE="${GH_FAKE_TAG_DRIFT_AFTER_CREATE:-false}" \
+    GH_FAKE_IS_IMMUTABLE="${GH_FAKE_IS_IMMUTABLE:-true}" \
     GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE="${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" \
     GH_FAKE_REPOSITORY_ID="${GH_FAKE_REPOSITORY_ID:-123}" \
     PATH="${FAKE_BIN}:${PATH}" \
@@ -379,7 +381,7 @@ if ! grep -F -- "--repo ${GITHUB_REPOSITORY}" "${LOG_PATH}" >/dev/null; then
   echo "Publisher did not bind GitHub Release operations to the explicit repository." >&2
   exit 1
 fi
-if ! grep -F "release view ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --json assets,isDraft,isPrerelease,tagName" "${LOG_PATH}" >/dev/null; then
+if ! grep -F "release view ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --json assets,isDraft,isImmutable,isPrerelease,tagName" "${LOG_PATH}" >/dev/null; then
   echo "New release was not re-read for post-create state verification." >&2
   exit 1
 fi
@@ -531,6 +533,16 @@ if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
 fi
 if grep -F -- "--clobber" "${LOG_PATH}" >/dev/null; then
   echo "Publisher must never use --clobber." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true GH_FAKE_IS_IMMUTABLE=false run_publisher; then
+  echo "Mutable existing release was incorrectly accepted as a production no-op." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Mutable existing release was mutated instead of rejected." >&2
   exit 1
 fi
 
