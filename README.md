@@ -100,6 +100,7 @@ scripts/
   ci/
   homebrew/
   release/
+  template/
 templates/
   homebrew/
 CONTRIBUTING.md
