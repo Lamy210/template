@@ -22,9 +22,13 @@ if [[ "${args}" == "api repos/Lamy210/template" ]]; then
   printf '%s\n' '{"id":1367784801,"full_name":"Lamy210/template"}'
   exit 0
 fi
-if [[ "${args}" == *"/actions/workflows/visual-regression.yml/runs"* ]]; then
+if [[ "${args}" == "api repos/Lamy210/template/actions/workflows/visual-regression.yml" ]]; then
+  printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/visual-regression.yml","state":"active"}'
+  exit 0
+fi
+if [[ "${args}" == *"/actions/workflows/4242/runs"* ]]; then
   cat <<'JSON'
-{"workflow_runs":[{"id":9100,"run_attempt":1,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"release/1.x","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9100,"workflow_id":4242,"path":".github/workflows/visual-regression.yml","run_attempt":1,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"release/1.x","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
   exit 0
 fi
