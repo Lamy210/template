@@ -2,7 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=repository-name.sh
+# shellcheck source=scripts/common/repository-name.sh
 source "${script_dir}/repository-name.sh"
 
 valid=(
