@@ -15,34 +15,52 @@ set -euo pipefail
 scenario="${GH_STUB_SCENARIO:?GH_STUB_SCENARIO is required}"
 args="$*"
 
+if [[ "${args}" == "api repos/Lamy210/template" ]]; then
+  : "${GH_STUB_STATE_ROOT:?GH_STUB_STATE_ROOT is required}"
+  state_file="${GH_STUB_STATE_ROOT}/repository-${scenario}"
+  count="$(cat "${state_file}" 2>/dev/null || printf '0')"
+  printf '%s\n' "$((count + 1))" >"${state_file}"
+  repository_id=1367784801
+  if [[ "${scenario}" == "repository-drift" && "${count}" -ge 1 ]]; then
+    repository_id=1367784802
+  fi
+  printf '{"id":%s,"full_name":"Lamy210/template"}\n' "${repository_id}"
+  exit 0
+fi
+
 if [[ "${args}" == *"/actions/workflows/visual-regression.yml/runs"* ]]; then
   case "${scenario}" in
     malformed-runs)
       printf '{not-json'
       ;;
-    success|second-page-artifact|digest-mismatch|missing-digest|wrong-artifact|expired|duplicate-artifact|duplicate-id|absolute|traversal|duplicate-member|symlink-escape)
+    success|second-page-artifact|digest-mismatch|missing-digest|wrong-artifact|expired|duplicate-artifact|duplicate-id|absolute|traversal|duplicate-member|symlink-escape|artifact-repository-id-drift|repository-drift)
       cat <<'JSON'
-{"workflow_runs":[{"id":9001,"run_attempt":2,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9001,"run_attempt":2,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     wrong-repo)
       cat <<'JSON'
-{"workflow_runs":[{"id":9005,"run_attempt":1,"head_sha":"1123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"full_name":"attacker/template"}}]}
+{"workflow_runs":[{"id":9005,"run_attempt":1,"head_sha":"1123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"attacker/template"},"repository":{"id":1367784801,"full_name":"attacker/template"}}]}
+JSON
+      ;;
+    wrong-run-repository-id)
+      cat <<'JSON'
+{"workflow_runs":[{"id":9006,"run_attempt":1,"head_sha":"5123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":999,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     pr)
       cat <<'JSON'
-{"workflow_runs":[{"id":9002,"run_attempt":1,"head_sha":"2123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"pull_request","conclusion":"success","head_repository":{"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9002,"run_attempt":1,"head_sha":"2123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"pull_request","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     non-main)
       cat <<'JSON'
-{"workflow_runs":[{"id":9003,"run_attempt":1,"head_sha":"3123456789abcdef0123456789abcdef01234567","head_branch":"feature","event":"push","conclusion":"success","head_repository":{"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9003,"run_attempt":1,"head_sha":"3123456789abcdef0123456789abcdef01234567","head_branch":"feature","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     failure)
       cat <<'JSON'
-{"workflow_runs":[{"id":9004,"run_attempt":1,"head_sha":"4123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"failure","head_repository":{"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9004,"run_attempt":1,"head_sha":"4123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"failure","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     *)
@@ -58,7 +76,7 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
     exit 98
   fi
   case "${scenario}" in
-    success|second-page-artifact|digest-mismatch|missing-digest|absolute|traversal|duplicate-member|symlink-escape)
+    success|second-page-artifact|digest-mismatch|missing-digest|absolute|traversal|duplicate-member|symlink-escape|artifact-repository-id-drift|repository-drift)
       python3 - "${scenario}" <<'PY'
 import hashlib
 import io
@@ -108,7 +126,15 @@ artifact = {
     "id": 7001,
     "name": "visual-baseline-test",
     "expired": False,
+    "workflow_run": {
+        "id": 9001,
+        "repository_id": 1367784801,
+        "head_repository_id": 1367784801,
+        "head_sha": "0123456789abcdef0123456789abcdef01234567",
+    },
 }
+if scenario == "artifact-repository-id-drift":
+    artifact["workflow_run"]["repository_id"] = 999
 if scenario == "digest-mismatch":
     artifact["digest"] = "sha256:" + ("0" * 64)
 elif scenario != "missing-digest":
@@ -210,6 +236,7 @@ run_resolver() {
   local output_dir="$2"
   PATH="${STUB_BIN}:${PATH}" \
     GH_STUB_SCENARIO="${scenario}" \
+    GH_STUB_STATE_ROOT="${TEMP_ROOT}" \
     GH_TOKEN="test-token" \
     bash "${RESOLVER}" \
     --repository Lamy210/template \
@@ -273,6 +300,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     metadata = json.load(handle)
 
 assert metadata["repository"] == "Lamy210/template"
+assert metadata["repositoryId"] == 1367784801
 assert metadata["workflow"] == "visual-regression.yml"
 assert metadata["runId"] == 9001
 assert metadata["runAttempt"] == 2
@@ -287,7 +315,10 @@ assert_status pr 4
 assert_status non-main 4
 assert_status failure 4
 assert_status wrong-repo 4
+assert_status wrong-run-repository-id 4
 assert_status wrong-artifact 4
+assert_status artifact-repository-id-drift 6
+assert_status repository-drift 6
 assert_status expired 4
 assert_status malformed-runs 3
 assert_status duplicate-artifact 3

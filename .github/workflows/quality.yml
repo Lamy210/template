@@ -74,6 +74,7 @@ jobs:
           set -euo pipefail
           python3 -m unittest \
             scripts.common.test_github_remote \
+            scripts.common.test_repository_identity \
             scripts.common.test_repository_name \
             scripts.ci.test_validate_rulesets \
             scripts.ci.test_validate_rulesets_portability \

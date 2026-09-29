@@ -30,6 +30,11 @@ with open(log, "a", encoding="utf-8") as handle:
     handle.write(args + "\n")
 
 
+if args == "api repos/Lamy210/template":
+    print(json.dumps({"id": 1367784801, "full_name": "Lamy210/template"}))
+    raise SystemExit(0)
+
+
 def archive_bytes():
     buffer = io.BytesIO()
     info = zipfile.ZipInfo("profile.json", date_time=(2020, 1, 1, 0, 0, 0))
@@ -49,7 +54,8 @@ if "/actions/workflows/tests.yml/runs" in args:
             "head_branch": "main",
             "event": "schedule",
             "conclusion": "success",
-            "head_repository": {"full_name": "Lamy210/template"},
+            "head_repository": {"id": 1367784801, "full_name": "Lamy210/template"},
+            "repository": {"id": 1367784801, "full_name": "Lamy210/template"},
         }]}))
         raise SystemExit(0)
     if "event=push" in args:
@@ -60,7 +66,8 @@ if "/actions/workflows/tests.yml/runs" in args:
             "head_branch": "main",
             "event": "push",
             "conclusion": "success",
-            "head_repository": {"full_name": "Lamy210/template"},
+            "head_repository": {"id": 1367784801, "full_name": "Lamy210/template"},
+            "repository": {"id": 1367784801, "full_name": "Lamy210/template"},
         }]}))
         raise SystemExit(0)
 
@@ -71,6 +78,12 @@ if "/actions/runs/9200/artifacts" in args:
         "name": "visual-baseline",
         "expired": False,
         "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+        "workflow_run": {
+            "id": 9200,
+            "repository_id": 1367784801,
+            "head_repository_id": 1367784801,
+            "head_sha": "0123456789abcdef0123456789abcdef01234567",
+        },
     }]}]))
     raise SystemExit(0)
 
@@ -142,6 +155,7 @@ class TrustedResolverEventPolicyTests(unittest.TestCase):
         self.assertEqual(completed.stdout.strip(), "9200")
         metadata = json.loads((output / "resolver-metadata.json").read_text())
         self.assertEqual(metadata["event"], "schedule")
+        self.assertEqual(metadata["repositoryId"], 1367784801)
         self.assertEqual(metadata["runId"], 9200)
         self.assertEqual(metadata["sourceSHA"], SHA)
         log = self.log.read_text(encoding="utf-8")

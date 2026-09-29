@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/../.." && pwd)"
 # shellcheck source=scripts/common/repository-name.sh
 source "${script_dir}/../common/repository-name.sh"
 
@@ -160,6 +161,29 @@ api_paginated_to_file() {
   return 1
 }
 
+repository_identity() {
+  local metadata="$1"
+  python3 "${repo_root}/scripts/common/validate-repository-identity.py" \
+    --metadata "${metadata}" \
+    --repository "${repository}"
+}
+
+initial_repository_json="${work_root}/repository-initial.json"
+api_to_file "repos/${repository}" "${initial_repository_json}" ||
+  die "${EXIT_INFRA}" "failed to query trusted repository identity"
+
+if ! initial_repository_identity="$(repository_identity "${initial_repository_json}")"; then
+  die "${EXIT_INTEGRITY}" "trusted repository identity failed validation"
+fi
+trusted_repository_id="$(printf '%s\n' "${initial_repository_identity}" | sed -n '1p')"
+trusted_repository_name="$(printf '%s\n' "${initial_repository_identity}" | sed -n '2p')"
+trusted_repository_extra="$(printf '%s\n' "${initial_repository_identity}" | sed -n '3p')"
+if [[ ! "${trusted_repository_id}" =~ ^[1-9][0-9]*$ ]] ||
+  ! is_canonical_repository_name "${trusted_repository_name}" ||
+  [[ -n "${trusted_repository_extra}" ]]; then
+  die "${EXIT_INTEGRITY}" "trusted repository identity output was malformed"
+fi
+
 encoded_branch="$(
   python3 - "${branch}" <<'PY'
 import sys
@@ -176,11 +200,13 @@ for trusted_event in "${trusted_event_list[@]}"; do
   runs_endpoint="repos/${repository}/actions/workflows/${workflow}/runs?branch=${encoded_branch}&event=${trusted_event}&status=success&per_page=${max_runs}"
   api_to_file "${runs_endpoint}" "${runs_json}" || die "${EXIT_INFRA}" "failed to query ${trusted_event} workflow runs"
 
-  if python3 - "${runs_json}" "${repository}" "${branch}" "${trusted_event}" >>"${raw_candidates_file}" <<'PY'
+  if python3 - "${runs_json}" "${trusted_repository_name}" "${trusted_repository_id}" "${branch}" "${trusted_event}" >>"${raw_candidates_file}" <<'PY'
 import json
+import re
 import sys
 
-path, expected_repo, expected_branch, expected_event = sys.argv[1:5]
+path, expected_repo, expected_repo_id_text, expected_branch, expected_event = sys.argv[1:6]
+expected_repo_id = int(expected_repo_id_text)
 try:
     with open(path, encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -195,9 +221,18 @@ for run in runs:
     if not isinstance(run, dict):
         continue
     head_repository = run.get("head_repository")
-    if not isinstance(head_repository, dict):
+    run_repository = run.get("repository")
+    if not isinstance(head_repository, dict) or not isinstance(run_repository, dict):
         continue
-    if head_repository.get("full_name") != expected_repo:
+    if head_repository.get("id") != expected_repo_id:
+        continue
+    if run_repository.get("id") != expected_repo_id:
+        continue
+    head_full_name = head_repository.get("full_name")
+    run_full_name = run_repository.get("full_name")
+    if not isinstance(head_full_name, str) or head_full_name.casefold() != expected_repo.casefold():
+        continue
+    if not isinstance(run_full_name, str) or run_full_name.casefold() != expected_repo.casefold():
         continue
     if run.get("head_branch") != expected_branch:
         continue
@@ -209,7 +244,14 @@ for run in runs:
     run_id = run.get("id")
     attempt = run.get("run_attempt")
     head_sha = run.get("head_sha")
-    if not isinstance(run_id, int) or not isinstance(attempt, int) or not isinstance(head_sha, str) or not head_sha:
+    if (
+        type(run_id) is not int
+        or run_id <= 0
+        or type(attempt) is not int
+        or attempt <= 0
+        or not isinstance(head_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None
+    ):
         continue
 
     print(f"{run_id}\t{attempt}\t{head_sha}\t{expected_event}")
@@ -257,11 +299,13 @@ while IFS=$'\t' read -r run_id run_attempt source_sha run_event; do
   api_paginated_to_file "${artifacts_endpoint}" "${artifacts_json}" || die "${EXIT_INFRA}" "failed to query artifacts for run ${run_id}"
 
   artifact_result="${work_root}/artifact-${run_id}.tsv"
-  if python3 - "${artifacts_json}" "${artifact_name}" >"${artifact_result}" <<'PY'
+  if python3 - "${artifacts_json}" "${artifact_name}" "${trusted_repository_id}" "${run_id}" "${source_sha}" >"${artifact_result}" <<'PY'
 import json
 import sys
 
-path, expected_name = sys.argv[1:3]
+path, expected_name, repository_id_text, run_id_text, expected_sha = sys.argv[1:6]
+expected_repository_id = int(repository_id_text)
+expected_run_id = int(run_id_text)
 try:
     with open(path, encoding="utf-8") as handle:
         pages = json.load(handle)
@@ -329,9 +373,27 @@ if not matches:
 
 artifact = matches[0]
 artifact_id = artifact.get("id")
-if not isinstance(artifact_id, int):
+if type(artifact_id) is not int or artifact_id <= 0:
     print("artifact id is missing or invalid", file=sys.stderr)
     raise SystemExit(1)
+
+workflow_run = artifact.get("workflow_run")
+if not isinstance(workflow_run, dict):
+    print("trusted artifact is missing workflow_run identity", file=sys.stderr)
+    raise SystemExit(3)
+if workflow_run.get("id") != expected_run_id:
+    print("trusted artifact workflow_run.id does not match selected run", file=sys.stderr)
+    raise SystemExit(3)
+if workflow_run.get("repository_id") != expected_repository_id:
+    print("trusted artifact repository_id does not match trusted repository", file=sys.stderr)
+    raise SystemExit(3)
+if workflow_run.get("head_repository_id") != expected_repository_id:
+    print("trusted artifact head_repository_id does not match trusted repository", file=sys.stderr)
+    raise SystemExit(3)
+if workflow_run.get("head_sha") != expected_sha:
+    print("trusted artifact workflow_run.head_sha does not match selected run", file=sys.stderr)
+    raise SystemExit(3)
+
 digest = artifact.get("digest")
 if digest is not None and not isinstance(digest, str):
     print("artifact digest is invalid", file=sys.stderr)
@@ -344,6 +406,9 @@ PY
     parser_status=$?
     if ((parser_status == 2)); then
       die "${EXIT_INFRA}" "ambiguous exact-name artifacts for run ${run_id}"
+    fi
+    if ((parser_status == 3)); then
+      die "${EXIT_INTEGRITY}" "trusted artifact workflow_run identity mismatch for run ${run_id}"
     fi
     die "${EXIT_INFRA}" "artifacts response for run ${run_id} was malformed"
   fi
@@ -482,9 +547,21 @@ else
   die "${EXIT_INFRA}" 'artifact archive could not be decoded'
 fi
 
+final_repository_json="${work_root}/repository-final.json"
+api_to_file "repos/${repository}" "${final_repository_json}" ||
+  die "${EXIT_INFRA}" "failed to re-query trusted repository identity"
+
+if ! final_repository_identity="$(repository_identity "${final_repository_json}")"; then
+  die "${EXIT_INTEGRITY}" "final trusted repository identity failed validation"
+fi
+if [[ "${final_repository_identity}" != "${initial_repository_identity}" ]]; then
+  die "${EXIT_INTEGRITY}" "trusted repository identity changed during artifact resolution"
+fi
+
 python3 - \
   "${stage_dir}/resolver-metadata.json" \
-  "${repository}" \
+  "${trusted_repository_name}" \
+  "${trusted_repository_id}" \
   "${workflow}" \
   "${branch}" \
   "${selected_run_id}" \
@@ -501,6 +578,7 @@ import sys
 (
     output,
     repository,
+    repository_id,
     workflow,
     branch,
     run_id,
@@ -515,6 +593,7 @@ import sys
 payload = {
     "schemaVersion": 1,
     "repository": repository,
+    "repositoryId": int(repository_id),
     "workflow": workflow,
     "branch": branch,
     "runId": int(run_id),

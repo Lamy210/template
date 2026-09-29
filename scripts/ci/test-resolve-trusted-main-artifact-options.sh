@@ -18,9 +18,13 @@ set -euo pipefail
 printf '%s\n' "$*" >>"${GH_STUB_LOG}"
 
 args="$*"
+if [[ "${args}" == "api repos/Lamy210/template" ]]; then
+  printf '%s\n' '{"id":1367784801,"full_name":"Lamy210/template"}'
+  exit 0
+fi
 if [[ "${args}" == *"/actions/workflows/visual-regression.yml/runs"* ]]; then
   cat <<'JSON'
-{"workflow_runs":[{"id":9100,"run_attempt":1,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"release/1.x","event":"push","conclusion":"success","head_repository":{"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9100,"run_attempt":1,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"release/1.x","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
   exit 0
 fi

@@ -73,6 +73,9 @@ def validate_provenance(
         raise ValueError("bundle manifest schemaVersion must be 1")
 
     repository = _non_empty_string(resolver.get("repository"), "resolver repository")
+    repository_id = _positive_int(
+        resolver.get("repositoryId"), "resolver repository id"
+    )
     workflow = _non_empty_string(resolver.get("workflow"), "resolver workflow")
     artifact = _non_empty_string(resolver.get("artifactName"), "resolver artifact name")
     branch = _non_empty_string(resolver.get("branch"), "resolver branch")
@@ -120,6 +123,7 @@ def validate_provenance(
 
     return {
         "repository": repository,
+        "repositoryId": repository_id,
         "workflow": workflow,
         "artifactName": artifact,
         "event": event,
