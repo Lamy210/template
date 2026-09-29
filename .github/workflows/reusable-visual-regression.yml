@@ -8,6 +8,14 @@ on:
         required: false
         default: Tests/VisualRegression/visual-regression.json
         type: string
+      current_artifact_id:
+        description: Exact current visual capture Artifact ID from this workflow run.
+        required: true
+        type: string
+      current_artifact_digest:
+        description: Exact current visual capture artifact digest from upload-artifact.
+        required: true
+        type: string
       current_artifact_name:
         description: Exact current visual capture artifact name from this workflow run.
         required: true
@@ -68,6 +76,8 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       MANIFEST_PATH: ${{ inputs.manifest_path }}
+      CURRENT_ARTIFACT_ID: ${{ inputs.current_artifact_id }}
+      CURRENT_ARTIFACT_DIGEST: ${{ inputs.current_artifact_digest }}
       CURRENT_ARTIFACT_NAME: ${{ inputs.current_artifact_name }}
       CURRENT_SHA: ${{ inputs.current_sha }}
       TRUSTED_WORKFLOW: ${{ inputs.trusted_workflow }}
@@ -81,12 +91,33 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate current visual artifact identity
+        id: artifact_identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          metadata="${RUNNER_TEMP}/current-visual-artifact.json"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CURRENT_ARTIFACT_ID}" >"${metadata}"
+          python3 scripts/ci/current_run_artifact_identity.py \
+            --metadata "${metadata}" \
+            --artifact-id "${CURRENT_ARTIFACT_ID}" \
+            --artifact-name "${CURRENT_ARTIFACT_NAME}" \
+            --artifact-digest "${CURRENT_ARTIFACT_DIGEST}" \
+            --run-id "${EXPECTED_RUN_ID}" \
+            --repository-id "${EXPECTED_REPOSITORY_ID}" \
+            --source-sha "${CURRENT_SHA}"
+
       - name: Download current visual capture
         id: download
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ inputs.current_artifact_name }}
+          artifact-ids: ${{ inputs.current_artifact_id }}
           path: artifacts/visual
+          merge-multiple: true
 
       - name: Validate visual manifest
         id: manifest
@@ -236,6 +267,7 @@ jobs:
         env:
           REQUIRED: ${{ inputs.required }}
           CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          ARTIFACT_IDENTITY_OUTCOME: ${{ steps.artifact_identity.outcome }}
           DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
           MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
           BASELINE_POLICY_OUTCOME: ${{ steps.baseline_policy.outcome }}
@@ -248,6 +280,7 @@ jobs:
           result="success"
           for outcome in \
             "${CHECKOUT_OUTCOME}" \
+            "${ARTIFACT_IDENTITY_OUTCOME}" \
             "${DOWNLOAD_OUTCOME}" \
             "${MANIFEST_OUTCOME}" \
             "${BASELINE_POLICY_OUTCOME}" \
