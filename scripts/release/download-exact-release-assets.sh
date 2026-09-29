@@ -101,7 +101,7 @@ for asset_name in "${assets[@]}"; do
   fi
 done
 
-for command_name in gh python3 cmp mv mktemp rm cp dirname basename; do
+for command_name in gh python3 cmp mv mktemp rm cp dirname basename sed; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
     exit 2
@@ -189,12 +189,19 @@ if full_name.casefold() != expected_name.casefold():
     )
 
 print(repository_id)
-print(full_name.casefold())
+print(full_name)
 PY
 }
 
 if ! initial_repository_identity="$(repository_identity)"; then
   echo "Unable to bind release repository identity before downloads." >&2
+  exit 1
+fi
+resolved_repository_id="$(printf '%s\n' "${initial_repository_identity}" | sed -n '1p')"
+resolved_repository_full_name="$(printf '%s\n' "${initial_repository_identity}" | sed -n '2p')"
+resolved_repository_extra="$(printf '%s\n' "${initial_repository_identity}" | sed -n '3p')"
+if [[ -z "${resolved_repository_id}" || -z "${resolved_repository_full_name}" || -n "${resolved_repository_extra}" ]]; then
+  echo "Release repository identity output was malformed." >&2
   exit 1
 fi
 
@@ -210,7 +217,8 @@ fi
 
 resolver_args=(
   --metadata "${metadata_before}"
-  --repository "${repository}"
+  --repository "${resolved_repository_full_name}"
+  --repository-id "${resolved_repository_id}"
   --tag "${tag}"
   --output "${manifest_before}"
 )
@@ -320,7 +328,8 @@ fi
 
 resolver_args=(
   --metadata "${metadata_after}"
-  --repository "${repository}"
+  --repository "${resolved_repository_full_name}"
+  --repository-id "${resolved_repository_id}"
   --tag "${tag}"
   --output "${manifest_after}"
 )

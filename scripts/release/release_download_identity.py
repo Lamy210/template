@@ -23,6 +23,8 @@ class ReleaseAssetIdentity:
 
 @dataclass(frozen=True)
 class ReleaseDownloadIdentity:
+    repository_id: int
+    repository_full_name: str
     release_id: int
     tag: str
     immutable: bool
@@ -106,6 +108,7 @@ def validate_release_download_identity(
     document: object,
     *,
     expected_repository: str,
+    expected_repository_id: int,
     expected_tag: str,
     expected_asset_names: list[str],
 ) -> tuple[list[str], ReleaseDownloadIdentity | None]:
@@ -113,6 +116,8 @@ def validate_release_download_identity(
 
     if not _repository_valid(expected_repository):
         errors.append("expected repository must use canonical owner/repo form")
+    if type(expected_repository_id) is not int or expected_repository_id <= 0:
+        errors.append("expected repository id must be a positive integer")
     if not isinstance(expected_tag, str) or TAG_RE.fullmatch(expected_tag) is None:
         errors.append("expected tag must match stable SemVer form vX.Y.Z")
     if not expected_asset_names:
@@ -257,6 +262,8 @@ def validate_release_download_identity(
     return (
         [],
         ReleaseDownloadIdentity(
+            repository_id=expected_repository_id,
+            repository_full_name=expected_repository,
             release_id=release_id,
             tag=tag_name,
             immutable=immutable,
@@ -267,7 +274,11 @@ def validate_release_download_identity(
 
 def release_download_manifest(identity: ReleaseDownloadIdentity) -> dict[str, object]:
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
+        "repository": {
+            "id": identity.repository_id,
+            "fullName": identity.repository_full_name,
+        },
         "releaseId": identity.release_id,
         "tag": identity.tag,
         "immutable": identity.immutable,

@@ -26,6 +26,7 @@ def main() -> int:
     )
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--repository", required=True)
+    parser.add_argument("--repository-id", required=True, type=int)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--asset", action="append", required=True, dest="assets")
     parser.add_argument("--output", required=True, type=Path)
@@ -40,6 +41,7 @@ def main() -> int:
     errors, identity = validate_release_download_identity(
         document,
         expected_repository=args.repository,
+        expected_repository_id=args.repository_id,
         expected_tag=args.tag,
         expected_asset_names=args.assets,
     )
