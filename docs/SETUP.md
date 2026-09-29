@@ -57,11 +57,13 @@ A published tag must be immutable. A bad `v1.2.0` release is fixed by `v1.2.1`, 
 
 ### Native GitHub immutable releases
 
-Enable GitHub's repository-level **release immutability** before the first production release when the account/repository supports it. This is defense in depth in addition to the `v*` tag Ruleset: after an immutable release is published, GitHub protects its associated tag and release assets from later mutation and creates release-attestation evidence.
+Enable GitHub's repository-level **release immutability** before the first production release. This is now a production gate for the template rather than only optional defense in depth: the publisher post-condition and Homebrew release consumer both reject a published release unless GitHub reports it as natively immutable. The `v*` tag Ruleset remains independently required; after an immutable release is published, GitHub also protects its associated tag and release assets from later mutation and creates release-attestation evidence.
 
 The setting applies only to releases published after it is enabled. Do not assume enabling it retroactively protects historical releases; keep the tag Ruleset, publication revalidation, and exact asset-ID/digest consumer checks in place.
 
 The setting can be enabled in repository **Settings → Releases → Enable release immutability**. It can also be enabled through GitHub's immutable-releases repository API by an administrator. Do not grant the normal CI `GITHUB_TOKEN` repository Administration permission merely to manage this setting.
+
+If native release immutability cannot be enabled or cannot be proven enabled, keep the production publisher/Homebrew path disabled. Do not weaken the publication or download validators to ship a mutable release.
 
 After configuration, run the read-only doctor with an operator credential that has **Administration (read)** for the repository:
 

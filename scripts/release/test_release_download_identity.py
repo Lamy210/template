@@ -50,7 +50,7 @@ def release_document(*, repository: str = REPOSITORY) -> dict[str, object]:
         "tag_name": TAG,
         "draft": False,
         "prerelease": False,
-        "immutable": False,
+        "immutable": True,
         "url": f"https://api.github.com/repos/{repository}/releases/700",
         "assets": [
             asset(101, ASSETS[0], repository=repository),
@@ -93,7 +93,7 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
                 },
                 "releaseId": 700,
                 "tag": TAG,
-                "immutable": False,
+                "immutable": True,
                 "assets": [
                     {
                         "id": 101,
@@ -118,16 +118,21 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
             release_download_manifest(identity),
         )
 
-    def test_preserves_native_immutable_flag_without_requiring_it_yet(self) -> None:
-        document = release_document()
-        document["immutable"] = True
+    def test_requires_native_immutable_release(self) -> None:
+        for immutable, expected in (
+            (False, "natively immutable"),
+            (None, "boolean true"),
+        ):
+            with self.subTest(immutable=immutable):
+                document = release_document()
+                document["immutable"] = immutable
+                errors, identity = self.validate(document)
 
-        errors, identity = self.validate(document)
-
-        self.assertEqual([], errors)
-        self.assertIsNotNone(identity)
-        assert identity is not None
-        self.assertTrue(identity.immutable)
+                self.assertIsNone(identity)
+                self.assertTrue(
+                    any(expected in error for error in errors),
+                    errors,
+                )
 
     def test_rejects_release_identity_and_state_drift(self) -> None:
         cases = (
