@@ -144,6 +144,19 @@ PY
       exit 1
     fi
     ;;
+  verify)
+    if [[ "${GH_FAKE_RELEASE_ATTESTATION_VALID:-true}" != "true" ]]; then
+      exit 95
+    fi
+    printf '{"verified":true}\n'
+    ;;
+  verify-asset)
+    asset_name="$(basename "${4:-}")"
+    if [[ -n "${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME:-}" && "${asset_name}" == "${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME}" ]]; then
+      exit 96
+    fi
+    printf '{"verified":true}\n'
+    ;;
   download)
     : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
     pattern=""
@@ -189,6 +202,8 @@ run_publisher() {
     GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE="${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" \
     GH_FAKE_TAG_DRIFT_AFTER_CREATE="${GH_FAKE_TAG_DRIFT_AFTER_CREATE:-false}" \
     GH_FAKE_IS_IMMUTABLE="${GH_FAKE_IS_IMMUTABLE:-true}" \
+    GH_FAKE_RELEASE_ATTESTATION_VALID="${GH_FAKE_RELEASE_ATTESTATION_VALID:-true}" \
+    GH_FAKE_INVALID_ASSET_ATTESTATION_NAME="${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME:-}" \
     GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE="${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" \
     GH_FAKE_REPOSITORY_ID="${GH_FAKE_REPOSITORY_ID:-123}" \
     PATH="${FAKE_BIN}:${PATH}" \
@@ -391,6 +406,16 @@ for asset_name in "$(basename "${DMG_PATH}")" "$(basename "${CHECKSUM_PATH}")" "
     exit 1
   fi
 done
+if ! grep -F "release verify ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --format json" "${LOG_PATH}" >/dev/null; then
+  echo "New release attestation was not verified." >&2
+  exit 1
+fi
+for asset_path in "${DMG_PATH}" "${CHECKSUM_PATH}" "${RELEASE_PROVENANCE_PATH}"; do
+  if ! grep -F "release verify-asset ${TAG_NAME} ${asset_path} --repo ${GITHUB_REPOSITORY} --format json" "${LOG_PATH}" >/dev/null; then
+    echo "New release asset attestation was not verified: ${asset_path}" >&2
+    exit 1
+  fi
+done
 if grep -F -- "--clobber" "${LOG_PATH}" >/dev/null; then
   echo "Publisher must never use --clobber." >&2
   exit 1
@@ -533,6 +558,26 @@ if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
 fi
 if grep -F -- "--clobber" "${LOG_PATH}" >/dev/null; then
   echo "Publisher must never use --clobber." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true GH_FAKE_RELEASE_ATTESTATION_VALID=false run_publisher; then
+  echo "Existing immutable release without a valid signed attestation was incorrectly accepted." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Publisher mutated release state after signed release attestation failure." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true GH_FAKE_INVALID_ASSET_ATTESTATION_NAME="$(basename "${DMG_PATH}")" run_publisher; then
+  echo "Existing immutable release with an invalid asset attestation was incorrectly accepted." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Publisher mutated release state after asset attestation failure." >&2
   exit 1
 fi
 
