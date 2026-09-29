@@ -80,6 +80,7 @@ jobs:
             scripts.ci.test_audit_release_tag_ruleset \
             scripts.ci.test_governance_audit_workflow \
             scripts.ci.test_immutable_releases_setting \
+            scripts.ci.test_live_audit_repository_names \
             scripts.ci.test_repository_merge_settings \
             scripts.ci.test_release_tag_immutability_proof \
             scripts.template.test_doctor \
