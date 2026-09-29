@@ -76,6 +76,40 @@ class LiveMainRulesetAuditTests(unittest.TestCase):
             ),
         )
 
+    def test_rejects_noncanonical_repository_identities(self) -> None:
+        for repository in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository):
+                document = valid_live_ruleset()
+                document["source"] = repository
+
+                errors = validate_live_main_ruleset(
+                    document,
+                    expected_repository=repository,
+                )
+
+                self.assertTrue(
+                    any("canonical owner/repo" in error for error in errors),
+                    errors,
+                )
+
+    def test_cli_rejects_noncanonical_repository_before_reading_input(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/ci/audit_main_ruleset.py",
+                "/definitely/missing/ruleset.json",
+                "../escape",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("canonical owner/repo", result.stderr)
+        self.assertNotIn("failed to read", result.stderr)
+
     def test_rejects_broad_release_branch_targeting(self) -> None:
         document = valid_live_ruleset()
         document["conditions"]["ref_name"]["include"].append("refs/heads/release**")
