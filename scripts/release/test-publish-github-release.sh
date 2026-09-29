@@ -145,12 +145,20 @@ PY
     fi
     ;;
   verify)
+    if [[ "${3:-}" == "--help" ]]; then
+      [[ "${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" == "true" ]]
+      exit
+    fi
     if [[ "${GH_FAKE_RELEASE_ATTESTATION_VALID:-true}" != "true" ]]; then
       exit 95
     fi
     printf '{"verified":true}\n'
     ;;
   verify-asset)
+    if [[ "${3:-}" == "--help" ]]; then
+      [[ "${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" == "true" ]]
+      exit
+    fi
     asset_name="$(basename "${4:-}")"
     if [[ -n "${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME:-}" && "${asset_name}" == "${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME}" ]]; then
       exit 96
@@ -203,6 +211,7 @@ run_publisher() {
     GH_FAKE_TAG_DRIFT_AFTER_CREATE="${GH_FAKE_TAG_DRIFT_AFTER_CREATE:-false}" \
     GH_FAKE_IS_IMMUTABLE="${GH_FAKE_IS_IMMUTABLE:-true}" \
     GH_FAKE_RELEASE_ATTESTATION_VALID="${GH_FAKE_RELEASE_ATTESTATION_VALID:-true}" \
+    GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE="${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" \
     GH_FAKE_INVALID_ASSET_ATTESTATION_NAME="${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME:-}" \
     GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE="${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" \
     GH_FAKE_REPOSITORY_ID="${GH_FAKE_REPOSITORY_ID:-123}" \
@@ -277,6 +286,24 @@ if EXPECTED_REPOSITORY_ID=invalid GH_FAKE_RELEASE_EXISTS=false run_publisher; th
 fi
 if [[ -s "${LOG_PATH}" ]]; then
   echo "Publisher contacted GitHub before rejecting a malformed repository ID." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE=false GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted a gh CLI without immutable release attestation commands." >&2
+  exit 1
+fi
+if grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher mutated GitHub Release state before attestation CLI capability validation." >&2
+  exit 1
+fi
+if grep -F "api repos/${GITHUB_REPOSITORY}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher contacted repository APIs before local attestation CLI capability validation." >&2
+  exit 1
+fi
+if ! grep -F "release verify --help" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher did not preflight release attestation CLI support." >&2
   exit 1
 fi
 
