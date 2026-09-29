@@ -216,7 +216,7 @@ trap cleanup EXIT
 release_json="${download_dir}/release.json"
 if ! gh release view "${TAG_NAME}" \
   --repo "${GITHUB_REPOSITORY}" \
-  --json assets,isDraft,isPrerelease,tagName >"${release_json}"; then
+  --json assets,isDraft,isImmutable,isPrerelease,tagName >"${release_json}"; then
   echo "Failed to inspect existing release metadata for ${TAG_NAME}." >&2
   exit 1
 fi
