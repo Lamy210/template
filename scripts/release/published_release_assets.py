@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 import re
 
+from scripts.common.repository_name import is_canonical_repository_name
 from scripts.release.release_attestation import (
-    REPOSITORY_RE,
     SHA_RE,
     sha256_file,
     validate_release_attestation,
@@ -30,15 +30,7 @@ def verify_published_release_assets(
     if not isinstance(expected_tag, str) or TAG_RE.fullmatch(expected_tag) is None:
         errors.append("expected tag must match stable SemVer form vX.Y.Z")
 
-    repository_valid = (
-        isinstance(expected_repository, str)
-        and REPOSITORY_RE.fullmatch(expected_repository) is not None
-        and all(
-            component not in {".", ".."}
-            for component in expected_repository.split("/", 1)
-        )
-    )
-    if not repository_valid:
+    if not is_canonical_repository_name(expected_repository):
         errors.append("expected repository must be in owner/repo form")
 
     if (

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import re
 
+from scripts.common.repository_name import is_canonical_repository_name
 
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -13,7 +14,7 @@ def _head_repository_identity(item: dict[str, object]) -> str | None:
 
     if isinstance(repository, dict):
         name_with_owner = repository.get("nameWithOwner")
-        if isinstance(name_with_owner, str) and REPOSITORY_RE.fullmatch(name_with_owner):
+        if is_canonical_repository_name(name_with_owner):
             return name_with_owner
 
         name = repository.get("name")
@@ -25,7 +26,7 @@ def _head_repository_identity(item: dict[str, object]) -> str | None:
             and login not in {".", ".."}
         ):
             candidate = f"{login}/{name}"
-            if REPOSITORY_RE.fullmatch(candidate):
+            if is_canonical_repository_name(candidate):
                 return candidate
 
     return None
@@ -40,11 +41,8 @@ def normalize_rest_pull_request_pages(
     errors: list[str] = []
     normalized: list[dict[str, object]] = []
 
-    if (
-        not isinstance(expected_repository, str)
-        or REPOSITORY_RE.fullmatch(expected_repository) is None
-    ):
-        return ["expected repository must be in owner/repo form"], normalized
+    if not is_canonical_repository_name(expected_repository):
+        return ["expected repository must be canonical owner/repo"], normalized
     if type(expected_repository_id) is not int or expected_repository_id <= 0:
         return ["expected repository id must be a positive integer"], normalized
 
@@ -110,16 +108,10 @@ def normalize_rest_pull_request_pages(
             base_full_name = base_repository.get("full_name")
             head_repository_id = head_repository.get("id")
             base_repository_id = base_repository.get("id")
-            if (
-                not isinstance(head_full_name, str)
-                or REPOSITORY_RE.fullmatch(head_full_name) is None
-            ):
+            if not is_canonical_repository_name(head_full_name):
                 errors.append(f"{label} has an invalid head repository identity")
                 continue
-            if (
-                not isinstance(base_full_name, str)
-                or REPOSITORY_RE.fullmatch(base_full_name) is None
-            ):
+            if not is_canonical_repository_name(base_full_name):
                 errors.append(f"{label} has an invalid base repository identity")
                 continue
             if type(base_repository_id) is not int or base_repository_id <= 0:
@@ -188,8 +180,8 @@ def select_same_repository_pull_request(
     errors: list[str] = []
 
     expected_repository_key: str | None = None
-    if not isinstance(expected_repository, str) or REPOSITORY_RE.fullmatch(expected_repository) is None:
-        errors.append("expected repository must be in owner/repo form")
+    if not is_canonical_repository_name(expected_repository):
+        errors.append("expected repository must be canonical owner/repo")
     else:
         expected_repository_key = expected_repository.lower()
     if type(expected_repository_id) is not int or expected_repository_id <= 0:
@@ -248,10 +240,7 @@ def select_same_repository_pull_request(
         if type(head_repository_id) is not int or head_repository_id <= 0:
             errors.append(f"pull request entry {index} has invalid head repository id")
             continue
-        if (
-            not isinstance(base_repository_name, str)
-            or REPOSITORY_RE.fullmatch(base_repository_name) is None
-        ):
+        if not is_canonical_repository_name(base_repository_name):
             errors.append(f"pull request entry {index} has invalid base repository identity")
             continue
         if type(base_repository_id) is not int or base_repository_id <= 0:

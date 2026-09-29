@@ -1,18 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 from typing import Any
 
-
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-
-
-def _is_canonical_repository_name(value: str) -> bool:
-    if REPOSITORY_RE.fullmatch(value) is None:
-        return False
-    owner, name = value.split("/", 1)
-    return owner not in {".", ".."} and name not in {".", ".."}
+from scripts.common.repository_name import is_canonical_repository_name
 
 
 @dataclass(frozen=True)
@@ -32,8 +23,11 @@ def validate_repository_merge_settings(
 ) -> tuple[list[str], RepositoryMergeSettings | None]:
     errors: list[str] = []
 
+    if not is_canonical_repository_name(expected_repository):
+        errors.append("expected repository must use canonical owner/repo form")
+
     if not isinstance(document, dict):
-        return ["repository metadata must be a JSON object"], None
+        return errors + ["repository metadata must be a JSON object"], None
 
     repository_id = document.get("id")
     if type(repository_id) is not int or repository_id <= 0:
@@ -42,10 +36,13 @@ def validate_repository_merge_settings(
     full_name = document.get("full_name")
     if (
         not isinstance(full_name, str)
-        or not _is_canonical_repository_name(full_name)
+        or not is_canonical_repository_name(full_name)
     ):
         errors.append("repository full_name must use canonical owner/repo form")
-    elif full_name.casefold() != expected_repository.casefold():
+    elif (
+        is_canonical_repository_name(expected_repository)
+        and full_name.casefold() != expected_repository.casefold()
+    ):
         errors.append(
             "repository full_name does not match the requested repository"
         )

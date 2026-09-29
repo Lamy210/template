@@ -62,6 +62,20 @@ class RepositoryMergeSettingsTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertIsNotNone(settings)
 
+    def test_rejects_noncanonical_expected_repository(self) -> None:
+        for repository in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository):
+                errors, settings = validate_repository_merge_settings(
+                    valid_metadata(),
+                    expected_repository=repository,
+                )
+
+                self.assertIsNone(settings)
+                self.assertTrue(
+                    any("canonical owner/repo" in error for error in errors),
+                    errors,
+                )
+
     def test_rejects_each_merge_policy_drift(self) -> None:
         cases = (
             ("allow_squash_merge", False, "must equal true"),

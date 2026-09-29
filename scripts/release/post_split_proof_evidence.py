@@ -8,8 +8,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+from scripts.common.repository_name import is_canonical_repository_name
 TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -326,8 +325,8 @@ def build_evidence(
 
     repository_id = _positive_int(repo.get("id"), "repository id")
     repository_full_name = _string(repo.get("full_name"), "repository full_name")
-    if REPOSITORY_RE.fullmatch(repository_full_name) is None:
-        raise EvidenceError("repository full_name must be owner/repo")
+    if not is_canonical_repository_name(repository_full_name):
+        raise EvidenceError("repository full_name must be canonical owner/repo")
     default_branch = _string(repo.get("default_branch"), "repository default_branch")
 
     source_run_id = _positive_int(source.get("id"), "source run id")
@@ -520,8 +519,8 @@ def validate_evidence_document(document: object) -> list[str]:
         if not _is_positive_int(repository.get("id")):
             errors.append("repository.id must be a positive integer")
         full_name = repository.get("fullName")
-        if not isinstance(full_name, str) or REPOSITORY_RE.fullmatch(full_name) is None:
-            errors.append("repository.fullName must be owner/repo")
+        if not is_canonical_repository_name(full_name):
+            errors.append("repository.fullName must be canonical owner/repo")
         default_branch = repository.get("defaultBranch")
         if (
             not isinstance(default_branch, str)

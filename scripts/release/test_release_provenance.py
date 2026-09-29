@@ -157,6 +157,21 @@ class ReleaseProvenanceTests(unittest.TestCase):
                 errors = validate_build_provenance(document, expected_build())
                 self.assertTrue(any(key in error for error in errors))
 
+    def test_rejects_noncanonical_repository_even_when_expected_matches(self) -> None:
+        for repository in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository):
+                document = valid_document()
+                document["repository"] = repository
+                expected = copy.deepcopy(expected_build())
+                object.__setattr__(expected, "repository", repository)
+
+                errors = validate_build_provenance(document, expected)
+
+                self.assertTrue(
+                    any("canonical owner/repo" in error for error in errors),
+                    errors,
+                )
+
     def test_rejects_wrong_run_identity(self) -> None:
         document = valid_document()
         document["sourceRunAttempt"] = 3

@@ -97,6 +97,7 @@ examples/
   app-release-publisher.yml
   app-release.yml              # migration pointer only
 scripts/
+  common/
   ci/
   homebrew/
   release/

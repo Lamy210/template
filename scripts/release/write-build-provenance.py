@@ -5,8 +5,14 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
 
-from release_provenance import ExpectedBuild, build_provenance
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.release.release_provenance import ExpectedBuild, build_provenance  # noqa: E402
 
 
 def sha256_file(path: Path) -> str:

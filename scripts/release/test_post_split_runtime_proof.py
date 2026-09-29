@@ -795,6 +795,28 @@ class PostSplitRuntimeProofTests(unittest.TestCase):
         )
         self.assertTrue(any("source head repository identity" in error for error in errors))
 
+    def test_rejects_noncanonical_repository_full_name(self) -> None:
+        for repository_name in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository_name):
+                repository_document = repository()
+                repository_document["full_name"] = repository_name
+
+                errors = validate_proof(
+                    repository_document,
+                    default_commit(),
+                    source_run(),
+                    publisher_run(),
+                    artifacts(),
+                    metadata(),
+                    "sha256:" + "b" * 64,
+                    compare(),
+                )
+
+                self.assertTrue(
+                    any("canonical owner/repo" in error for error in errors),
+                    errors,
+                )
+
     def test_rejects_live_source_artifact_binding_drift(self) -> None:
         base = source_artifacts()[0]
         cases = (

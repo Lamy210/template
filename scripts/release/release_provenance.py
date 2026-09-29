@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
+from scripts.common.repository_name import is_canonical_repository_name
+
 
 SCHEMA_VERSION = 1
 SCHEMA_FIELDS = {
@@ -26,7 +28,6 @@ SCHEMA_FIELDS = {
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 WORKFLOW_PATH_RE = re.compile(r"^\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml$")
 
 
@@ -115,8 +116,8 @@ def validate_build_provenance(document: object, expected: ExpectedBuild) -> list
             errors.append("version must be a non-empty string")
 
     repository = document.get("repository")
-    if not isinstance(repository, str) or REPOSITORY_RE.fullmatch(repository) is None:
-        errors.append("repository must be in owner/repo form")
+    if not is_canonical_repository_name(repository):
+        errors.append("repository must be in canonical owner/repo form")
 
     workflow_path = document.get("sourceWorkflowPath")
     if not isinstance(workflow_path, str) or WORKFLOW_PATH_RE.fullmatch(workflow_path) is None:

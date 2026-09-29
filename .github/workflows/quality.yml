@@ -73,6 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest \
+            scripts.common.test_repository_name \
             scripts.ci.test_validate_rulesets \
             scripts.ci.test_validate_rulesets_portability \
             scripts.ci.test_audit_effective_rules \

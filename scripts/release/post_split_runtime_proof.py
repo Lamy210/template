@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 import re
 
+from scripts.common.repository_name import is_canonical_repository_name
 from scripts.release.validated_release_metadata import (
     validate_validated_release_metadata_document,
 )
@@ -395,8 +396,8 @@ def validate_post_split_runtime_proof(
     default_branch = repository.get("default_branch")
     if not _positive_int(repository_id):
         errors.append("repository id must be a positive integer")
-    if not isinstance(repository_full_name, str) or "/" not in repository_full_name:
-        errors.append("repository full_name must be in owner/repo form")
+    if not is_canonical_repository_name(repository_full_name):
+        errors.append("repository full_name must be in canonical owner/repo form")
     if not isinstance(default_branch, str) or not default_branch:
         errors.append("repository default_branch must be a non-empty string")
 
@@ -411,11 +412,12 @@ def validate_post_split_runtime_proof(
                 errors.append("final repository id must be a positive integer")
             elif _positive_int(repository_id) and final_repository_id != repository_id:
                 errors.append("repository id changed during runtime proof collection")
-            if not isinstance(final_full_name, str) or "/" not in final_full_name:
-                errors.append("final repository full_name must be in owner/repo form")
+            if not is_canonical_repository_name(final_full_name):
+                errors.append(
+                    "final repository full_name must be in canonical owner/repo form"
+                )
             elif (
-                isinstance(repository_full_name, str)
-                and "/" in repository_full_name
+                is_canonical_repository_name(repository_full_name)
                 and final_full_name != repository_full_name
             ):
                 errors.append(
@@ -485,8 +487,7 @@ def validate_post_split_runtime_proof(
 
     if (
         _positive_int(repository_id)
-        and isinstance(repository_full_name, str)
-        and "/" in repository_full_name
+        and is_canonical_repository_name(repository_full_name)
     ):
         errors.extend(
             _run_repository_errors(
@@ -602,8 +603,7 @@ def validate_post_split_runtime_proof(
         )
 
     if (
-        isinstance(repository_full_name, str)
-        and "/" in repository_full_name
+        is_canonical_repository_name(repository_full_name)
         and _positive_int(source_run_id)
         and _positive_int(source_run_attempt)
         and _positive_int(publisher_run_id)

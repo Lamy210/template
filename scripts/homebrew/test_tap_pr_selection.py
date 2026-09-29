@@ -215,6 +215,39 @@ class TapPullRequestSelectionTests(unittest.TestCase):
                     any("expected repository id" in error for error in errors)
                 )
 
+    def test_rejects_noncanonical_expected_repository(self) -> None:
+        for repository in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository):
+                errors, number = select_same_repository_pull_request(
+                    [pr(42, REPOSITORY, cross_repository=False)],
+                    expected_repository=repository,
+                    expected_repository_id=REPOSITORY_ID,
+                    expected_head=HEAD,
+                    expected_base=BASE,
+                    expected_head_sha=HEAD_SHA,
+                )
+
+                self.assertIsNone(number)
+                self.assertTrue(
+                    any("canonical owner/repo" in error for error in errors),
+                    errors,
+                )
+
+    def test_rest_normalization_rejects_noncanonical_repository_metadata(self) -> None:
+        for field in ("head", "base"):
+            with self.subTest(field=field):
+                document = rest_pr(42, REPOSITORY)
+                repository_document = document[field]["repo"]
+                repository_document["full_name"] = "../escape"
+
+                errors, normalized = self.normalize([[document]])
+
+                self.assertEqual([], normalized)
+                self.assertTrue(
+                    any("repository identity" in error for error in errors),
+                    errors,
+                )
+
     def test_rejects_base_repository_id_drift(self) -> None:
         errors, number = self.select(
             [

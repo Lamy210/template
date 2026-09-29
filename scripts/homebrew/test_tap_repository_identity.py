@@ -78,6 +78,27 @@ class TapRepositoryIdentityTests(unittest.TestCase):
                     errors,
                 )
 
+    def test_rejects_noncanonical_repository_components(self) -> None:
+        for repository in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository):
+                document = {
+                    **repository_document(),
+                    "full_name": repository,
+                    "clone_url": f"https://github.com/{repository}.git",
+                    "ssh_url": f"git@github.com:{repository}.git",
+                }
+                errors, identity = validate_tap_repository_identity(
+                    document,
+                    expected_repository=repository,
+                    expected_default_branch="main",
+                )
+
+                self.assertIsNone(identity)
+                self.assertTrue(
+                    any("canonical owner/repo" in error for error in errors),
+                    errors,
+                )
+
     def test_rejects_boolean_or_nonpositive_repository_ids(self) -> None:
         for repository_id in (True, 0, -1, "123"):
             with self.subTest(repository_id=repository_id):
