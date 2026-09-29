@@ -48,20 +48,20 @@ assert_rejected_before_gh() {
   fi
 }
 
-assert_rejected_before_gh   "release source verifier" 1   env     SOURCE_TAG=v1.2.3     SOURCE_SHA="${sha_a}"     PUBLISHER_SHA="${sha_b}"     GITHUB_REPOSITORY="${unsafe}"     EXPECTED_REPOSITORY_ID=1     GH_TOKEN="${GH_TOKEN}"     bash "${repo_root}/scripts/release/verify-release-source.sh"
+assert_rejected_before_gh "release source verifier" 1 env SOURCE_TAG=v1.2.3 SOURCE_SHA="${sha_a}" PUBLISHER_SHA="${sha_b}" GITHUB_REPOSITORY="${unsafe}" EXPECTED_REPOSITORY_ID=1 GH_TOKEN="${GH_TOKEN}" bash "${repo_root}/scripts/release/verify-release-source.sh"
 
-assert_rejected_before_gh   "release build artifact resolver" 2   bash "${repo_root}/scripts/release/resolve-release-build-artifact.sh"     --repository "${unsafe}"     --workflow-path .github/workflows/release-build.yml     --run-id 1     --run-attempt 1     --output "${temp_root}/release-build-output"
+assert_rejected_before_gh "release build artifact resolver" 2 bash "${repo_root}/scripts/release/resolve-release-build-artifact.sh" --repository "${unsafe}" --workflow-path .github/workflows/release-build.yml --run-id 1 --run-attempt 1 --output "${temp_root}/release-build-output"
 
-assert_rejected_before_gh   "source artifact repository verifier" 2   bash "${repo_root}/scripts/release/verify-source-artifact-repository.sh"     --repository "${unsafe}"     --repository-id 1     --source-metadata "${temp_root}/missing-source-metadata.json"
+assert_rejected_before_gh "source artifact repository verifier" 2 bash "${repo_root}/scripts/release/verify-source-artifact-repository.sh" --repository "${unsafe}" --repository-id 1 --source-metadata "${temp_root}/missing-source-metadata.json"
 
-assert_rejected_before_gh   "post-split ancestor proof" 2   bash "${repo_root}/scripts/release/prove-post-split-ancestor-runtime.sh"     --repository "${unsafe}"     --confirm-disposable "${unsafe}"     --source-ref main     --tag v0.0.1
+assert_rejected_before_gh "post-split ancestor proof" 2 bash "${repo_root}/scripts/release/prove-post-split-ancestor-runtime.sh" --repository "${unsafe}" --confirm-disposable "${unsafe}" --source-ref main --tag v0.0.1
 
-assert_rejected_before_gh   "release environment proof" 2   bash "${repo_root}/scripts/release/prove-release-environment-policy.sh"     --repository "${unsafe}"     --confirm-disposable "${unsafe}"
+assert_rejected_before_gh "release environment proof" 2 bash "${repo_root}/scripts/release/prove-release-environment-policy.sh" --repository "${unsafe}" --confirm-disposable "${unsafe}"
 
-assert_rejected_before_gh   "post-split runtime audit" 2   bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh"     "${unsafe}" 1 2
+assert_rejected_before_gh "post-split runtime audit" 2 bash "${repo_root}/scripts/release/audit-post-split-runtime-proof.sh" "${unsafe}" 1 2
 
-assert_rejected_before_gh   "trusted main artifact resolver" 2   bash "${repo_root}/scripts/ci/resolve-trusted-main-artifact.sh"     --repository "${unsafe}"     --workflow tests.yml     --artifact fixture     --output "${temp_root}/trusted-artifact-output"
+assert_rejected_before_gh "trusted main artifact resolver" 2 bash "${repo_root}/scripts/ci/resolve-trusted-main-artifact.sh" --repository "${unsafe}" --workflow tests.yml --artifact fixture --output "${temp_root}/trusted-artifact-output"
 
-assert_rejected_before_gh   "release-tag immutability proof" 2   bash "${repo_root}/scripts/ci/prove-release-tag-immutability.sh"     --repository "${unsafe}"     --confirm-disposable "${unsafe}"     --tag v0.0.1     --initial-sha "${sha_a}"     --move-sha "${sha_b}"
+assert_rejected_before_gh "release-tag immutability proof" 2 bash "${repo_root}/scripts/ci/prove-release-tag-immutability.sh" --repository "${unsafe}" --confirm-disposable "${unsafe}" --tag v0.0.1 --initial-sha "${sha_a}" --move-sha "${sha_b}"
 
 printf 'shell repository entrypoint validation regressions passed\n'
