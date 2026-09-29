@@ -97,6 +97,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
+          EXPECTED_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id || github.repository_id }}
           EXPECTED_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -109,6 +110,7 @@ jobs:
             --artifact-digest "${CURRENT_ARTIFACT_DIGEST}" \
             --run-id "${EXPECTED_RUN_ID}" \
             --repository-id "${EXPECTED_REPOSITORY_ID}" \
+            --head-repository-id "${EXPECTED_HEAD_REPOSITORY_ID}" \
             --source-sha "${CURRENT_SHA}"
 
       - name: Download current visual capture
