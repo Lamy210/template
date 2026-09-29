@@ -251,6 +251,23 @@ for local_path in "${assets[@]}"; do
   fi
 done
 
+if ! gh release verify "${TAG_NAME}" \
+  --repo "${GITHUB_REPOSITORY}" \
+  --format json >/dev/null; then
+  echo "GitHub immutable release attestation verification failed for ${GITHUB_REPOSITORY}@${TAG_NAME}." >&2
+  exit 1
+fi
+
+for local_path in "${assets[@]}"; do
+  asset_name="$(basename "${local_path}")"
+  if ! gh release verify-asset "${TAG_NAME}" "${local_path}" \
+    --repo "${GITHUB_REPOSITORY}" \
+    --format json >/dev/null; then
+    echo "GitHub release asset attestation verification failed for ${asset_name}." >&2
+    exit 1
+  fi
+done
+
 if ! verify_publication_source_binding; then
   echo "Release source binding changed during GitHub Release publication." >&2
   exit 1
