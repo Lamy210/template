@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import json
 from pathlib import Path
 import subprocess
@@ -107,6 +106,20 @@ class CoverageBaselineProvenanceTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValidationError, "event must be push"):
             self.validate(resolver=resolver)
+
+    def test_rejects_artifact_name_drift(self) -> None:
+        baseline = provenance()
+        baseline["artifactName"] = "other-baseline"
+
+        with self.assertRaisesRegex(ValidationError, "artifactName"):
+            self.validate(baseline=baseline)
+
+    def test_rejects_source_sha_drift(self) -> None:
+        baseline = provenance()
+        baseline["sourceSHA"] = "1" + SHA[1:]
+
+        with self.assertRaisesRegex(ValidationError, "sourceSHA"):
+            self.validate(baseline=baseline)
 
     def test_rejects_profile_fingerprint_drift(self) -> None:
         coverage = summary()
