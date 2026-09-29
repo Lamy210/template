@@ -37,7 +37,8 @@ def main() -> int:
     if errors or identity is None:
         return 1
 
-    print(f"{identity.repository_id}\t{identity.full_name}")
+    print(identity.repository_id)
+    print(identity.full_name)
     return 0
 
 
