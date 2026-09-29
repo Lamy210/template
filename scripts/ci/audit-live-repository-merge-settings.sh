@@ -43,7 +43,9 @@ api_headers=(
 
 validate_snapshot() {
   local metadata="$1"
-  python3 "${validator}"     --metadata "${metadata}"     --repository "${repository}"
+  python3 "${validator}" \
+    --metadata "${metadata}" \
+    --repository "${repository}"
 }
 
 initial_json="${temp_root}/repository-before.json"
@@ -71,5 +73,4 @@ if [[ "${initial_state}" != "${final_state}" ]]; then
   exit 5
 fi
 
-printf 'repository merge settings match the template policy for %s
-' "${repository}"
+printf 'repository merge settings match the template policy for %s\n' "${repository}"
