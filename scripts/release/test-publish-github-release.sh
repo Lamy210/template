@@ -144,6 +144,27 @@ PY
       exit 1
     fi
     ;;
+  verify)
+    if [[ "${3:-}" == "--help" ]]; then
+      [[ "${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" == "true" ]]
+      exit
+    fi
+    if [[ "${GH_FAKE_RELEASE_ATTESTATION_VALID:-true}" != "true" ]]; then
+      exit 95
+    fi
+    printf '{"verified":true}\n'
+    ;;
+  verify-asset)
+    if [[ "${3:-}" == "--help" ]]; then
+      [[ "${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" == "true" ]]
+      exit
+    fi
+    asset_name="$(basename "${4:-}")"
+    if [[ -n "${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME:-}" && "${asset_name}" == "${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME}" ]]; then
+      exit 96
+    fi
+    printf '{"verified":true}\n'
+    ;;
   download)
     : "${GH_FAKE_REMOTE_DIR:?GH_FAKE_REMOTE_DIR is required}"
     pattern=""
@@ -189,6 +210,9 @@ run_publisher() {
     GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE="${GH_FAKE_RELEASE_LIST_FAIL_WHEN_STATE:-false}" \
     GH_FAKE_TAG_DRIFT_AFTER_CREATE="${GH_FAKE_TAG_DRIFT_AFTER_CREATE:-false}" \
     GH_FAKE_IS_IMMUTABLE="${GH_FAKE_IS_IMMUTABLE:-true}" \
+    GH_FAKE_RELEASE_ATTESTATION_VALID="${GH_FAKE_RELEASE_ATTESTATION_VALID:-true}" \
+    GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE="${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" \
+    GH_FAKE_INVALID_ASSET_ATTESTATION_NAME="${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME:-}" \
     GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE="${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" \
     GH_FAKE_REPOSITORY_ID="${GH_FAKE_REPOSITORY_ID:-123}" \
     PATH="${FAKE_BIN}:${PATH}" \
@@ -262,6 +286,24 @@ if EXPECTED_REPOSITORY_ID=invalid GH_FAKE_RELEASE_EXISTS=false run_publisher; th
 fi
 if [[ -s "${LOG_PATH}" ]]; then
   echo "Publisher contacted GitHub before rejecting a malformed repository ID." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE=false GH_FAKE_RELEASE_EXISTS=false run_publisher; then
+  echo "Publisher accepted a gh CLI without immutable release attestation commands." >&2
+  exit 1
+fi
+if grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher mutated GitHub Release state before attestation CLI capability validation." >&2
+  exit 1
+fi
+if grep -F "api repos/${GITHUB_REPOSITORY}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher contacted repository APIs before local attestation CLI capability validation." >&2
+  exit 1
+fi
+if ! grep -F "release verify --help" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher did not preflight release attestation CLI support." >&2
   exit 1
 fi
 
@@ -388,6 +430,16 @@ fi
 for asset_name in "$(basename "${DMG_PATH}")" "$(basename "${CHECKSUM_PATH}")" "$(basename "${RELEASE_PROVENANCE_PATH}")"; do
   if ! grep -F "release download ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --pattern ${asset_name}" "${LOG_PATH}" >/dev/null; then
     echo "New release asset was not re-downloaded for post-create verification: ${asset_name}" >&2
+    exit 1
+  fi
+done
+if ! grep -F "release verify ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --format json" "${LOG_PATH}" >/dev/null; then
+  echo "New release attestation was not verified." >&2
+  exit 1
+fi
+for asset_path in "${DMG_PATH}" "${CHECKSUM_PATH}" "${RELEASE_PROVENANCE_PATH}"; do
+  if ! grep -F "release verify-asset ${TAG_NAME} ${asset_path} --repo ${GITHUB_REPOSITORY} --format json" "${LOG_PATH}" >/dev/null; then
+    echo "New release asset attestation was not verified: ${asset_path}" >&2
     exit 1
   fi
 done
@@ -533,6 +585,26 @@ if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
 fi
 if grep -F -- "--clobber" "${LOG_PATH}" >/dev/null; then
   echo "Publisher must never use --clobber." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true GH_FAKE_RELEASE_ATTESTATION_VALID=false run_publisher; then
+  echo "Existing immutable release without a valid signed attestation was incorrectly accepted." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Publisher mutated release state after signed release attestation failure." >&2
+  exit 1
+fi
+
+: >"${LOG_PATH}"
+if GH_FAKE_RELEASE_EXISTS=true GH_FAKE_INVALID_ASSET_ATTESTATION_NAME="$(basename "${DMG_PATH}")" run_publisher; then
+  echo "Existing immutable release with an invalid asset attestation was incorrectly accepted." >&2
+  exit 1
+fi
+if grep -E '^release (create|upload) ' "${LOG_PATH}" >/dev/null; then
+  echo "Publisher mutated release state after asset attestation failure." >&2
   exit 1
 fi
 

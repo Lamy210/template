@@ -63,7 +63,7 @@ The setting applies only to releases published after it is enabled. Do not assum
 
 The setting can be enabled in repository **Settings → Releases → Enable release immutability**. It can also be enabled through GitHub's immutable-releases repository API by an administrator. Do not grant the normal CI `GITHUB_TOKEN` repository Administration permission merely to manage this setting.
 
-If native release immutability cannot be enabled or cannot be proven enabled, keep the production publisher/Homebrew path disabled. Do not weaken the publication or download validators to ship a mutable release.
+If native release immutability cannot be enabled or cannot be proven enabled, keep the production publisher/Homebrew path disabled. Do not weaken the publication or download validators to ship a mutable release. Production publication also requires GitHub's signed release attestation to verify successfully for the release and every published asset; the Homebrew consumer repeats this verification independently. The publisher preflights that the installed `gh` supports `release verify` and `release verify-asset` before contacting release APIs, so an outdated CLI cannot cause an irreversible publication followed by a local command-capability failure.
 
 After configuration, run the read-only doctor with an operator credential that has **Administration (read)** for the repository:
 
