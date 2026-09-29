@@ -23,6 +23,9 @@ def validate_repository_merge_settings(
 ) -> tuple[list[str], RepositoryMergeSettings | None]:
     errors: list[str] = []
 
+    if not is_canonical_repository_name(expected_repository):
+        errors.append("expected repository must use canonical owner/repo form")
+
     if not isinstance(document, dict):
         return ["repository metadata must be a JSON object"], None
 
@@ -36,7 +39,10 @@ def validate_repository_merge_settings(
         or not is_canonical_repository_name(full_name)
     ):
         errors.append("repository full_name must use canonical owner/repo form")
-    elif full_name.casefold() != expected_repository.casefold():
+    elif (
+        is_canonical_repository_name(expected_repository)
+        and full_name.casefold() != expected_repository.casefold()
+    ):
         errors.append(
             "repository full_name does not match the requested repository"
         )
