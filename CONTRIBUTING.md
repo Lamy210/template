@@ -75,7 +75,7 @@ Keep pull requests focused. A PR should answer:
 
 All required checks must pass before merge. Resolve review conversations before merging.
 
-Squash merge is preferred so `main` keeps one coherent commit per pull request.
+Use squash merge so `main` keeps one coherent commit per pull request. The template repository policy disables merge commits and rebase merges; do not bypass that policy for routine contributions.
 
 ## Coding-policy violations
 
