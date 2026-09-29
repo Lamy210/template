@@ -62,6 +62,9 @@ def validate_coverage_baseline_provenance(
     if provenance.get("schemaVersion") != 1:
         raise ValidationError("coverage baseline provenance schemaVersion must equal 1")
 
+    if resolver.get("schemaVersion") != 1:
+        raise ValidationError("resolver metadata schemaVersion must equal 1")
+
     repository = _non_empty_string(resolver.get("repository"), "resolver repository")
     repository_id = _positive_int(resolver.get("repositoryId"), "resolver repository id")
     workflow = _non_empty_string(resolver.get("workflow"), "resolver workflow")
@@ -75,6 +78,7 @@ def validate_coverage_baseline_provenance(
         resolver.get("artifactDigest"), "resolver artifact digest"
     )
     event = _non_empty_string(resolver.get("event"), "resolver event")
+    branch = _non_empty_string(resolver.get("branch"), "resolver branch")
 
     if repository != expected_repository:
         raise ValidationError("resolver repository does not match expected repository")
@@ -84,6 +88,8 @@ def validate_coverage_baseline_provenance(
         raise ValidationError("resolver artifact does not match expected artifact")
     if event != "push":
         raise ValidationError("coverage baseline resolver event must be push")
+    if branch != "main":
+        raise ValidationError("coverage baseline resolver branch must be main")
     if not GIT_SHA_RE.fullmatch(source_sha):
         raise ValidationError("resolver source SHA must be 40 lowercase hex characters")
     if not DIGEST_RE.fullmatch(artifact_digest):
@@ -124,6 +130,7 @@ def validate_coverage_baseline_provenance(
         "repositoryId": repository_id,
         "workflow": workflow,
         "workflowId": workflow_id,
+        "branch": branch,
         "runId": run_id,
         "runAttempt": run_attempt,
         "sourceSHA": source_sha,
