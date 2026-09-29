@@ -250,7 +250,9 @@ jobs:
       actions: read
     with:
       manifest_path: ${{ vars.MACOS_VISUAL_MANIFEST_PATH || 'Tests/VisualRegression/visual-regression.json' }}
-      current_artifact_name: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
+      current_artifact_id: ${{ needs.e2e-run.outputs.visual_artifact_id }}
+      current_artifact_digest: ${{ needs.e2e-run.outputs.visual_artifact_digest }}
+      current_artifact_name: ${{ needs.e2e-run.outputs.visual_artifact_name }}
       current_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       trusted_workflow: tests.yml
       trusted_events: push,schedule
@@ -485,6 +487,7 @@ jobs:
     name: Publish visual baseline
     needs:
       - classify
+      - e2e-run
       - visual-run
       - required-gate
     if: ${{ always() && needs.classify.outputs.visual_enabled == 'true' && needs.visual-run.result == 'success' && needs.visual-run.outputs.result == 'success' && needs.required-gate.result == 'success' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
@@ -495,7 +498,9 @@ jobs:
     env:
       CURRENT_SHA: ${{ github.sha }}
       MANIFEST_PATH: ${{ vars.MACOS_VISUAL_MANIFEST_PATH || 'Tests/VisualRegression/visual-regression.json' }}
-      CURRENT_ARTIFACT_NAME: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
+      CURRENT_ARTIFACT_ID: ${{ needs.e2e-run.outputs.visual_artifact_id }}
+      CURRENT_ARTIFACT_DIGEST: ${{ needs.e2e-run.outputs.visual_artifact_digest }}
+      CURRENT_ARTIFACT_NAME: ${{ needs.e2e-run.outputs.visual_artifact_name }}
       BASELINE_ARTIFACT_NAME: ${{ vars.MACOS_VISUAL_BASELINE_ARTIFACT || 'visual-baseline' }}
       PREVIOUS_BASELINE_RUN_ID: ${{ needs.visual-run.outputs.baseline_run_id }}
     steps:
@@ -504,11 +509,31 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate verified current visual capture identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          metadata="${RUNNER_TEMP}/current-visual-artifact.json"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${CURRENT_ARTIFACT_ID}" >"${metadata}"
+          python3 scripts/ci/current_run_artifact_identity.py \
+            --metadata "${metadata}" \
+            --artifact-id "${CURRENT_ARTIFACT_ID}" \
+            --artifact-name "${CURRENT_ARTIFACT_NAME}" \
+            --artifact-digest "${CURRENT_ARTIFACT_DIGEST}" \
+            --run-id "${EXPECTED_RUN_ID}" \
+            --repository-id "${EXPECTED_REPOSITORY_ID}" \
+            --source-sha "${CURRENT_SHA}"
+
       - name: Download verified current visual capture
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ env.CURRENT_ARTIFACT_NAME }}
+          artifact-ids: ${{ needs.e2e-run.outputs.visual_artifact_id }}
           path: artifacts/visual
+          merge-multiple: true
 
       - name: Build rolling visual baseline bundle
         shell: bash
