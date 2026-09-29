@@ -117,7 +117,13 @@ The template's recommended merge policy is:
 - rebase merge: disabled
 - delete head branches after merge: enabled
 
-These are repository settings, not properties of the workflow files. A template consumer should configure or import them during repository bootstrap and verify them with a future template doctor command.
+These are repository settings, not properties of the workflow files. Configure them during repository bootstrap, then verify the live repository with the read-only doctor:
+
+```bash
+bash scripts/ci/audit-live-repository-merge-settings.sh owner/repo
+```
+
+The manual `Governance Audit` workflow runs the same check with the repository's read-only workflow token. The audit re-reads repository metadata after validation and fails if repository identity or merge settings change while the doctor is running.
 
 ## Merge queue
 
