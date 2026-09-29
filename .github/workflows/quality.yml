@@ -87,6 +87,8 @@ jobs:
             scripts.template.test_doctor \
             -v
           python3 scripts/ci/validate_rulesets.py
+          bash scripts/common/test-repository-name.sh
+          bash scripts/common/test-shell-repository-entrypoints.sh
           bash scripts/ci/test-audit-live-immutable-releases.sh
           bash scripts/ci/test-audit-live-repository-merge-settings.sh
           bash scripts/setup/test-apply-repository-merge-settings.sh
