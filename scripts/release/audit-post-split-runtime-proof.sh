@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/repository-name.sh
+source "${script_dir}/../common/repository-name.sh"
+
 usage() {
   cat >&2 <<'EOF'
 Usage:
@@ -18,7 +22,7 @@ EOF
 repository="${1:-}"
 source_run_id="${2:-}"
 publisher_run_id="${3:-}"
-if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+if ! is_canonical_repository_name "${repository}" ||
   [[ ! "${source_run_id}" =~ ^[1-9][0-9]*$ ]] ||
   [[ ! "${publisher_run_id}" =~ ^[1-9][0-9]*$ ]]; then
   usage
