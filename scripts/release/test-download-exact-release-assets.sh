@@ -76,6 +76,10 @@ PY
 
 args="$*"
 if [[ "${1:-}" == "release" && "${2:-}" == "verify" ]]; then
+  if [[ "${3:-}" == "--help" ]]; then
+    [[ "${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" == "true" ]]
+    exit
+  fi
   if [[ "${3:-}" != "v1.2.3" || "${4:-}" != "--repo" || "${5:-}" != "Example/MyApp" || "${6:-}" != "--format" || "${7:-}" != "json" ]]; then
     echo "Unexpected release attestation verification arguments: $*" >&2
     exit 91
@@ -87,6 +91,10 @@ if [[ "${1:-}" == "release" && "${2:-}" == "verify" ]]; then
   exit 0
 fi
 if [[ "${1:-}" == "release" && "${2:-}" == "verify-asset" ]]; then
+  if [[ "${3:-}" == "--help" ]]; then
+    [[ "${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" == "true" ]]
+    exit
+  fi
   if [[ "${3:-}" != "v1.2.3" || -z "${4:-}" || "${5:-}" != "--repo" || "${6:-}" != "Example/MyApp" || "${7:-}" != "--format" || "${8:-}" != "json" ]]; then
     echo "Unexpected release asset attestation verification arguments: $*" >&2
     exit 93
@@ -179,6 +187,7 @@ run_downloader() {
     GH_FAKE_CHECKSUM="${temp_root}/checksum" \
     GH_FAKE_PROVENANCE="${temp_root}/provenance" \
     GH_FAKE_PHASE_FILE="${temp_root}/phase" \
+    GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE="${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" \
     RM_FAKE_FAIL_ONCE="${RM_FAKE_FAIL_ONCE:-false}" \
     RM_FAKE_STATE_FILE="${temp_root}/rm-state" \
     PATH="${fake_bin}:${PATH}" \
@@ -213,6 +222,19 @@ fi
 grep -F "invalid owner or repository component" "${temp_root}/preflight.err" >/dev/null
 
 : >"${temp_root}/gh.log"
+unsupported_output="${temp_root}/unsupported-gh"
+if GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE=false run_downloader success "${unsupported_output}" >"${temp_root}/unsupported-gh.out" 2>"${temp_root}/unsupported-gh.err"; then
+  echo "Exact release downloader accepted a gh CLI without immutable release attestation commands." >&2
+  exit 1
+fi
+grep -F "does not support immutable release attestation verification" "${temp_root}/unsupported-gh.err" >/dev/null
+if grep -F "api " "${temp_root}/gh.log" >/dev/null; then
+  echo "Exact release downloader contacted repository/release APIs before attestation CLI capability validation." >&2
+  exit 1
+fi
+assert_no_output_or_staging "${unsupported_output}"
+
+: >"${temp_root}/gh.log"
 success_output="${temp_root}/success"
 run_downloader success "${success_output}"
 
@@ -238,6 +260,8 @@ if compgen -G "${temp_root}/.success.partial.*" >/dev/null; then
   echo "Successful exact download left a staging directory." >&2
   exit 1
 fi
+grep -F "release verify --help" "${temp_root}/gh.log" >/dev/null
+grep -F "release verify-asset --help" "${temp_root}/gh.log" >/dev/null
 grep -F "releases/assets/101" "${temp_root}/gh.log" >/dev/null
 grep -F "releases/assets/102" "${temp_root}/gh.log" >/dev/null
 grep -F "releases/assets/103" "${temp_root}/gh.log" >/dev/null
