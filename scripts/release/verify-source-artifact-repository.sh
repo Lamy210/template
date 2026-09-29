@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/repository-name.sh
+source "${script_dir}/../common/repository-name.sh"
+
 readonly EXIT_USAGE=2
 readonly EXIT_INFRA=3
 readonly EXIT_REJECTED=4
@@ -53,7 +57,7 @@ while (($# > 0)); do
   esac
 done
 
-[[ "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "${EXIT_USAGE}" '--repository must be owner/repo'
+is_canonical_repository_name "${repository}" || die "${EXIT_USAGE}" '--repository must use canonical owner/repo form'
 [[ "${repository_id}" =~ ^[0-9]+$ ]] || die "${EXIT_USAGE}" '--repository-id must be a positive integer'
 repository_id_number=$((10#${repository_id}))
 ((repository_id_number > 0)) || die "${EXIT_USAGE}" '--repository-id must be positive'
