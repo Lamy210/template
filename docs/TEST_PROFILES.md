@@ -128,4 +128,6 @@ For Visual manifests that contain only `git` baselines, the reusable Visual work
 
 Trusted coverage baselines carry a separate `coverage-baseline-provenance.json`. Before a pull request compares coverage, the reusable workflow requires that provenance to match the trusted resolver's repository ID, workflow, run ID, run attempt, source SHA, artifact name, and coverage profile fingerprint. This prevents a partial workflow re-run from silently treating a baseline produced by an older run attempt as current.
 
+The current E2E visual capture is handed to Visual comparison and rolling-baseline publication by the exact Artifact ID emitted by `upload-artifact`, not by name lookup alone. Before download, consumers re-read the Artifact API object and require its ID, digest, attempt-scoped name, workflow run ID, repository IDs, and source SHA to match the producer outputs and current workflow context.
+
 Profile adoption validation remains secret-free and read-only. It does not introduce repository writes or privileged release behavior.
