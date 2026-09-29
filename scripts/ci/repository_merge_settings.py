@@ -8,6 +8,13 @@ from typing import Any
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
+def _is_canonical_repository_name(value: str) -> bool:
+    if REPOSITORY_RE.fullmatch(value) is None:
+        return False
+    owner, name = value.split("/", 1)
+    return owner not in {".", ".."} and name not in {".", ".."}
+
+
 @dataclass(frozen=True)
 class RepositoryMergeSettings:
     repository_id: int
@@ -35,7 +42,7 @@ def validate_repository_merge_settings(
     full_name = document.get("full_name")
     if (
         not isinstance(full_name, str)
-        or REPOSITORY_RE.fullmatch(full_name) is None
+        or not _is_canonical_repository_name(full_name)
     ):
         errors.append("repository full_name must use canonical owner/repo form")
     elif full_name.casefold() != expected_repository.casefold():
