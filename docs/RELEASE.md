@@ -73,7 +73,7 @@ Before importing the Developer ID certificate, the signing job:
 
 Only then does it import Apple credentials and perform signing/notarization. After final verification it uploads the signed DMG, checksum, and publisher-owned release provenance as an exact current-run/current-attempt Actions Artifact.
 
-The publication job independently verifies that signer-produced artifact's ID, canonical name, GitHub digest, repository identity, publisher run, publisher attempt, and publisher SHA before downloading it. It then revalidates the trusted DMG basename and release provenance. The publication script itself rebinds the stable tag to the validated source SHA immediately before any GitHub Release lookup/create path and again after remote release-state/asset verification, so tag movement during publication fails closed rather than relying only on a preceding workflow step.
+The publication job independently verifies that signer-produced artifact's ID, canonical name, GitHub digest, repository identity, publisher run, publisher attempt, and publisher SHA before downloading it. It then revalidates the trusted DMG basename and release provenance. The publication script itself rebinds the stable tag to the validated source SHA immediately before any GitHub Release lookup/create path and again after remote release-state/asset verification, so tag movement during publication fails closed rather than relying only on a preceding workflow step. The post-create/no-op state check also requires GitHub to report the release as natively immutable; a mutable published release is not accepted as a successful production publication.
 
 GitHub's native immutable-releases repository setting is recommended as an additional server-side supply-chain control. The source-controlled release path does not grant itself Administration permission or silently enable/disable that repository setting. Configure it out of band before production releases and verify it with `scripts/ci/audit-live-immutable-releases.sh`. Because the native setting is not retroactive, the release pipeline and Homebrew consumer continue to bind tags, repository IDs, Release IDs, exact asset IDs, digests, and sizes independently rather than treating the setting as the only immutability control.
 
@@ -398,7 +398,7 @@ Typical validation failures include:
 - signing/notarization/Gatekeeper failure;
 - attempted mutation of an existing stable GitHub Release.
 
-For all trust failures, fail closed. Do not bypass provenance, archive, Gatekeeper, notarization, or immutable-release checks merely to make a release green.
+For all trust failures, fail closed. Do not bypass provenance, archive, Gatekeeper, notarization, or immutable-release checks merely to make a release green. If an older release predates native GitHub release immutability, publish a new immutable patch release rather than treating the historical mutable release as a production no-op or Homebrew source.
 
 If Apple notarization fails, retain the submission identifier and inspect Apple's notarization log before retrying.
 
