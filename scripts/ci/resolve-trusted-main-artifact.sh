@@ -91,9 +91,8 @@ done
 [[ -n "${repository}" ]] || die "${EXIT_USAGE}" '--repository is required'
 is_canonical_repository_name "${repository}" || die "${EXIT_USAGE}" '--repository must use canonical owner/repo form'
 [[ -n "${workflow}" ]] || die "${EXIT_USAGE}" '--workflow is required'
-python3 "${repo_root}/scripts/common/validate-workflow-identity.py" --help >/dev/null 2>&1 ||
-  die "${EXIT_USAGE}" 'workflow identity validator is unavailable'
-if ! python3 - "${workflow}" <<'PY'
+command -v python3 >/dev/null 2>&1 || die "${EXIT_USAGE}" 'python3 is required'
+if ! PYTHONPATH="${repo_root}" python3 - "${workflow}" <<'PY'
 import sys
 from scripts.common.workflow_identity import is_safe_workflow_filename
 
@@ -128,7 +127,6 @@ done
 [[ -n "${GH_TOKEN:-}" ]] || die "${EXIT_USAGE}" 'GH_TOKEN is required'
 
 command -v gh >/dev/null 2>&1 || die "${EXIT_USAGE}" 'gh is required'
-command -v python3 >/dev/null 2>&1 || die "${EXIT_USAGE}" 'python3 is required'
 
 output_parent="$(dirname "${output_dir}")"
 mkdir -p "${output_parent}"
