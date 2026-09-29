@@ -127,6 +127,11 @@ if [[ ! -d "${output_parent}" ]]; then
   exit 2
 fi
 
+if ! gh release verify --help >/dev/null 2>&1 || ! gh release verify-asset --help >/dev/null 2>&1; then
+  echo "Installed gh does not support immutable release attestation verification." >&2
+  exit 2
+fi
+
 temp_root="$(mktemp -d)"
 staging_dir=""
 cleanup() {
