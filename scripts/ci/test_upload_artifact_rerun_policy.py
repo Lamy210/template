@@ -64,6 +64,21 @@ jobs:
         self.assertEqual(1, len(violations))
         self.assertIn("github.run_attempt", violations[0].message)
 
+    def test_quoted_upload_action_is_still_detected(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  test:
+    steps:
+      - name: Quoted upload
+        uses: "actions/upload-artifact@deadbeef"
+        with:
+          name: fixed-name
+          path: output
+"""
+        )
+        self.assertEqual(1, len(violations))
+
     def test_unnamed_upload_step_is_still_detected(self) -> None:
         violations = self.validate(
             """
