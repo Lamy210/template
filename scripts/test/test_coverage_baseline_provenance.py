@@ -9,12 +9,14 @@ import unittest
 
 from scripts.test.coverage_baseline_provenance import (
     ValidationError,
+    build_coverage_baseline_provenance,
     validate_coverage_baseline_provenance,
 )
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CLI = ROOT / "scripts/test/validate-coverage-baseline-provenance.py"
+VALIDATE_CLI = ROOT / "scripts/test/validate-coverage-baseline-provenance.py"
+BUILD_CLI = ROOT / "scripts/test/build-coverage-baseline-provenance.py"
 SHA = "0123456789abcdef0123456789abcdef01234567"
 FINGERPRINT = "sha256:" + "a" * 64
 ARTIFACT_DIGEST = "sha256:" + "b" * 64
@@ -64,6 +66,74 @@ def summary() -> dict[str, object]:
         },
         "targets": {},
     }
+
+
+class CoverageBaselineBuilderTests(unittest.TestCase):
+    def test_builds_exact_attempt_bound_provenance(self) -> None:
+        payload = build_coverage_baseline_provenance(
+            summary(),
+            repository="Lamy210/template",
+            repository_id=1367784801,
+            workflow="tests.yml",
+            run_id=12345,
+            run_attempt=2,
+            source_sha=SHA,
+            artifact_name="coverage-baseline",
+        )
+
+        self.assertEqual(payload, provenance())
+
+    def test_rejects_invalid_builder_identity(self) -> None:
+        with self.assertRaisesRegex(ValidationError, "run attempt"):
+            build_coverage_baseline_provenance(
+                summary(),
+                repository="Lamy210/template",
+                repository_id=1367784801,
+                workflow="tests.yml",
+                run_id=12345,
+                run_attempt=0,
+                source_sha=SHA,
+                artifact_name="coverage-baseline",
+            )
+
+    def test_builder_cli_writes_canonical_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            summary_path = root / "summary.json"
+            output_path = root / "provenance.json"
+            summary_path.write_text(json.dumps(summary()), encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(BUILD_CLI),
+                    "--summary",
+                    str(summary_path),
+                    "--output",
+                    str(output_path),
+                    "--repository",
+                    "Lamy210/template",
+                    "--repository-id",
+                    "1367784801",
+                    "--workflow",
+                    "tests.yml",
+                    "--run-id",
+                    "12345",
+                    "--run-attempt",
+                    "2",
+                    "--source-sha",
+                    SHA,
+                    "--artifact-name",
+                    "coverage-baseline",
+                ],
+                cwd=temporary_directory,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual(provenance(), json.loads(output_path.read_text(encoding="utf-8")))
 
 
 class CoverageBaselineProvenanceTests(unittest.TestCase):
@@ -162,7 +232,7 @@ class CoverageBaselineProvenanceTests(unittest.TestCase):
             completed = subprocess.run(
                 [
                     sys.executable,
-                    str(CLI),
+                    str(VALIDATE_CLI),
                     "--resolver-metadata",
                     str(resolver_path),
                     "--baseline-provenance",
