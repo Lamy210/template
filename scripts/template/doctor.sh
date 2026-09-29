@@ -24,11 +24,19 @@ profile="core"
 while (($#)); do
   case "$1" in
     --repository)
-      repository="${2:-}"
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "--repository requires owner/repo." >&2
+        exit 2
+      fi
+      repository="$2"
       shift 2
       ;;
     --profile)
-      profile="${2:-}"
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "--profile requires core or release." >&2
+        exit 2
+      fi
+      profile="$2"
       shift 2
       ;;
     -h | --help)
@@ -108,8 +116,8 @@ failed=0
 total="${#check_paths[@]}"
 
 for index in "${!check_paths[@]}"; do
-  name="${check_names[${index}]}"
-  relative_path="${check_paths[${index}]}"
+  name="${check_names[index]}"
+  relative_path="${check_paths[index]}"
   full_path="${repo_root}/${relative_path}"
 
   printf '==> %s\n' "${name}"
