@@ -158,6 +158,14 @@ class RepositoryMergeSettingsTests(unittest.TestCase):
                     text,
                 )
 
+        setup = SETUP.read_text(encoding="utf-8")
+        self.assertIn(
+            "bash scripts/setup/apply-repository-merge-settings.sh",
+            setup,
+        )
+        self.assertIn("--confirm-repository owner/repo", setup)
+        self.assertIn("--apply", setup)
+
         contributing = CONTRIBUTING.read_text(encoding="utf-8")
         self.assertIn("Use squash merge", contributing)
         self.assertIn(

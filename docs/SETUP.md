@@ -11,13 +11,24 @@ The template merge-policy contract is:
 - rebase merge: disabled
 - delete head branches after merge: enabled
 
-The intended history model is one squash commit per pull request. Configure these repository settings before normal development, then verify the live repository with:
+The intended history model is one squash commit per pull request. An administrator can apply only these four repository settings with the guarded setup helper:
+
+```bash
+bash scripts/setup/apply-repository-merge-settings.sh \
+  --repository owner/repo \
+  --confirm-repository owner/repo \
+  --apply
+```
+
+The helper requires exact repository confirmation before any GitHub access, resolves and snapshots repository identity before mutation, PATCHes only the four merge-policy fields, then re-resolves the repository and requires both stable identity and convergence to the checked-in policy. Run it with an administrator credential from a trusted local operator session; it is deliberately not invoked by pull-request CI or the `Governance Audit` workflow.
+
+Whether settings are applied manually or with the helper, verify the live repository afterward with:
 
 ```bash
 bash scripts/ci/audit-live-repository-merge-settings.sh owner/repo
 ```
 
-The doctor is read-only and fails closed when any of the four settings drift from this contract. The manual `Governance Audit` workflow runs the same check with the repository workflow token.
+The doctor is read-only and fails closed when any of the four settings drift from this contract. The manual `Governance Audit` workflow runs the same read-only check with the repository workflow token.
 
 ## 2. `main` Ruleset — Solo OSS profile
 
