@@ -87,9 +87,9 @@ run_apply() {
     GH_FAKE_LOG="${log}" \
     GH_FAKE_STATE="${state}" \
     bash "${script}" \
-      --repository Example/Repo \
-      --confirm-repository Example/Repo \
-      --apply
+    --repository Example/Repo \
+    --confirm-repository Example/Repo \
+    --apply
 }
 
 : >"${temp_root}/no-gh.log"
