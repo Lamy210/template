@@ -172,6 +172,14 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("refuses the current repository", result.stderr)
 
+    def test_rejects_noncanonical_current_repository_identity(self) -> None:
+        result = run_script(
+            *proof_args(),
+            env={"GITHUB_REPOSITORY": "../escape"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("GITHUB_REPOSITORY must use canonical owner/repo", result.stderr)
+
     def test_rejects_local_checkout_repository_before_github_access(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -237,6 +245,7 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
         self.assertNotIn(",,}", text)
         self.assertIn('git -C "${repo_root}" remote get-url origin', text)
         self.assertIn("github_repository_from_remote", text)
+        self.assertIn("resolve-github-repository-from-remote.py", text)
         self.assertIn("repository_identity", text)
         self.assertIn("require_repository_identity_stable", text)
         self.assertGreaterEqual(
