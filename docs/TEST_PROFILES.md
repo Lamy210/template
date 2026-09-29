@@ -126,4 +126,6 @@ The template self-validates all four named profiles with committed adopter fixtu
 
 For Visual manifests that contain only `git` baselines, the reusable Visual workflow skips trusted rolling-baseline discovery entirely. A `rolling-main` case is the condition that makes a trusted rolling artifact mandatory; this keeps `macos-ui-strict` compatible with its default `MACOS_VISUAL_BOOTSTRAP=false` policy when an adopter intentionally uses only committed baselines.
 
+Trusted coverage baselines carry a separate `coverage-baseline-provenance.json`. Before a pull request compares coverage, the reusable workflow requires that provenance to match the trusted resolver's repository ID, workflow, run ID, run attempt, source SHA, artifact name, and coverage profile fingerprint. This prevents a partial workflow re-run from silently treating a baseline produced by an older run attempt as current.
+
 Profile adoption validation remains secret-free and read-only. It does not introduce repository writes or privileged release behavior.
