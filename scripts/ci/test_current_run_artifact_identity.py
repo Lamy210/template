@@ -44,6 +44,7 @@ class CurrentRunArtifactIdentityTests(unittest.TestCase):
             expected_artifact_digest=DIGEST,
             expected_run_id=12345,
             expected_repository_id=1367784801,
+            expected_head_repository_id=1367784801,
             expected_source_sha=SHA,
         )
 
@@ -91,6 +92,21 @@ class CurrentRunArtifactIdentityTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValidationError, "repository"):
                     self.validate(metadata)
 
+    def test_accepts_fork_head_repository_when_explicitly_expected(self) -> None:
+        metadata = artifact()
+        metadata["workflow_run"]["head_repository_id"] = 2468
+        result = validate_current_run_artifact(
+            metadata,
+            expected_artifact_id=7001,
+            expected_artifact_name="macos-e2e-visual-12345-2",
+            expected_artifact_digest=DIGEST,
+            expected_run_id=12345,
+            expected_repository_id=1367784801,
+            expected_head_repository_id=2468,
+            expected_source_sha=SHA,
+        )
+        self.assertEqual(7001, result["artifactId"])
+
     def test_rejects_source_sha_drift(self) -> None:
         metadata = artifact()
         metadata["workflow_run"]["head_sha"] = "1" + SHA[1:]
@@ -117,6 +133,8 @@ class CurrentRunArtifactIdentityTests(unittest.TestCase):
                     "--run-id",
                     "12345",
                     "--repository-id",
+                    "1367784801",
+                    "--head-repository-id",
                     "1367784801",
                     "--source-sha",
                     SHA,
