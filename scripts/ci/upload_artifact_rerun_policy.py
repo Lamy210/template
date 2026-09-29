@@ -6,8 +6,12 @@ import re
 from typing import Iterable
 
 
-UPLOAD_ACTION_RE = re.compile(r"^(?P<indent>\s*)uses:\s*actions/upload-artifact@")
-STEP_RE = re.compile(r"^(?P<indent>\s*)-\s+name:\s*(?P<name>.+?)\s*$")
+UPLOAD_ACTION_RE = re.compile(
+    r"^(?P<indent>\s*)(?P<item>-\s+)?uses:\s*actions/upload-artifact@"
+)
+STEP_ITEM_RE = re.compile(
+    r"^(?P<indent>\s*)-\s+(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$"
+)
 KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$")
 
 
@@ -33,25 +37,41 @@ def _indent_width(value: str) -> int:
 
 
 def _step_bounds(lines: list[str], uses_index: int) -> tuple[int, int, str]:
-    step_start = -1
-    step_indent = -1
-    step_name = "<unnamed upload-artifact step>"
+    action_match = UPLOAD_ACTION_RE.match(lines[uses_index])
+    if action_match is None:
+        raise ValueError("internal parser error: uses line does not match upload action")
 
-    for index in range(uses_index, -1, -1):
-        match = STEP_RE.match(lines[index])
-        if match is None:
-            continue
-        step_start = index
-        step_indent = _indent_width(match.group("indent"))
-        step_name = match.group("name")
-        break
+    if action_match.group("item") is not None:
+        step_start = uses_index
+        step_indent = _indent_width(action_match.group("indent"))
+        step_name = "<unnamed upload-artifact step>"
+    else:
+        uses_indent = _indent_width(action_match.group("indent"))
+        step_start = -1
+        step_indent = -1
+        step_name = "<unnamed upload-artifact step>"
 
-    if step_start < 0:
-        raise ValueError(f"upload-artifact at line {uses_index + 1} is outside a named step")
+        for index in range(uses_index - 1, -1, -1):
+            match = STEP_ITEM_RE.match(lines[index])
+            if match is None:
+                continue
+            candidate_indent = _indent_width(match.group("indent"))
+            if candidate_indent >= uses_indent:
+                continue
+            step_start = index
+            step_indent = candidate_indent
+            if match.group("key") == "name" and match.group("value").strip():
+                step_name = match.group("value").strip()
+            break
+
+        if step_start < 0:
+            raise ValueError(
+                f"upload-artifact at line {uses_index + 1} is outside a workflow step"
+            )
 
     step_end = len(lines)
     for index in range(step_start + 1, len(lines)):
-        match = STEP_RE.match(lines[index])
+        match = STEP_ITEM_RE.match(lines[index])
         if match is not None and _indent_width(match.group("indent")) == step_indent:
             step_end = index
             break
