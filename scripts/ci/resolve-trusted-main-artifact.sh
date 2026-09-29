@@ -91,7 +91,16 @@ done
 [[ -n "${repository}" ]] || die "${EXIT_USAGE}" '--repository is required'
 is_canonical_repository_name "${repository}" || die "${EXIT_USAGE}" '--repository must use canonical owner/repo form'
 [[ -n "${workflow}" ]] || die "${EXIT_USAGE}" '--workflow is required'
-[[ "${workflow}" != */* ]] || die "${EXIT_USAGE}" '--workflow must be a workflow file name, not a path'
+command -v python3 >/dev/null 2>&1 || die "${EXIT_USAGE}" 'python3 is required'
+if ! PYTHONPATH="${repo_root}" python3 - "${workflow}" <<'PY'
+import sys
+from scripts.common.workflow_identity import is_safe_workflow_filename
+
+raise SystemExit(0 if is_safe_workflow_filename(sys.argv[1]) else 1)
+PY
+then
+  die "${EXIT_USAGE}" '--workflow must be a safe .yml/.yaml file name'
+fi
 [[ -n "${artifact_name}" ]] || die "${EXIT_USAGE}" '--artifact is required'
 [[ -n "${output_dir}" ]] || die "${EXIT_USAGE}" '--output is required'
 if [[ -e "${output_dir}" || -L "${output_dir}" ]]; then
@@ -118,7 +127,6 @@ done
 [[ -n "${GH_TOKEN:-}" ]] || die "${EXIT_USAGE}" 'GH_TOKEN is required'
 
 command -v gh >/dev/null 2>&1 || die "${EXIT_USAGE}" 'gh is required'
-command -v python3 >/dev/null 2>&1 || die "${EXIT_USAGE}" 'python3 is required'
 
 output_parent="$(dirname "${output_dir}")"
 mkdir -p "${output_parent}"
@@ -184,6 +192,38 @@ if [[ ! "${trusted_repository_id}" =~ ^[1-9][0-9]*$ ]] ||
   die "${EXIT_INTEGRITY}" "trusted repository identity output was malformed"
 fi
 
+workflow_identity() {
+  local metadata="$1"
+  python3 "${repo_root}/scripts/common/validate-workflow-identity.py" \
+    --metadata "${metadata}" \
+    --workflow "${workflow}"
+}
+
+encoded_workflow="$(
+  python3 - "${workflow}" <<'PY'
+import sys
+import urllib.parse
+
+print(urllib.parse.quote(sys.argv[1], safe=""))
+PY
+)"
+
+initial_workflow_json="${work_root}/workflow-initial.json"
+api_to_file "repos/${repository}/actions/workflows/${encoded_workflow}" "${initial_workflow_json}" ||
+  die "${EXIT_INFRA}" "failed to query trusted workflow identity"
+
+if ! initial_workflow_identity="$(workflow_identity "${initial_workflow_json}")"; then
+  die "${EXIT_INTEGRITY}" "trusted workflow identity failed validation"
+fi
+trusted_workflow_id="$(printf '%s\n' "${initial_workflow_identity}" | sed -n '1p')"
+trusted_workflow_path="$(printf '%s\n' "${initial_workflow_identity}" | sed -n '2p')"
+trusted_workflow_extra="$(printf '%s\n' "${initial_workflow_identity}" | sed -n '3p')"
+if [[ ! "${trusted_workflow_id}" =~ ^[1-9][0-9]*$ ]] ||
+  [[ "${trusted_workflow_path}" != ".github/workflows/${workflow}" ]] ||
+  [[ -n "${trusted_workflow_extra}" ]]; then
+  die "${EXIT_INTEGRITY}" "trusted workflow identity output was malformed"
+fi
+
 encoded_branch="$(
   python3 - "${branch}" <<'PY'
 import sys
@@ -197,16 +237,25 @@ raw_candidates_file="${work_root}/candidates-unsorted.tsv"
 : >"${raw_candidates_file}"
 for trusted_event in "${trusted_event_list[@]}"; do
   runs_json="${work_root}/runs-${trusted_event}.json"
-  runs_endpoint="repos/${repository}/actions/workflows/${workflow}/runs?branch=${encoded_branch}&event=${trusted_event}&status=success&per_page=${max_runs}"
+  runs_endpoint="repos/${repository}/actions/workflows/${trusted_workflow_id}/runs?branch=${encoded_branch}&event=${trusted_event}&status=success&per_page=${max_runs}"
   api_to_file "${runs_endpoint}" "${runs_json}" || die "${EXIT_INFRA}" "failed to query ${trusted_event} workflow runs"
 
-  if python3 - "${runs_json}" "${trusted_repository_name}" "${trusted_repository_id}" "${branch}" "${trusted_event}" >>"${raw_candidates_file}" <<'PY'
+  if python3 - "${runs_json}" "${trusted_repository_name}" "${trusted_repository_id}" "${trusted_workflow_id}" "${trusted_workflow_path}" "${branch}" "${trusted_event}" >>"${raw_candidates_file}" <<'PY'
 import json
 import re
 import sys
 
-path, expected_repo, expected_repo_id_text, expected_branch, expected_event = sys.argv[1:6]
+(
+    path,
+    expected_repo,
+    expected_repo_id_text,
+    expected_workflow_id_text,
+    expected_workflow_path,
+    expected_branch,
+    expected_event,
+) = sys.argv[1:8]
 expected_repo_id = int(expected_repo_id_text)
+expected_workflow_id = int(expected_workflow_id_text)
 try:
     with open(path, encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -227,6 +276,10 @@ for run in runs:
     if head_repository.get("id") != expected_repo_id:
         continue
     if run_repository.get("id") != expected_repo_id:
+        continue
+    if run.get("workflow_id") != expected_workflow_id:
+        continue
+    if run.get("path") != expected_workflow_path:
         continue
     head_full_name = head_repository.get("full_name")
     run_full_name = run_repository.get("full_name")
@@ -558,11 +611,23 @@ if [[ "${final_repository_identity}" != "${initial_repository_identity}" ]]; the
   die "${EXIT_INTEGRITY}" "trusted repository identity changed during artifact resolution"
 fi
 
+final_workflow_json="${work_root}/workflow-final.json"
+api_to_file "repos/${repository}/actions/workflows/${trusted_workflow_id}" "${final_workflow_json}" ||
+  die "${EXIT_INFRA}" "failed to re-query trusted workflow identity"
+
+if ! final_workflow_identity="$(workflow_identity "${final_workflow_json}")"; then
+  die "${EXIT_INTEGRITY}" "final trusted workflow identity failed validation"
+fi
+if [[ "${final_workflow_identity}" != "${initial_workflow_identity}" ]]; then
+  die "${EXIT_INTEGRITY}" "trusted workflow identity changed during artifact resolution"
+fi
+
 python3 - \
   "${stage_dir}/resolver-metadata.json" \
   "${trusted_repository_name}" \
   "${trusted_repository_id}" \
   "${workflow}" \
+  "${trusted_workflow_id}" \
   "${branch}" \
   "${selected_run_id}" \
   "${selected_run_attempt}" \
@@ -580,6 +645,7 @@ import sys
     repository,
     repository_id,
     workflow,
+    workflow_id,
     branch,
     run_id,
     run_attempt,
@@ -595,6 +661,7 @@ payload = {
     "repository": repository,
     "repositoryId": int(repository_id),
     "workflow": workflow,
+    "workflowId": int(workflow_id),
     "branch": branch,
     "runId": int(run_id),
     "runAttempt": int(run_attempt),

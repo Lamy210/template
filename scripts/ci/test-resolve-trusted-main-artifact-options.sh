@@ -22,9 +22,13 @@ if [[ "${args}" == "api repos/Lamy210/template" ]]; then
   printf '%s\n' '{"id":1367784801,"full_name":"Lamy210/template"}'
   exit 0
 fi
-if [[ "${args}" == *"/actions/workflows/visual-regression.yml/runs"* ]]; then
+if [[ "${args}" == "api repos/Lamy210/template/actions/workflows/visual-regression.yml" ]]; then
+  printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/visual-regression.yml","state":"active"}'
+  exit 0
+fi
+if [[ "${args}" == *"/actions/workflows/4242/runs"* ]]; then
   cat <<'JSON'
-{"workflow_runs":[{"id":9100,"run_attempt":1,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"release/1.x","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9100,"workflow_id":4242,"path":".github/workflows/visual-regression.yml","run_attempt":1,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"release/1.x","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
   exit 0
 fi
@@ -90,5 +94,35 @@ assert_usage_error() {
 assert_usage_error 0
 assert_usage_error 101
 assert_usage_error nope
+
+assert_workflow_usage_error() {
+  local value="$1"
+  : >"${STUB_LOG}"
+  set +e
+  PATH="${STUB_BIN}:${PATH}" \
+    GH_STUB_LOG="${STUB_LOG}" \
+    GH_TOKEN="test-token" \
+    bash "${RESOLVER}" \
+    --repository Lamy210/template \
+    --workflow "${value}" \
+    --artifact visual-baseline-test \
+    --output "${TEMP_ROOT}/invalid-workflow" >/dev/null 2>&1
+  local actual=$?
+  set -e
+  if [[ "${actual}" -ne 2 ]]; then
+    printf 'expected usage exit 2 for --workflow %q, got %s\n' "${value}" "${actual}" >&2
+    exit 1
+  fi
+  if [[ -s "${STUB_LOG}" ]]; then
+    echo "unsafe workflow selector reached GitHub API" >&2
+    cat "${STUB_LOG}" >&2
+    exit 1
+  fi
+}
+
+assert_workflow_usage_error '../visual-regression.yml'
+assert_workflow_usage_error 'visual-regression.yml?branch=main'
+assert_workflow_usage_error '4242'
+assert_workflow_usage_error ' visual-regression.yml'
 
 printf 'trusted artifact resolver option tests passed\n'

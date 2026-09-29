@@ -34,6 +34,24 @@ if args == "api repos/Lamy210/template":
     print(json.dumps({"id": 1367784801, "full_name": "Lamy210/template"}))
     raise SystemExit(0)
 
+if args == "api repos/Lamy210/template/actions/workflows/tests.yml":
+    print(json.dumps({
+        "id": 5001,
+        "name": "Tests",
+        "path": ".github/workflows/tests.yml",
+        "state": "active",
+    }))
+    raise SystemExit(0)
+
+if args == "api repos/Lamy210/template/actions/workflows/5001":
+    print(json.dumps({
+        "id": 5001,
+        "name": "Tests",
+        "path": ".github/workflows/tests.yml",
+        "state": "active",
+    }))
+    raise SystemExit(0)
+
 
 def archive_bytes():
     buffer = io.BytesIO()
@@ -45,10 +63,12 @@ def archive_bytes():
         archive.writestr(info, '{"profile":"test"}')
     return buffer.getvalue()
 
-if "/actions/workflows/tests.yml/runs" in args:
+if "/actions/workflows/5001/runs" in args:
     if "event=schedule" in args:
         print(json.dumps({"workflow_runs": [{
             "id": 9200,
+            "workflow_id": 5001,
+            "path": ".github/workflows/tests.yml",
             "run_attempt": 3,
             "head_sha": "0123456789abcdef0123456789abcdef01234567",
             "head_branch": "main",
@@ -61,6 +81,8 @@ if "/actions/workflows/tests.yml/runs" in args:
     if "event=push" in args:
         print(json.dumps({"workflow_runs": [{
             "id": 9100,
+            "workflow_id": 5001,
+            "path": ".github/workflows/tests.yml",
             "run_attempt": 2,
             "head_sha": "1123456789abcdef0123456789abcdef01234567",
             "head_branch": "main",
@@ -156,6 +178,7 @@ class TrustedResolverEventPolicyTests(unittest.TestCase):
         metadata = json.loads((output / "resolver-metadata.json").read_text())
         self.assertEqual(metadata["event"], "schedule")
         self.assertEqual(metadata["repositoryId"], 1367784801)
+        self.assertEqual(metadata["workflowId"], 5001)
         self.assertEqual(metadata["runId"], 9200)
         self.assertEqual(metadata["sourceSHA"], SHA)
         log = self.log.read_text(encoding="utf-8")

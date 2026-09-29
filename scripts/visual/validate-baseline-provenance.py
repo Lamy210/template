@@ -77,6 +77,7 @@ def validate_provenance(
         resolver.get("repositoryId"), "resolver repository id"
     )
     workflow = _non_empty_string(resolver.get("workflow"), "resolver workflow")
+    workflow_id = _positive_int(resolver.get("workflowId"), "resolver workflow id")
     artifact = _non_empty_string(resolver.get("artifactName"), "resolver artifact name")
     branch = _non_empty_string(resolver.get("branch"), "resolver branch")
     event = _non_empty_string(resolver.get("event"), "resolver event")
@@ -125,6 +126,7 @@ def validate_provenance(
         "repository": repository,
         "repositoryId": repository_id,
         "workflow": workflow,
+        "workflowId": workflow_id,
         "artifactName": artifact,
         "event": event,
         "runId": run_id,

@@ -30,6 +30,7 @@ class BaselineProvenanceTests(unittest.TestCase):
             "repository": "Lamy210/template",
             "repositoryId": 1367784801,
             "workflow": "tests.yml",
+            "workflowId": 5001,
             "branch": "main",
             "runId": 12345,
             "runAttempt": 2,
@@ -76,6 +77,7 @@ class BaselineProvenanceTests(unittest.TestCase):
     def test_accepts_exact_resolver_bundle_identity(self):
         result = self.validate()
         self.assertEqual(result["repositoryId"], 1367784801)
+        self.assertEqual(result["workflowId"], 5001)
         self.assertEqual(result["runId"], 12345)
         self.assertEqual(result["sourceSHA"], SOURCE_SHA)
 
@@ -108,6 +110,18 @@ class BaselineProvenanceTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "repository id"):
                     self.validate()
                 self.resolver_payload["repositoryId"] = 1367784801
+
+    def test_rejects_missing_or_invalid_resolver_workflow_id(self):
+        for workflow_id in (None, 0, -1, True, "5001"):
+            with self.subTest(workflow_id=workflow_id):
+                if workflow_id is None:
+                    self.resolver_payload.pop("workflowId")
+                else:
+                    self.resolver_payload["workflowId"] = workflow_id
+                self.write_payloads()
+                with self.assertRaisesRegex(ValueError, "workflow id"):
+                    self.validate()
+                self.resolver_payload["workflowId"] = 5001
 
     def test_rejects_bundle_source_run_mismatch(self):
         self.bundle_payload["sourceRunID"] = "99999"

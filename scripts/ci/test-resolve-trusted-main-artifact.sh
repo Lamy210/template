@@ -28,39 +28,62 @@ if [[ "${args}" == "api repos/Lamy210/template" ]]; then
   exit 0
 fi
 
-if [[ "${args}" == *"/actions/workflows/visual-regression.yml/runs"* ]]; then
+if [[ "${args}" == "api repos/Lamy210/template/actions/workflows/visual-regression.yml" ]]; then
+  if [[ "${scenario}" == "workflow-metadata-mismatch" ]]; then
+    printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/other.yml","state":"active"}'
+  else
+    printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/visual-regression.yml","state":"active"}'
+  fi
+  exit 0
+fi
+
+if [[ "${args}" == "api repos/Lamy210/template/actions/workflows/4242" ]]; then
+  if [[ "${scenario}" == "workflow-drift" ]]; then
+    printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/renamed.yml","state":"active"}'
+  else
+    printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/visual-regression.yml","state":"active"}'
+  fi
+  exit 0
+fi
+
+if [[ "${args}" == *"/actions/workflows/4242/runs"* ]]; then
   case "${scenario}" in
     malformed-runs)
       printf '{not-json'
       ;;
-    success|second-page-artifact|digest-mismatch|missing-digest|wrong-artifact|expired|duplicate-artifact|duplicate-id|absolute|traversal|duplicate-member|symlink-escape|artifact-repository-id-drift|repository-drift)
+    success|second-page-artifact|digest-mismatch|missing-digest|wrong-artifact|expired|duplicate-artifact|duplicate-id|absolute|traversal|duplicate-member|symlink-escape|artifact-repository-id-drift|repository-drift|workflow-drift)
       cat <<'JSON'
-{"workflow_runs":[{"id":9001,"run_attempt":2,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9001,"workflow_id":4242,"path":".github/workflows/visual-regression.yml","run_attempt":2,"head_sha":"0123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     wrong-repo)
       cat <<'JSON'
-{"workflow_runs":[{"id":9005,"run_attempt":1,"head_sha":"1123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"attacker/template"},"repository":{"id":1367784801,"full_name":"attacker/template"}}]}
+{"workflow_runs":[{"id":9005,"workflow_id":4242,"path":".github/workflows/visual-regression.yml","run_attempt":1,"head_sha":"1123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"attacker/template"},"repository":{"id":1367784801,"full_name":"attacker/template"}}]}
 JSON
       ;;
     wrong-run-repository-id)
       cat <<'JSON'
-{"workflow_runs":[{"id":9006,"run_attempt":1,"head_sha":"5123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":999,"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9006,"workflow_id":4242,"path":".github/workflows/visual-regression.yml","run_attempt":1,"head_sha":"5123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":999,"full_name":"Lamy210/template"}}]}
+JSON
+      ;;
+    wrong-run-workflow-id)
+      cat <<'JSON'
+{"workflow_runs":[{"id":9007,"workflow_id":9999,"path":".github/workflows/visual-regression.yml","run_attempt":1,"head_sha":"6123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     pr)
       cat <<'JSON'
-{"workflow_runs":[{"id":9002,"run_attempt":1,"head_sha":"2123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"pull_request","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9002,"workflow_id":4242,"path":".github/workflows/visual-regression.yml","run_attempt":1,"head_sha":"2123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"pull_request","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     non-main)
       cat <<'JSON'
-{"workflow_runs":[{"id":9003,"run_attempt":1,"head_sha":"3123456789abcdef0123456789abcdef01234567","head_branch":"feature","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9003,"workflow_id":4242,"path":".github/workflows/visual-regression.yml","run_attempt":1,"head_sha":"3123456789abcdef0123456789abcdef01234567","head_branch":"feature","event":"push","conclusion":"success","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     failure)
       cat <<'JSON'
-{"workflow_runs":[{"id":9004,"run_attempt":1,"head_sha":"4123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"failure","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
+{"workflow_runs":[{"id":9004,"workflow_id":4242,"path":".github/workflows/visual-regression.yml","run_attempt":1,"head_sha":"4123456789abcdef0123456789abcdef01234567","head_branch":"main","event":"push","conclusion":"failure","head_repository":{"id":1367784801,"full_name":"Lamy210/template"},"repository":{"id":1367784801,"full_name":"Lamy210/template"}}]}
 JSON
       ;;
     *)
@@ -76,7 +99,7 @@ if [[ "${args}" == *"/actions/runs/9001/artifacts"* ]]; then
     exit 98
   fi
   case "${scenario}" in
-    success|second-page-artifact|digest-mismatch|missing-digest|absolute|traversal|duplicate-member|symlink-escape|artifact-repository-id-drift|repository-drift)
+    success|second-page-artifact|digest-mismatch|missing-digest|absolute|traversal|duplicate-member|symlink-escape|artifact-repository-id-drift|repository-drift|workflow-drift)
       python3 - "${scenario}" <<'PY'
 import hashlib
 import io
@@ -302,6 +325,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 assert metadata["repository"] == "Lamy210/template"
 assert metadata["repositoryId"] == 1367784801
 assert metadata["workflow"] == "visual-regression.yml"
+assert metadata["workflowId"] == 4242
 assert metadata["runId"] == 9001
 assert metadata["runAttempt"] == 2
 assert metadata["sourceSHA"] == "0123456789abcdef0123456789abcdef01234567"
@@ -316,9 +340,12 @@ assert_status non-main 4
 assert_status failure 4
 assert_status wrong-repo 4
 assert_status wrong-run-repository-id 4
+assert_status wrong-run-workflow-id 4
 assert_status wrong-artifact 4
 assert_status artifact-repository-id-drift 6
 assert_status repository-drift 6
+assert_status workflow-metadata-mismatch 6
+assert_status workflow-drift 6
 assert_status expired 4
 assert_status malformed-runs 3
 assert_status duplicate-artifact 3
