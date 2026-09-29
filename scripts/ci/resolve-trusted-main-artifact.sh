@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/repository-name.sh
+source "${script_dir}/../common/repository-name.sh"
+
 readonly EXIT_USAGE=2
 readonly EXIT_INFRA=3
 readonly EXIT_NOT_FOUND=4
@@ -84,7 +88,7 @@ while (($# > 0)); do
 done
 
 [[ -n "${repository}" ]] || die "${EXIT_USAGE}" '--repository is required'
-[[ "${repository}" == */* ]] || die "${EXIT_USAGE}" '--repository must be owner/repo'
+is_canonical_repository_name "${repository}" || die "${EXIT_USAGE}" '--repository must use canonical owner/repo form'
 [[ -n "${workflow}" ]] || die "${EXIT_USAGE}" '--workflow is required'
 [[ "${workflow}" != */* ]] || die "${EXIT_USAGE}" '--workflow must be a workflow file name, not a path'
 [[ -n "${artifact_name}" ]] || die "${EXIT_USAGE}" '--artifact is required'
