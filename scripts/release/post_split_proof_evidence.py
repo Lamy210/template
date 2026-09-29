@@ -519,8 +519,8 @@ def validate_evidence_document(document: object) -> list[str]:
         if not _is_positive_int(repository.get("id")):
             errors.append("repository.id must be a positive integer")
         full_name = repository.get("fullName")
-        if not isinstance(full_name, str) or REPOSITORY_RE.fullmatch(full_name) is None:
-            errors.append("repository.fullName must be owner/repo")
+        if not is_canonical_repository_name(full_name):
+            errors.append("repository.fullName must be canonical owner/repo")
         default_branch = repository.get("defaultBranch")
         if (
             not isinstance(default_branch, str)
