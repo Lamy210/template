@@ -369,6 +369,7 @@ jobs:
           path: ${{ steps.coverage.outputs.summary }}
           if-no-files-found: error
           retention-days: 90
+          overwrite: true
 
       - name: Finalize reusable test results
         id: finalize
