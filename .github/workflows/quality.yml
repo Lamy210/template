@@ -80,10 +80,12 @@ jobs:
             scripts.ci.test_audit_release_tag_ruleset \
             scripts.ci.test_governance_audit_workflow \
             scripts.ci.test_immutable_releases_setting \
+            scripts.ci.test_repository_merge_settings \
             scripts.ci.test_release_tag_immutability_proof \
             -v
           python3 scripts/ci/validate_rulesets.py
           bash scripts/ci/test-audit-live-immutable-releases.sh
+          bash scripts/ci/test-audit-live-repository-merge-settings.sh
 
       - name: Release isolation contract
         shell: bash
