@@ -15,6 +15,13 @@ if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   usage
   exit 2
 fi
+repository_owner="${repository%%/*}"
+repository_name="${repository#*/}"
+if [[ "${repository_owner}" == "." || "${repository_owner}" == ".." ||
+  "${repository_name}" == "." || "${repository_name}" == ".." ]]; then
+  echo "repository must use canonical owner/repo form." >&2
+  exit 2
+fi
 if (($# > 1)); then
   usage
   exit 2
