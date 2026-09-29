@@ -13,6 +13,9 @@ STEP_ITEM_RE = re.compile(
     r"^(?P<indent>\s*)-\s+(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$"
 )
 KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$")
+RUN_ATTEMPT_EXPRESSION_RE = re.compile(
+    r"\$\{\{\s*github\.run_attempt\s*\}\}"
+)
 
 
 @dataclass(frozen=True)
@@ -146,7 +149,7 @@ def validate_upload_artifact_step(step: UploadArtifactStep) -> list[PolicyViolat
             )
         ]
 
-    attempt_scoped = "github.run_attempt" in step.artifact_name
+    attempt_scoped = RUN_ATTEMPT_EXPRESSION_RE.search(step.artifact_name) is not None
     overwrite_enabled = (step.overwrite or "").strip().strip("'\"").lower() == "true"
 
     if attempt_scoped or overwrite_enabled:
