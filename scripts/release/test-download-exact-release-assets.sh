@@ -64,7 +64,7 @@ print(
             "tag_name": tag,
             "draft": False,
             "prerelease": False,
-            "immutable": False,
+            "immutable": scenario != "mutable-release",
             "url": f"https://api.github.com/repos/{repository}/releases/700",
             "assets": assets,
         },
@@ -234,6 +234,15 @@ if RM_FAKE_FAIL_ONCE=true run_downloader success "${cleanup_failure_output}" >"$
 fi
 grep -F "Failed to clean temporary release metadata before publishing verified assets." "${temp_root}/cleanup-failure.err" >/dev/null
 assert_no_output_or_staging "${cleanup_failure_output}"
+
+: >"${temp_root}/gh.log"
+mutable_output="${temp_root}/mutable"
+if run_downloader mutable-release "${mutable_output}" >"${temp_root}/mutable.out" 2>"${temp_root}/mutable.err"; then
+  echo "Exact release downloader accepted a mutable published release." >&2
+  exit 1
+fi
+grep -F "natively immutable" "${temp_root}/mutable.err" >/dev/null
+assert_no_output_or_staging "${mutable_output}"
 
 : >"${temp_root}/gh.log"
 corrupt_output="${temp_root}/corrupt"
