@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -14,6 +17,8 @@ PUBLISHER_SHA = "1123456789abcdef0123456789abcdef01234567"
 PUBLISHER_RUN_ID = 99887766
 PUBLISHER_RUN_ATTEMPT = 4
 SOURCE_ARTIFACT_ID = 7001
+REPO_ROOT = Path(__file__).resolve().parents[2]
+VERIFY_CLI = REPO_ROOT / "scripts/release/verify-validated-release-metadata.py"
 ARTIFACT_DIGEST = "sha256:" + "b" * 64
 
 
@@ -131,6 +136,86 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
                 document[key] = value
                 errors = verify_validated_release_metadata(document, archive, expected(digest))
                 self.assertTrue(any(key in error or "expected" in error for error in errors))
+
+    def test_rejects_noncanonical_source_repository_even_when_expected_matches(self) -> None:
+        archive, digest = self.fixture()
+        for repository in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository):
+                document = metadata(digest)
+                document["sourceRepository"] = repository
+                expected_value = expected(digest)
+                expected_value = ExpectedValidatedRelease(
+                    **{
+                        **expected_value.__dict__,
+                        "source_repository": repository,
+                    }
+                )
+
+                errors = verify_validated_release_metadata(
+                    document,
+                    archive,
+                    expected_value,
+                )
+
+                self.assertTrue(
+                    any("canonical owner/repo" in error for error in errors),
+                    errors,
+                )
+
+    def test_verifier_cli_accepts_valid_metadata_after_package_import(self) -> None:
+        archive, digest = self.fixture()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata_path = root / "validated-release-metadata.json"
+            metadata_path.write_text(
+                json.dumps(metadata(digest)) + "\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(VERIFY_CLI),
+                    "--metadata",
+                    str(metadata_path),
+                    "--archive",
+                    str(archive),
+                    "--repository",
+                    "example/MyApp",
+                    "--source-run-id",
+                    "123456789",
+                    "--source-run-attempt",
+                    "2",
+                    "--source-artifact-id",
+                    str(SOURCE_ARTIFACT_ID),
+                    "--source-artifact-digest",
+                    ARTIFACT_DIGEST,
+                    "--source-sha",
+                    SOURCE_SHA,
+                    "--source-tag",
+                    "v1.2.3",
+                    "--source-version",
+                    "1.2.3",
+                    "--publisher-sha",
+                    PUBLISHER_SHA,
+                    "--publisher-run-id",
+                    str(PUBLISHER_RUN_ID),
+                    "--publisher-run-attempt",
+                    str(PUBLISHER_RUN_ATTEMPT),
+                    "--archive-sha256",
+                    digest,
+                    "--app-basename",
+                    "MyApp.app",
+                    "--bundle-id",
+                    "com.example.MyApp",
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
 
     def test_rejects_source_artifact_identity_drift(self) -> None:
         archive, digest = self.fixture()
