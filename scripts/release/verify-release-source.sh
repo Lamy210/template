@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/repository-name.sh
+source "${script_dir}/../common/repository-name.sh"
+
 : "${SOURCE_TAG:?SOURCE_TAG is required}"
 : "${SOURCE_SHA:?SOURCE_SHA is required}"
 : "${PUBLISHER_SHA:?PUBLISHER_SHA is required}"
@@ -20,8 +24,8 @@ if [[ ! "${PUBLISHER_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "PUBLISHER_SHA must be 40 lowercase hexadecimal characters." >&2
   exit 1
 fi
-if [[ ! "${GITHUB_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-  echo "GITHUB_REPOSITORY must be in owner/repo form." >&2
+if ! is_canonical_repository_name "${GITHUB_REPOSITORY}"; then
+  echo "GITHUB_REPOSITORY must use canonical owner/repo form." >&2
   exit 1
 fi
 if [[ ! "${EXPECTED_REPOSITORY_ID}" =~ ^[0-9]+$ ]]; then
