@@ -6,6 +6,8 @@ import hashlib
 from pathlib import Path
 import re
 
+from scripts.common.repository_name import is_canonical_repository_name
+
 
 METADATA_FIELDS = {
     "schemaVersion",
@@ -131,8 +133,8 @@ def validate_validated_release_metadata_document(document: object) -> list[str]:
     if not isinstance(bundle_id, str) or not bundle_id:
         errors.append("bundleId must be a non-empty string")
     source_repository = document.get("sourceRepository")
-    if not isinstance(source_repository, str) or "/" not in source_repository:
-        errors.append("sourceRepository must be in owner/repo form")
+    if not is_canonical_repository_name(source_repository):
+        errors.append("sourceRepository must be in canonical owner/repo form")
 
     return errors
 
