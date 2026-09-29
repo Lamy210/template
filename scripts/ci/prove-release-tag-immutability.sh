@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/repository-name.sh
+source "${script_dir}/../common/repository-name.sh"
+
 usage() {
   cat >&2 <<'EOF'
 Usage:
@@ -59,8 +63,8 @@ while (($#)); do
   esac
 done
 
-if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-  echo "--repository must be owner/repo." >&2
+if ! is_canonical_repository_name "${repository}"; then
+  echo "--repository must use canonical owner/repo form." >&2
   exit 2
 fi
 if [[ "${confirmed_repository}" != "${repository}" ]]; then
