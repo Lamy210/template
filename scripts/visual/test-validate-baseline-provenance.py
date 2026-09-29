@@ -28,6 +28,7 @@ class BaselineProvenanceTests(unittest.TestCase):
         self.resolver_payload = {
             "schemaVersion": 1,
             "repository": "Lamy210/template",
+            "repositoryId": 1367784801,
             "workflow": "tests.yml",
             "branch": "main",
             "runId": 12345,
@@ -74,6 +75,7 @@ class BaselineProvenanceTests(unittest.TestCase):
 
     def test_accepts_exact_resolver_bundle_identity(self):
         result = self.validate()
+        self.assertEqual(result["repositoryId"], 1367784801)
         self.assertEqual(result["runId"], 12345)
         self.assertEqual(result["sourceSHA"], SOURCE_SHA)
 
@@ -94,6 +96,18 @@ class BaselineProvenanceTests(unittest.TestCase):
         self.write_payloads()
         with self.assertRaisesRegex(ValueError, "event"):
             self.validate(expected_events=("push", "schedule"))
+
+    def test_rejects_missing_or_invalid_resolver_repository_id(self):
+        for repository_id in (None, 0, -1, True, "1367784801"):
+            with self.subTest(repository_id=repository_id):
+                if repository_id is None:
+                    self.resolver_payload.pop("repositoryId")
+                else:
+                    self.resolver_payload["repositoryId"] = repository_id
+                self.write_payloads()
+                with self.assertRaisesRegex(ValueError, "repository id"):
+                    self.validate()
+                self.resolver_payload["repositoryId"] = 1367784801
 
     def test_rejects_bundle_source_run_mismatch(self):
         self.bundle_payload["sourceRunID"] = "99999"
