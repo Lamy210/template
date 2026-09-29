@@ -148,8 +148,11 @@ def validate_release_download_identity(
         errors.append("release must be stable, not prerelease")
 
     immutable = document.get("immutable")
-    if type(immutable) is not bool:
-        errors.append("release immutable flag must be boolean")
+    if immutable is not True:
+        if type(immutable) is not bool:
+            errors.append("release immutable flag must be boolean true")
+        else:
+            errors.append("release must be natively immutable")
 
     if (
         type(release_id) is int
