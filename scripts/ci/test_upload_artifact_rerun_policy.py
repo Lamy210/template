@@ -48,6 +48,21 @@ jobs:
         )
         self.assertEqual([], violations)
 
+    def test_literal_run_attempt_text_is_rejected(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  test:
+    steps:
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@deadbeef
+        with:
+          name: diagnostics-github.run_attempt
+          path: output
+"""
+        )
+        self.assertEqual(1, len(violations))
+
     def test_run_id_without_attempt_is_rejected(self) -> None:
         violations = self.validate(
             """
