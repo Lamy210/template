@@ -260,6 +260,15 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
         ):
             build_evidence(**data)
 
+    def test_rejects_noncanonical_repository_full_name(self) -> None:
+        for repository in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository):
+                data = inputs()
+                data["repository"]["full_name"] = repository
+
+                with self.assertRaisesRegex(EvidenceError, "canonical owner/repo"):
+                    build_evidence(**data)
+
     def test_rejects_unverified_or_malformed_facts(self) -> None:
         mutations = (
             ("repository id", lambda data: data["repository"].__setitem__("id", True)),
