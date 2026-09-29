@@ -32,6 +32,10 @@ class GovernanceAuditWorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("${{ github.repository }}", text)
 
+    def test_workflow_never_applies_repository_merge_settings(self) -> None:
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertNotIn("apply-repository-merge-settings.sh", text)
+
     def test_workflow_runs_live_main_ruleset_doctor_for_current_repository(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("bash scripts/ci/audit-live-main-ruleset.sh", text)
