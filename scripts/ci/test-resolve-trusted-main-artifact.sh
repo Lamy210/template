@@ -29,7 +29,11 @@ if [[ "${args}" == "api repos/Lamy210/template" ]]; then
 fi
 
 if [[ "${args}" == "api repos/Lamy210/template/actions/workflows/visual-regression.yml" ]]; then
-  printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/visual-regression.yml","state":"active"}'
+  if [[ "${scenario}" == "workflow-metadata-mismatch" ]]; then
+    printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/other.yml","state":"active"}'
+  else
+    printf '%s\n' '{"id":4242,"name":"Visual Regression","path":".github/workflows/visual-regression.yml","state":"active"}'
+  fi
   exit 0
 fi
 
@@ -340,6 +344,7 @@ assert_status wrong-run-workflow-id 4
 assert_status wrong-artifact 4
 assert_status artifact-repository-id-drift 6
 assert_status repository-drift 6
+assert_status workflow-metadata-mismatch 6
 assert_status workflow-drift 6
 assert_status expired 4
 assert_status malformed-runs 3
