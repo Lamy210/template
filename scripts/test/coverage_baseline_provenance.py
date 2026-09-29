@@ -37,6 +37,56 @@ def _non_empty_string(value: Any, field: str) -> str:
     return value
 
 
+def _coverage_fingerprint(summary: Any) -> str:
+    if not isinstance(summary, dict):
+        raise ValidationError("coverage baseline summary must be an object")
+    if summary.get("schemaVersion") != 1:
+        raise ValidationError("coverage baseline summary schemaVersion must equal 1")
+    fingerprint = _non_empty_string(
+        summary.get("coverageProfileFingerprint"),
+        "coverage baseline profile fingerprint",
+    )
+    if not DIGEST_RE.fullmatch(fingerprint):
+        raise ValidationError(
+            "coverage baseline profile fingerprint must be sha256:<64 lowercase hex>"
+        )
+    return fingerprint
+
+
+def build_coverage_baseline_provenance(
+    summary: Any,
+    *,
+    repository: str,
+    repository_id: int,
+    workflow: str,
+    run_id: int,
+    run_attempt: int,
+    source_sha: str,
+    artifact_name: str,
+) -> dict[str, Any]:
+    canonical_repository = _non_empty_string(repository, "repository")
+    canonical_workflow = _non_empty_string(workflow, "workflow")
+    canonical_artifact = _non_empty_string(artifact_name, "artifact name")
+    canonical_repository_id = _positive_int(repository_id, "repository id")
+    canonical_run_id = _positive_int(run_id, "run id")
+    canonical_run_attempt = _positive_int(run_attempt, "run attempt")
+    canonical_source_sha = _non_empty_string(source_sha, "source SHA")
+    if not GIT_SHA_RE.fullmatch(canonical_source_sha):
+        raise ValidationError("source SHA must be 40 lowercase hex characters")
+
+    return {
+        "schemaVersion": 1,
+        "repository": canonical_repository,
+        "repositoryId": canonical_repository_id,
+        "workflow": canonical_workflow,
+        "runId": canonical_run_id,
+        "runAttempt": canonical_run_attempt,
+        "sourceSHA": canonical_source_sha,
+        "artifactName": canonical_artifact,
+        "coverageProfileFingerprint": _coverage_fingerprint(summary),
+    }
+
+
 def validate_coverage_baseline_provenance(
     resolver: Any,
     provenance: Any,
@@ -50,9 +100,6 @@ def validate_coverage_baseline_provenance(
         raise ValidationError("resolver metadata must be an object")
     if not isinstance(provenance, dict):
         raise ValidationError("coverage baseline provenance must be an object")
-    if not isinstance(summary, dict):
-        raise ValidationError("coverage baseline summary must be an object")
-
     if set(provenance) != PROVENANCE_FIELDS:
         missing = sorted(PROVENANCE_FIELDS - set(provenance))
         extra = sorted(set(provenance) - PROVENANCE_FIELDS)
@@ -118,9 +165,7 @@ def validate_coverage_baseline_provenance(
         raise ValidationError(
             "coverage baseline profile fingerprint must be sha256:<64 lowercase hex>"
         )
-    if summary.get("schemaVersion") != 1:
-        raise ValidationError("coverage baseline summary schemaVersion must equal 1")
-    if summary.get("coverageProfileFingerprint") != fingerprint:
+    if _coverage_fingerprint(summary) != fingerprint:
         raise ValidationError(
             "coverage baseline summary profile fingerprint does not match provenance"
         )
