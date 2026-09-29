@@ -27,7 +27,7 @@ def validate_repository_merge_settings(
         errors.append("expected repository must use canonical owner/repo form")
 
     if not isinstance(document, dict):
-        return ["repository metadata must be a JSON object"], None
+        return errors + ["repository metadata must be a JSON object"], None
 
     repository_id = document.get("id")
     if type(repository_id) is not int or repository_id <= 0:
