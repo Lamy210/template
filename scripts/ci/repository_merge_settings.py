@@ -1,18 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 from typing import Any
 
-
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-
-
-def _is_canonical_repository_name(value: str) -> bool:
-    if REPOSITORY_RE.fullmatch(value) is None:
-        return False
-    owner, name = value.split("/", 1)
-    return owner not in {".", ".."} and name not in {".", ".."}
+from scripts.common.repository_name import is_canonical_repository_name
 
 
 @dataclass(frozen=True)
@@ -42,7 +33,7 @@ def validate_repository_merge_settings(
     full_name = document.get("full_name")
     if (
         not isinstance(full_name, str)
-        or not _is_canonical_repository_name(full_name)
+        or not is_canonical_repository_name(full_name)
     ):
         errors.append("repository full_name must use canonical owner/repo form")
     elif full_name.casefold() != expected_repository.casefold():
