@@ -388,73 +388,16 @@ jobs:
         run: |
           set -euo pipefail
           provenance="${RUNNER_TEMP}/coverage-current/coverage-baseline-provenance.json"
-
-          python3 - \
-            "${provenance}" \
-            "${COVERAGE_SUMMARY}" \
-            "${SOURCE_REPOSITORY}" \
-            "${SOURCE_REPOSITORY_ID}" \
-            "${SOURCE_WORKFLOW}" \
-            "${SOURCE_RUN_ID}" \
-            "${SOURCE_RUN_ATTEMPT}" \
-            "${SOURCE_SHA}" \
-            "${COVERAGE_ARTIFACT_NAME}" <<'PY'
-          import json
-          import re
-          import sys
-
-          (
-              output,
-              summary_path,
-              repository,
-              repository_id_text,
-              workflow,
-              run_id_text,
-              run_attempt_text,
-              source_sha,
-              artifact_name,
-          ) = sys.argv[1:]
-
-          try:
-              repository_id = int(repository_id_text)
-              run_id = int(run_id_text)
-              run_attempt = int(run_attempt_text)
-          except ValueError as error:
-              raise SystemExit(
-                  f"coverage provenance identity is not numeric: {error}"
-              ) from error
-
-          if repository_id <= 0 or run_id <= 0 or run_attempt <= 0:
-              raise SystemExit("coverage provenance numeric identities must be positive")
-          if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
-              raise SystemExit("coverage provenance source SHA must be 40 lowercase hex")
-          if not repository or not workflow or not artifact_name:
-              raise SystemExit("coverage provenance identity strings must be non-empty")
-
-          with open(summary_path, encoding="utf-8") as handle:
-              summary_payload = json.load(handle)
-          fingerprint = summary_payload.get("coverageProfileFingerprint")
-          if not isinstance(fingerprint, str) or re.fullmatch(
-              r"sha256:[0-9a-f]{64}", fingerprint
-          ) is None:
-              raise SystemExit("coverage summary profile fingerprint is invalid")
-
-          payload = {
-              "schemaVersion": 1,
-              "repository": repository,
-              "repositoryId": repository_id,
-              "workflow": workflow,
-              "runId": run_id,
-              "runAttempt": run_attempt,
-              "sourceSHA": source_sha,
-              "artifactName": artifact_name,
-              "coverageProfileFingerprint": fingerprint,
-          }
-          with open(output, "w", encoding="utf-8") as handle:
-              json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
-              handle.write("\n")
-          PY
-
+          python3 scripts/test/build-coverage-baseline-provenance.py \
+            --summary "${COVERAGE_SUMMARY}" \
+            --output "${provenance}" \
+            --repository "${SOURCE_REPOSITORY}" \
+            --repository-id "${SOURCE_REPOSITORY_ID}" \
+            --workflow "${SOURCE_WORKFLOW}" \
+            --run-id "${SOURCE_RUN_ID}" \
+            --run-attempt "${SOURCE_RUN_ATTEMPT}" \
+            --source-sha "${SOURCE_SHA}" \
+            --artifact-name "${COVERAGE_ARTIFACT_NAME}"
           echo "path=${provenance}" >>"${GITHUB_OUTPUT}"
 
       - name: Publish trusted main coverage baseline
