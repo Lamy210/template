@@ -318,6 +318,22 @@ PY
   mv "${partial}" "${destination}"
 done <"${plan}"
 
+if ! gh release verify "${tag}" \
+  --repo "${resolved_repository_full_name}" \
+  --format json >/dev/null; then
+  echo "GitHub immutable release attestation verification failed for ${repository}@${tag}." >&2
+  exit 1
+fi
+
+for asset_name in "${assets[@]}"; do
+  if ! gh release verify-asset "${tag}" "${staging_dir}/${asset_name}" \
+    --repo "${resolved_repository_full_name}" \
+    --format json >/dev/null; then
+    echo "GitHub release asset attestation verification failed for ${asset_name}." >&2
+    exit 1
+  fi
+done
+
 metadata_after="${temp_root}/release-after.json"
 manifest_after="${temp_root}/manifest-after.json"
 if ! gh api "${api_headers[@]}" --method GET \
