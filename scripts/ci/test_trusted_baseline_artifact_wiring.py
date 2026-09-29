@@ -31,6 +31,39 @@ class TrustedBaselineArtifactWiringTests(unittest.TestCase):
         self.assertIn("retention-days: 90", block)
         self.assertIn("overwrite: true", block)
 
+    def test_coverage_baseline_publishes_and_validates_attempt_provenance(self) -> None:
+        text = SWIFT_TESTS.read_text(encoding="utf-8")
+        export = step_block(text, "Export normalized coverage")
+        provenance = step_block(text, "Build trusted coverage baseline provenance")
+        compare = step_block(text, "Resolve and compare trusted coverage baseline")
+        publish = step_block(text, "Publish trusted main coverage baseline")
+
+        self.assertTrue(export)
+        self.assertNotIn("coverage-baseline-provenance.json", export)
+
+        self.assertTrue(provenance)
+        for token in (
+            "SOURCE_REPOSITORY_ID: ${{ github.repository_id }}",
+            "SOURCE_RUN_ID: ${{ github.run_id }}",
+            "SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}",
+            "coverage-baseline-provenance.json",
+            "build-coverage-baseline-provenance.py",
+            '--run-attempt "${SOURCE_RUN_ATTEMPT}"',
+            'echo "path=${provenance}"',
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, provenance)
+
+        self.assertTrue(compare)
+        self.assertIn("validate-coverage-baseline-provenance.py", compare)
+        self.assertIn("--resolver-metadata", compare)
+        self.assertIn("--baseline-provenance", compare)
+        self.assertIn("--baseline-summary", compare)
+
+        self.assertTrue(publish)
+        self.assertIn("${{ steps.coverage.outputs.summary }}", publish)
+        self.assertIn("${{ steps.coverage_provenance.outputs.path }}", publish)
+
     def test_visual_baseline_replaces_prior_rerun_attempt_artifact(self) -> None:
         text = TESTS.read_text(encoding="utf-8")
         block = step_block(text, "Publish trusted rolling baseline")

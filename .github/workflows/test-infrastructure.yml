@@ -79,7 +79,11 @@ jobs:
         run: python3 scripts/visual/test-manifest-baseline-policy.py -v
 
       - name: Coverage tooling tests
-        run: python3 -m unittest scripts/test/test-compare-coverage.py -v
+        run: |
+          python3 -m unittest \
+            scripts/test/test-compare-coverage.py \
+            scripts/test/test_coverage_baseline_provenance.py \
+            -v
 
       - name: Required gate policy tests
         run: |
