@@ -4,11 +4,12 @@ from dataclasses import dataclass
 import re
 from urllib.parse import urlparse
 
+from scripts.common.repository_name import is_canonical_repository_name
+
 
 TAG_RE = re.compile(
     r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$"
 )
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -29,13 +30,6 @@ class ReleaseDownloadIdentity:
     tag: str
     immutable: bool
     assets: tuple[ReleaseAssetIdentity, ...]
-
-
-def _repository_valid(repository: object) -> bool:
-    if not isinstance(repository, str) or REPOSITORY_RE.fullmatch(repository) is None:
-        return False
-    owner, name = repository.split("/", 1)
-    return owner not in {".", ".."} and name not in {".", ".."}
 
 
 def _api_url_matches(
@@ -114,7 +108,7 @@ def validate_release_download_identity(
 ) -> tuple[list[str], ReleaseDownloadIdentity | None]:
     errors: list[str] = []
 
-    if not _repository_valid(expected_repository):
+    if not is_canonical_repository_name(expected_repository):
         errors.append("expected repository must use canonical owner/repo form")
     if type(expected_repository_id) is not int or expected_repository_id <= 0:
         errors.append("expected repository id must be a positive integer")
@@ -157,7 +151,7 @@ def validate_release_download_identity(
     if (
         type(release_id) is int
         and release_id > 0
-        and _repository_valid(expected_repository)
+        and is_canonical_repository_name(expected_repository)
         and not _api_url_matches(
             document.get("url"),
             repository=expected_repository,
@@ -208,7 +202,7 @@ def validate_release_download_identity(
             errors.append(f"release asset {name!r} must be in uploaded state")
             continue
 
-        if _repository_valid(expected_repository) and not _api_url_matches(
+        if is_canonical_repository_name(expected_repository) and not _api_url_matches(
             asset.get("url"),
             repository=expected_repository,
             suffix=f"releases/assets/{asset_id}",
@@ -218,7 +212,7 @@ def validate_release_download_identity(
             )
             continue
         if (
-            _repository_valid(expected_repository)
+            is_canonical_repository_name(expected_repository)
             and isinstance(expected_tag, str)
             and TAG_RE.fullmatch(expected_tag) is not None
             and not _browser_url_matches(
