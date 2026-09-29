@@ -39,6 +39,7 @@ def validate_current_run_artifact(
     expected_artifact_digest: str,
     expected_run_id: int,
     expected_repository_id: int,
+    expected_head_repository_id: int,
     expected_source_sha: str,
 ) -> dict[str, Any]:
     if not isinstance(metadata, dict):
@@ -76,9 +77,9 @@ def validate_current_run_artifact(
         raise ValidationError("artifact workflow run id does not match current run")
     if repository_id != expected_repository_id:
         raise ValidationError("artifact repository id does not match current repository")
-    if head_repository_id != expected_repository_id:
+    if head_repository_id != expected_head_repository_id:
         raise ValidationError(
-            "artifact head repository id does not match current repository"
+            "artifact head repository id does not match current source repository"
         )
     if not SHA_RE.fullmatch(expected_source_sha):
         raise ValidationError("expected source SHA must be 40 lowercase hex characters")
@@ -106,6 +107,7 @@ def main() -> int:
     parser.add_argument("--artifact-digest", required=True)
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--repository-id", required=True, type=int)
+    parser.add_argument("--head-repository-id", required=True, type=int)
     parser.add_argument("--source-sha", required=True)
     args = parser.parse_args()
 
@@ -118,6 +120,7 @@ def main() -> int:
             expected_artifact_digest=args.artifact_digest,
             expected_run_id=args.run_id,
             expected_repository_id=args.repository_id,
+            expected_head_repository_id=args.head_repository_id,
             expected_source_sha=args.source_sha,
         )
     except (OSError, UnicodeError, json.JSONDecodeError, ValidationError) as error:
