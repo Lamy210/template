@@ -5,6 +5,11 @@ import hashlib
 from pathlib import Path
 import re
 
+from scripts.common.repository_name import (
+    REPOSITORY_RE,
+    is_canonical_repository_name,
+)
+
 
 SCHEMA_VERSION = 1
 SCHEMA_FIELDS = {
@@ -24,7 +29,6 @@ SCHEMA_FIELDS = {
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
 @dataclass(frozen=True)
@@ -78,12 +82,7 @@ def validate_release_attestation(document: object) -> list[str]:
             errors.append(f"{field} must be a positive integer")
 
     repository = document.get("sourceRepository")
-    repository_valid = (
-        isinstance(repository, str)
-        and REPOSITORY_RE.fullmatch(repository) is not None
-        and all(component not in {".", ".."} for component in repository.split("/", 1))
-    )
-    if not repository_valid:
+    if not is_canonical_repository_name(repository):
         errors.append("sourceRepository must be in owner/repo form")
 
     for field in ("sourceSHA", "publisherSHA"):
