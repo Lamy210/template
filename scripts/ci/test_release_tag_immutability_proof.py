@@ -172,6 +172,14 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("refuses the current repository", result.stderr)
 
+    def test_rejects_noncanonical_current_repository_identity(self) -> None:
+        result = run_script(
+            *proof_args(),
+            env={"GITHUB_REPOSITORY": "../escape"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("GITHUB_REPOSITORY must use canonical owner/repo", result.stderr)
+
     def test_rejects_local_checkout_repository_before_github_access(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -209,6 +217,44 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("refuses the local checkout repository", result.stderr)
 
+    def test_rejects_unresolvable_local_origin_before_github_access(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_git = root / "git"
+            fake_git.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+                    if [[ "$*" == *"remote get-url origin"* ]]; then
+                      printf '%s\\n' 'https://evil.example/example/template.git'
+                      exit 0
+                    fi
+                    exit 91
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_git.chmod(0o755)
+            fake_gh = root / "gh"
+            fake_gh.write_text(
+                "#!/usr/bin/env bash\necho 'gh must not be called' >&2\nexit 92\n",
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            result = run_script(
+                *proof_args(),
+                env={
+                    "PATH": f"{root}:{os.environ['PATH']}",
+                    "GITHUB_REPOSITORY": "",
+                },
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("Unable to resolve the local GitHub origin safely", result.stderr)
+        self.assertNotIn("gh must not be called", result.stderr)
+
     def test_rejects_noncanonical_tag_or_equal_shas_before_gh(self) -> None:
         for tag, initial, move in (
             ("release-1", INITIAL_SHA, MOVE_SHA),
@@ -237,6 +283,7 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
         self.assertNotIn(",,}", text)
         self.assertIn('git -C "${repo_root}" remote get-url origin', text)
         self.assertIn("github_repository_from_remote", text)
+        self.assertIn("resolve-github-repository-from-remote.py", text)
         self.assertIn("repository_identity", text)
         self.assertIn("require_repository_identity_stable", text)
         self.assertGreaterEqual(

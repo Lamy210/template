@@ -268,6 +268,17 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("refuses the current repository", result.stderr)
 
+    def test_rejects_noncanonical_current_repository_identity(self) -> None:
+        result = run_script(
+            "--repository",
+            "example/disposable",
+            "--confirm-disposable",
+            "example/disposable",
+            env={"GITHUB_REPOSITORY": "../escape"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("GITHUB_REPOSITORY must use canonical owner/repo", result.stderr)
+
     def test_refuses_local_checkout_repository(self) -> None:
         result = run_script(
             "--repository",
@@ -293,6 +304,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("--method DELETE", text)
         self.assertIn('git -C "${repo_root}" remote get-url origin', text)
         self.assertIn("github_repository_from_remote", text)
+        self.assertIn("resolve-github-repository-from-remote.py", text)
         self.assertIn("same_repository", text)
         self.assertIn("refuses the local checkout repository", text)
         self.assertLess(
