@@ -86,6 +86,11 @@ if [[ "${checksum_digest}" != "${dmg_digest}" ]]; then
   exit 1
 fi
 
+if ! gh release verify --help >/dev/null 2>&1 || ! gh release verify-asset --help >/dev/null 2>&1; then
+  echo "Installed gh does not support immutable release attestation verification." >&2
+  exit 1
+fi
+
 repository_identity() {
   local response
   if ! response="$(gh api "repos/${GITHUB_REPOSITORY}")"; then
