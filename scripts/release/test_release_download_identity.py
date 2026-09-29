@@ -17,6 +17,7 @@ from scripts.release.release_download_identity import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/release/resolve-release-download.py"
 REPOSITORY = "Example/MyApp"
+REPOSITORY_ID = 123
 TAG = "v1.2.3"
 ASSETS = (
     "MyApp-v1.2.3.dmg",
@@ -65,12 +66,14 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
         document: object,
         *,
         repository: str = REPOSITORY,
+        repository_id: int = REPOSITORY_ID,
         tag: str = TAG,
         assets: list[str] | None = None,
     ):
         return validate_release_download_identity(
             document,
             expected_repository=repository,
+            expected_repository_id=repository_id,
             expected_tag=tag,
             expected_asset_names=list(assets or ASSETS),
         )
@@ -83,7 +86,11 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
         assert identity is not None
         self.assertEqual(
             {
-                "schemaVersion": 1,
+                "schemaVersion": 2,
+                "repository": {
+                    "id": REPOSITORY_ID,
+                    "fullName": REPOSITORY,
+                },
                 "releaseId": 700,
                 "tag": TAG,
                 "immutable": False,
@@ -221,12 +228,14 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
         errors, identity = self.validate(
             release_document(),
             repository="../escape",
+            repository_id=0,
             tag="v01.2.3",
             assets=["unsafe/name.dmg", "unsafe/name.dmg"],
         )
 
         self.assertIsNone(identity)
         self.assertTrue(any("owner/repo" in error for error in errors))
+        self.assertTrue(any("repository id" in error for error in errors))
         self.assertTrue(any("stable SemVer" in error for error in errors))
         self.assertTrue(any("unique" in error for error in errors))
         self.assertTrue(any("unsafe" in error for error in errors))
@@ -248,6 +257,8 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
                 str(metadata),
                 "--repository",
                 REPOSITORY,
+                "--repository-id",
+                str(REPOSITORY_ID),
                 "--tag",
                 TAG,
             ]
