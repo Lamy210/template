@@ -14,8 +14,7 @@ set -euo pipefail
 
 : "${GH_FAKE_LOG:?GH_FAKE_LOG is required}"
 : "${GH_FAKE_COUNT_FILE:?GH_FAKE_COUNT_FILE is required}"
-printf '%s
-' "$*" >>"${GH_FAKE_LOG}"
+printf '%s\n' "$*" >>"${GH_FAKE_LOG}"
 
 if [[ "$*" != *"--method GET repos/Lamy210/template"* ]]; then
   echo "Unexpected gh command: $*" >&2
@@ -27,8 +26,7 @@ if [[ -f "${GH_FAKE_COUNT_FILE}" ]]; then
   count="$(cat "${GH_FAKE_COUNT_FILE}")"
 fi
 count="$((count + 1))"
-printf '%s
-' "${count}" >"${GH_FAKE_COUNT_FILE}"
+printf '%s\n' "${count}" >"${GH_FAKE_COUNT_FILE}"
 
 repository_id=1367784801
 allow_squash=true
@@ -53,8 +51,8 @@ case "${GH_FAKE_SCENARIO:-success}" in
     ;;
 esac
 
-printf '{"id":%s,"full_name":"Lamy210/template","allow_squash_merge":%s,"allow_merge_commit":%s,"allow_rebase_merge":%s,"delete_branch_on_merge":%s}
-'   "${repository_id}" "${allow_squash}" "${allow_merge}" "${allow_rebase}" "${delete_branch}"
+printf '{"id":%s,"full_name":"Lamy210/template","allow_squash_merge":%s,"allow_merge_commit":%s,"allow_rebase_merge":%s,"delete_branch_on_merge":%s}\n' \
+  "${repository_id}" "${allow_squash}" "${allow_merge}" "${allow_rebase}" "${delete_branch}"
 FAKE_GH
 chmod 0755 "${fake_bin}/gh"
 
@@ -62,7 +60,11 @@ run_doctor() {
   local scenario="$1"
   local count_file="${temp_root}/count-${scenario}"
   local log_file="${temp_root}/gh-${scenario}.log"
-  PATH="${fake_bin}:${PATH}"     GH_FAKE_SCENARIO="${scenario}"     GH_FAKE_COUNT_FILE="${count_file}"     GH_FAKE_LOG="${log_file}"     bash "${doctor}" Lamy210/template
+  PATH="${fake_bin}:${PATH}" \
+    GH_FAKE_SCENARIO="${scenario}" \
+    GH_FAKE_COUNT_FILE="${count_file}" \
+    GH_FAKE_LOG="${log_file}" \
+    bash "${doctor}" Lamy210/template
 }
 
 success_output="$(run_doctor success)"
@@ -98,5 +100,4 @@ if PATH="${fake_bin}:${PATH}" bash "${doctor}" ../escape >"${temp_root}/unsafe.o
 fi
 grep -F "canonical owner/repo" "${temp_root}/unsafe.err" >/dev/null
 
-printf 'repository merge settings live-doctor regressions passed
-'
+printf 'repository merge settings live-doctor regressions passed\n'
