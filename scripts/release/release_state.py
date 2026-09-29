@@ -56,6 +56,8 @@ def validate_release_state(
         errors.append("release must be published, not draft")
     if document.get("isPrerelease") is not False:
         errors.append("release must be stable, not prerelease")
+    if document.get("isImmutable") is not True:
+        errors.append("release must be natively immutable")
 
     assets = document.get("assets")
     if not isinstance(assets, list):
