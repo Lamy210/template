@@ -68,6 +68,21 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("refuses the current repository", result.stderr)
 
+    def test_rejects_noncanonical_current_repository_identity(self) -> None:
+        result = run_script(
+            "--repository",
+            "example/disposable",
+            "--confirm-disposable",
+            "example/disposable",
+            "--source-ref",
+            "old-main",
+            "--tag",
+            "v0.0.1",
+            env={"GITHUB_REPOSITORY": "../escape"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("GITHUB_REPOSITORY must use canonical owner/repo", result.stderr)
+
     def test_rejects_noncanonical_stable_tag_before_github_access(self) -> None:
         result = run_script(
             "--repository",
@@ -117,6 +132,7 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
             "source-release-build-workflow.json",
             'git -C "${repo_root}" remote get-url origin',
             "github_repository_from_remote",
+            "resolve-github-repository-from-remote.py",
             "same_repository",
             "refuses the local checkout repository",
             "snapshot_run_ids",
