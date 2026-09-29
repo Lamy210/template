@@ -92,7 +92,10 @@ class RepositoryIdentityTests(unittest.TestCase):
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual("1367784801\tLamy210/template", result.stdout.strip())
+        self.assertEqual(
+            ["1367784801", "Lamy210/template"],
+            result.stdout.splitlines(),
+        )
 
 
 if __name__ == "__main__":
