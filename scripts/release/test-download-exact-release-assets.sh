@@ -198,6 +198,20 @@ cmp -s "${success_output}/MyApp-v1.2.3.dmg" "${temp_root}/dmg"
 cmp -s "${success_output}/MyApp-v1.2.3.dmg.sha256" "${temp_root}/checksum"
 cmp -s "${success_output}/release-provenance.json" "${temp_root}/provenance"
 [[ -f "${success_output}/release-download-manifest.json" ]]
+python3 - "${success_output}/release-download-manifest.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+document = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if document.get("schemaVersion") != 2:
+    raise SystemExit("release download manifest schemaVersion must equal 2")
+repository = document.get("repository")
+if repository != {"id": 123, "fullName": "Example/MyApp"}:
+    raise SystemExit(
+        f"release download manifest repository identity mismatch: {repository!r}"
+    )
+PY
 if compgen -G "${temp_root}/.success.partial.*" >/dev/null; then
   echo "Successful exact download left a staging directory." >&2
   exit 1
