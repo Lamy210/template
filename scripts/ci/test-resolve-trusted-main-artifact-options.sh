@@ -95,4 +95,34 @@ assert_usage_error 0
 assert_usage_error 101
 assert_usage_error nope
 
+assert_workflow_usage_error() {
+  local value="$1"
+  : >"${STUB_LOG}"
+  set +e
+  PATH="${STUB_BIN}:${PATH}" \
+    GH_STUB_LOG="${STUB_LOG}" \
+    GH_TOKEN="test-token" \
+    bash "${RESOLVER}" \
+    --repository Lamy210/template \
+    --workflow "${value}" \
+    --artifact visual-baseline-test \
+    --output "${TEMP_ROOT}/invalid-workflow" >/dev/null 2>&1
+  local actual=$?
+  set -e
+  if [[ "${actual}" -ne 2 ]]; then
+    printf 'expected usage exit 2 for --workflow %q, got %s\n' "${value}" "${actual}" >&2
+    exit 1
+  fi
+  if [[ -s "${STUB_LOG}" ]]; then
+    echo "unsafe workflow selector reached GitHub API" >&2
+    cat "${STUB_LOG}" >&2
+    exit 1
+  fi
+}
+
+assert_workflow_usage_error '../visual-regression.yml'
+assert_workflow_usage_error 'visual-regression.yml?branch=main'
+assert_workflow_usage_error '4242'
+assert_workflow_usage_error ' visual-regression.yml'
+
 printf 'trusted artifact resolver option tests passed\n'
