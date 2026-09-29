@@ -67,6 +67,12 @@ jobs:
             scripts.release.test_verify_validated_release_metadata \
             -v
 
+      - name: Shell repository identity guardrails
+        shell: bash
+        run: |
+          bash scripts/common/test-repository-name.sh
+          bash scripts/common/test-shell-repository-entrypoints.sh
+
       - name: Exact release build artifact resolver
         shell: bash
         run: bash scripts/release/test-resolve-release-build-artifact.sh
