@@ -461,6 +461,19 @@ class PostSplitProofEvidenceTests(unittest.TestCase):
                     errors,
                 )
 
+    def test_persisted_evidence_rejects_noncanonical_repository_name(self) -> None:
+        for repository in ("../escape", "./repo", "owner/..", "owner/."):
+            with self.subTest(repository=repository):
+                document = valid_evidence()
+                document["repository"]["fullName"] = repository
+
+                errors = validate_evidence_document(document)
+
+                self.assertTrue(
+                    any("canonical owner/repo" in error for error in errors),
+                    errors,
+                )
+
     def test_accepts_legacy_schema_v2_evidence(self) -> None:
         document = json.loads(json.dumps(valid_evidence()))
         document["schemaVersion"] = 2
