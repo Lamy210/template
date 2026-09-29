@@ -16,6 +16,13 @@ if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || (($# > 1)); t
   usage
   exit 2
 fi
+repository_owner="${repository%%/*}"
+repository_name="${repository#*/}"
+if [[ "${repository_owner}" == "." || "${repository_owner}" == ".." ||
+  "${repository_name}" == "." || "${repository_name}" == ".." ]]; then
+  echo "repository must use canonical owner/repo form." >&2
+  exit 2
+fi
 
 command -v gh >/dev/null 2>&1 || {
   echo "gh is required." >&2
