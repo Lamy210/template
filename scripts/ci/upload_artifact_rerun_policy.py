@@ -7,7 +7,7 @@ from typing import Iterable
 
 
 UPLOAD_ACTION_RE = re.compile(
-    r"^(?P<indent>\s*)(?P<item>-\s+)?uses:\s*actions/upload-artifact@"
+    r"^(?P<indent>\s*)(?P<item>-\s+)?uses:\s*['\"]?actions/upload-artifact@"
 )
 STEP_ITEM_RE = re.compile(
     r"^(?P<indent>\s*)-\s+(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$"
@@ -174,14 +174,14 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
 
 def workflow_paths(root: Path) -> Iterable[Path]:
     candidates = [
-        root / ".github" / "workflows",
+        root / ".github",
         root / "examples",
     ]
     for directory in candidates:
         if not directory.is_dir():
             continue
         for pattern in ("*.yml", "*.yaml"):
-            yield from sorted(directory.glob(pattern))
+            yield from sorted(directory.rglob(pattern))
 
 
 def validate_repository(root: Path) -> list[PolicyViolation]:
