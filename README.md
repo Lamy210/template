@@ -134,7 +134,8 @@ The thresholds and exception policy are documented in [`docs/CODING_STANDARDS.md
 9. Keep Apple signing/notarization credentials only in the protected `release` Environment. The called privileged macOS workflow reads them there; the publisher caller does not use `secrets: inherit`.
 10. If Homebrew distribution is enabled, pass only the narrow `tap_token` secret to `reusable-homebrew-update.yml` after release publication succeeds.
 11. Configure branch/tag policy according to [`docs/BRANCHING.md`](docs/BRANCHING.md) and review credential handling in [`docs/SECRETS.md`](docs/SECRETS.md).
-12. Run the test-policy/Test Infrastructure suites and release-isolation contract tests before the first production release.
+12. Run `bash scripts/template/doctor.sh --repository owner/repo --profile core` after repository governance setup; use the `release` profile from a trusted administrator session before production release enablement.
+13. Run the test-policy/Test Infrastructure suites and release-isolation contract tests before the first production release.
 
 [`examples/app-release.yml`](examples/app-release.yml) is **migration documentation only**. It intentionally does not contain an executable monolithic release workflow.
 
@@ -166,7 +167,7 @@ The following are design requirements, not recommendations:
 - zero required approvals (avoids self-approval deadlock)
 - all required status checks must pass
 - direct push and force push disabled
-- squash merge preferred
+- squash merge enabled; merge commits and rebase merges disabled
 
 ### Team OSS
 
