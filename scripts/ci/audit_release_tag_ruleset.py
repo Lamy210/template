@@ -9,6 +9,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.ci.validate_rulesets import validate_release_tags
+from scripts.common.repository_name import is_canonical_repository_name
 
 
 EXPECTED_NAME = "Immutable release tags"
@@ -34,13 +35,22 @@ def validate_live_release_tag_ruleset(
 
     errors: list[str] = []
 
+    if not is_canonical_repository_name(expected_repository):
+        errors.append("expected repository must use canonical owner/repo form")
+
+    source = document.get("source")
+    if not is_canonical_repository_name(source):
+        errors.append("source must use canonical owner/repo form")
+    elif (
+        is_canonical_repository_name(expected_repository)
+        and source != expected_repository
+    ):
+        errors.append("source must equal expected repository")
+
     if document.get("name") != EXPECTED_NAME:
         errors.append(f"name must equal {EXPECTED_NAME!r}")
     if document.get("source_type") != "Repository":
         errors.append("source_type must equal 'Repository'")
-    if document.get("source") != expected_repository:
-        errors.append("source must equal expected repository")
-
     ruleset_id = document.get("id")
     if type(ruleset_id) is not int or ruleset_id <= 0:
         errors.append("id must be a positive integer")
@@ -98,13 +108,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     path, repository = args
-    if (
-        "/" not in repository
-        or repository.startswith("/")
-        or repository.endswith("/")
-        or repository.count("/") != 1
-    ):
-        print("repository must be in owner/repo form", file=sys.stderr)
+    if not is_canonical_repository_name(repository):
+        print("repository must use canonical owner/repo form", file=sys.stderr)
         return 2
 
     document = _load_json(path)
