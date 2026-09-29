@@ -603,8 +603,7 @@ def validate_post_split_runtime_proof(
         )
 
     if (
-        isinstance(repository_full_name, str)
-        and "/" in repository_full_name
+        is_canonical_repository_name(repository_full_name)
         and _positive_int(source_run_id)
         and _positive_int(source_run_attempt)
         and _positive_int(publisher_run_id)
