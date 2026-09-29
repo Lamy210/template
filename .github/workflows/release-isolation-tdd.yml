@@ -33,6 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest \
+            scripts.common.test_github_remote \
             scripts.release.test_release_provenance \
             scripts.release.test_release_attestation \
             scripts.release.test_artifact_identity \
