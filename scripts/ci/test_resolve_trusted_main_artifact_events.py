@@ -66,7 +66,8 @@ if "/actions/workflows/tests.yml/runs" in args:
             "head_branch": "main",
             "event": "push",
             "conclusion": "success",
-            "head_repository": {"full_name": "Lamy210/template"},
+            "head_repository": {"id": 1367784801, "full_name": "Lamy210/template"},
+            "repository": {"id": 1367784801, "full_name": "Lamy210/template"},
         }]}))
         raise SystemExit(0)
 
