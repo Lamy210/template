@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  effective-main-rules:
-    name: Effective main rules
+  governance-doctor:
+    name: Governance doctor
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -24,18 +24,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Audit repository merge settings
+      - name: Audit core repository governance
         shell: bash
-        run: bash scripts/ci/audit-live-repository-merge-settings.sh "${{ github.repository }}"
-
-      - name: Audit live Solo default-branch Ruleset
-        shell: bash
-        run: bash scripts/ci/audit-live-main-ruleset.sh "${{ github.repository }}"
-
-      - name: Audit effective default-branch rules
-        shell: bash
-        run: bash scripts/ci/audit-live-main-rules.sh "${{ github.repository }}"
-
-      - name: Audit live immutable release-tag Ruleset
-        shell: bash
-        run: bash scripts/ci/audit-live-release-tag-ruleset.sh "${{ github.repository }}"
+        run: |
+          bash scripts/template/doctor.sh \
+            --repository "${{ github.repository }}" \
+            --profile core

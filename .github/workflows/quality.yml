@@ -82,6 +82,7 @@ jobs:
             scripts.ci.test_immutable_releases_setting \
             scripts.ci.test_repository_merge_settings \
             scripts.ci.test_release_tag_immutability_proof \
+            scripts.template.test_doctor \
             -v
           python3 scripts/ci/validate_rulesets.py
           bash scripts/ci/test-audit-live-immutable-releases.sh

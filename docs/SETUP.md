@@ -90,7 +90,7 @@ bash scripts/ci/audit-live-immutable-releases.sh owner/repo
 
 The doctor performs no mutations. It binds the repository numeric ID and canonical full name before and after reading the immutable-releases endpoint and fails closed when the setting cannot be proven enabled. GitHub returns the same endpoint as unavailable when the feature is disabled, while insufficient admin-read access also prevents this audit from proving the state; both conditions intentionally fail.
 
-This doctor is not run by `.github/workflows/governance-audit.yml`: that workflow deliberately retains the ordinary read-only `GITHUB_TOKEN` permission model rather than introducing a long-lived administration credential into Actions.
+The admin-only immutable-release check is deliberately excluded from the `core` template doctor profile and from `.github/workflows/governance-audit.yml`; the workflow retains the ordinary read-only `GITHUB_TOKEN` permission model rather than introducing a long-lived administration credential into Actions. The `release` doctor profile includes this check for trusted operator sessions.
 
 ## 5. Protected `release` Environment
 
@@ -137,6 +137,35 @@ bash scripts/release/prove-release-environment-policy.sh \
 ```
 
 The proof first dispatches the secret-free workflow from the default branch and requires the `release` Environment job to succeed. It then creates a temporary branch and arbitrary tag at the same commit and requires those two Environment jobs to be denied while their non-Environment baseline jobs still succeed. This positive control prevents an accidentally deny-all Environment from producing a false pass. Temporary refs are removed afterward. The script refuses the current `GITHUB_REPOSITORY`, so do not weaken that guardrail to test the production repository.
+
+### Unified template doctor
+
+After configuring the repository merge policy and branch/tag Rulesets, run the read-only core profile:
+
+```bash
+bash scripts/template/doctor.sh \
+  --repository owner/repo \
+  --profile core
+```
+
+The core profile runs all four normal governance checks and reports every failure in one invocation rather than stopping after the first drift:
+
+- repository merge settings;
+- repository-owned Solo default-branch Ruleset;
+- effective default-branch rules;
+- immutable release-tag Ruleset.
+
+Before production release enablement, run the release profile from a trusted operator session with credentials that can read repository administration surfaces:
+
+```bash
+bash scripts/template/doctor.sh \
+  --repository owner/repo \
+  --profile release
+```
+
+The release profile runs the core checks plus the protected `release` Environment audit and native immutable-releases audit. It remains read-only. It does **not** replace the destructive disposable release-tag proof, the disposable release-Environment runtime proof, or the post-split ancestor runtime proof; those still exercise runtime enforcement properties that configuration APIs cannot prove.
+
+The manual `Governance Audit` workflow invokes only the core profile with the standard read-only workflow token.
 
 ## 6. Release secrets
 

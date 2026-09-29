@@ -24,37 +24,27 @@ class GovernanceAuditWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("pull-requests: write", text)
         self.assertNotIn("administration: write", text)
 
-    def test_workflow_runs_repository_merge_settings_doctor(self) -> None:
+    def test_workflow_runs_core_template_doctor_for_current_repository(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn(
-            "bash scripts/ci/audit-live-repository-merge-settings.sh",
-            text,
-        )
+        self.assertIn("bash scripts/template/doctor.sh", text)
+        self.assertIn("--repository", text)
         self.assertIn("${{ github.repository }}", text)
+        self.assertIn("--profile core", text)
+        for direct_doctor in (
+            "audit-live-repository-merge-settings.sh",
+            "audit-live-main-ruleset.sh",
+            "audit-live-main-rules.sh",
+            "audit-live-release-tag-ruleset.sh",
+        ):
+            with self.subTest(direct_doctor=direct_doctor):
+                self.assertNotIn(direct_doctor, text)
 
-    def test_workflow_never_applies_repository_merge_settings(self) -> None:
+    def test_workflow_never_runs_admin_or_mutating_helpers(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertNotIn("apply-repository-merge-settings.sh", text)
-
-    def test_workflow_runs_live_main_ruleset_doctor_for_current_repository(self) -> None:
-        text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("bash scripts/ci/audit-live-main-ruleset.sh", text)
-        self.assertIn("${{ github.repository }}", text)
-
-    def test_workflow_runs_effective_rules_doctor_for_current_repository(self) -> None:
-        text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("bash scripts/ci/audit-live-main-rules.sh", text)
-        self.assertIn("${{ github.repository }}", text)
-        self.assertIn("GH_TOKEN: ${{ github.token }}", text)
-
-    def test_workflow_runs_release_tag_ruleset_doctor_for_current_repository(self) -> None:
-        text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("bash scripts/ci/audit-live-release-tag-ruleset.sh", text)
-        self.assertIn("${{ github.repository }}", text)
-
-    def test_admin_read_immutable_doctor_is_not_run_with_standard_token(self) -> None:
-        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertNotIn("--profile release", text)
         self.assertNotIn("audit-live-immutable-releases.sh", text)
+        self.assertNotIn("audit-release-environment.sh", text)
+        self.assertNotIn("apply-repository-merge-settings.sh", text)
         self.assertNotIn("GOVERNANCE_ADMIN_TOKEN", text)
 
     def test_checkout_does_not_persist_credentials(self) -> None:
