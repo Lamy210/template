@@ -144,6 +144,35 @@ printf 'stub pass: %s\\n' "${name}"
         )
         self.assertEqual(4, len(invocations))
 
+    def test_missing_option_values_fail_with_usage_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            doctor = self.build_fixture(root)
+
+            repository = subprocess.run(
+                ["bash", str(doctor), "--repository"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            profile = subprocess.run(
+                [
+                    "bash",
+                    str(doctor),
+                    "--repository",
+                    "Example/Repo",
+                    "--profile",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(2, repository.returncode)
+        self.assertIn("--repository requires owner/repo", repository.stderr)
+        self.assertEqual(2, profile.returncode)
+        self.assertIn("--profile requires core or release", profile.stderr)
+
     def test_invalid_input_fails_before_any_check_runs(self) -> None:
         for repository, profile, expected in (
             ("../escape", "core", "canonical owner/repo"),
