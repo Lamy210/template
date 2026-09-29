@@ -47,7 +47,8 @@ class TrustedBaselineArtifactWiringTests(unittest.TestCase):
             "SOURCE_RUN_ID: ${{ github.run_id }}",
             "SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}",
             "coverage-baseline-provenance.json",
-            '"runAttempt": run_attempt',
+            "build-coverage-baseline-provenance.py",
+            '--run-attempt "${SOURCE_RUN_ATTEMPT}"',
             'echo "path=${provenance}"',
         ):
             with self.subTest(token=token):
