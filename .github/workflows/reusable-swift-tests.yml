@@ -232,12 +232,20 @@ jobs:
         if: ${{ inputs.enable_coverage && ((inputs.adapter == 'swiftpm' && steps.swiftpm.outcome == 'success') || (inputs.adapter == 'xcode' && steps.xcode.outcome == 'success')) }}
         id: coverage
         shell: bash
+        env:
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_REPOSITORY_ID: ${{ github.repository_id }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_WORKFLOW: tests.yml
         run: |
           set -euo pipefail
           coverage_root="${RUNNER_TEMP}/coverage-current"
           mkdir -p "${coverage_root}"
           profile="${coverage_root}/coverage-profile.json"
           summary="${coverage_root}/coverage-summary.json"
+          provenance="${coverage_root}/coverage-baseline-provenance.json"
 
           if [[ "${TEST_ADAPTER}" == "swiftpm" ]]; then
             coverage_input="$(swift test --package-path "${WORKING_DIRECTORY}" --show-codecov-path | tail -n 1)"
@@ -276,7 +284,74 @@ jobs:
             --output "${summary}" \
             --profile "${profile}"
 
+          python3 - \
+            "${provenance}" \
+            "${summary}" \
+            "${SOURCE_REPOSITORY}" \
+            "${SOURCE_REPOSITORY_ID}" \
+            "${SOURCE_WORKFLOW}" \
+            "${SOURCE_RUN_ID}" \
+            "${SOURCE_RUN_ATTEMPT}" \
+            "${SOURCE_SHA}" \
+            "${COVERAGE_ARTIFACT_NAME}" <<'PY'
+          import json
+          import re
+          import sys
+
+          (
+              output,
+              summary_path,
+              repository,
+              repository_id_text,
+              workflow,
+              run_id_text,
+              run_attempt_text,
+              source_sha,
+              artifact_name,
+          ) = sys.argv[1:]
+
+          try:
+              repository_id = int(repository_id_text)
+              run_id = int(run_id_text)
+              run_attempt = int(run_attempt_text)
+          except ValueError as error:
+              raise SystemExit(
+                  f"coverage provenance identity is not numeric: {error}"
+              ) from error
+
+          if repository_id <= 0 or run_id <= 0 or run_attempt <= 0:
+              raise SystemExit("coverage provenance numeric identities must be positive")
+          if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+              raise SystemExit("coverage provenance source SHA must be 40 lowercase hex")
+          if not repository or not workflow or not artifact_name:
+              raise SystemExit("coverage provenance identity strings must be non-empty")
+
+          with open(summary_path, encoding="utf-8") as handle:
+              summary_payload = json.load(handle)
+          fingerprint = summary_payload.get("coverageProfileFingerprint")
+          if not isinstance(fingerprint, str) or re.fullmatch(
+              r"sha256:[0-9a-f]{64}", fingerprint
+          ) is None:
+              raise SystemExit("coverage summary profile fingerprint is invalid")
+
+          payload = {
+              "schemaVersion": 1,
+              "repository": repository,
+              "repositoryId": repository_id,
+              "workflow": workflow,
+              "runId": run_id,
+              "runAttempt": run_attempt,
+              "sourceSHA": source_sha,
+              "artifactName": artifact_name,
+              "coverageProfileFingerprint": fingerprint,
+          }
+          with open(output, "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+              handle.write("\n")
+          PY
+
           echo "summary=${summary}" >>"${GITHUB_OUTPUT}"
+          echo "provenance=${provenance}" >>"${GITHUB_OUTPUT}"
 
       - name: Resolve and compare trusted coverage baseline
         id: coverage_compare
@@ -315,6 +390,19 @@ jobs:
             echo "Expected exactly one coverage-summary.json in trusted baseline artifact." >&2
             exit 2
           fi
+          mapfile -t provenance_files < <(find "${baseline_root}" -type f -name coverage-baseline-provenance.json -print)
+          if ((${#provenance_files[@]} != 1)); then
+            echo "Expected exactly one coverage-baseline-provenance.json in trusted baseline artifact." >&2
+            exit 2
+          fi
+
+          python3 scripts/test/validate-coverage-baseline-provenance.py \
+            --resolver-metadata "${baseline_root}/resolver-metadata.json" \
+            --baseline-provenance "${provenance_files[0]}" \
+            --baseline-summary "${baselines[0]}" \
+            --expected-repository "${GITHUB_REPOSITORY}" \
+            --expected-workflow tests.yml \
+            --expected-artifact "${COVERAGE_ARTIFACT_NAME}"
 
           comparison="${RUNNER_TEMP}/coverage-comparison.json"
           set +e
@@ -366,7 +454,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.coverage_artifact_name }}
-          path: ${{ steps.coverage.outputs.summary }}
+          path: |
+            ${{ steps.coverage.outputs.summary }}
+            ${{ steps.coverage.outputs.provenance }}
           if-no-files-found: error
           retention-days: 90
           overwrite: true
