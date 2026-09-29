@@ -28,6 +28,7 @@ def release_metadata() -> dict[str, object]:
     return {
         "tagName": TAG,
         "isDraft": False,
+        "isImmutable": True,
         "isPrerelease": False,
         "assets": [{"name": name} for name in ASSETS],
     }
@@ -82,6 +83,8 @@ class ReleaseStateTests(unittest.TestCase):
     def test_rejects_draft_prerelease_and_tag_drift(self) -> None:
         mutations = (
             ("isDraft", True),
+            ("isImmutable", False),
+            ("isImmutable", None),
             ("isPrerelease", True),
             ("tagName", "v1.2.4"),
         )
@@ -96,6 +99,19 @@ class ReleaseStateTests(unittest.TestCase):
                         expected_asset_names=ASSETS,
                     )
                 )
+
+    def test_requires_native_immutability(self) -> None:
+        document = release_metadata()
+        document["isImmutable"] = False
+        errors = validate_release_state(
+            document,
+            expected_tag=TAG,
+            expected_asset_names=ASSETS,
+        )
+        self.assertTrue(
+            any("natively immutable" in error for error in errors),
+            errors,
+        )
 
     def test_rejects_missing_extra_and_duplicate_assets(self) -> None:
         missing = release_metadata()
