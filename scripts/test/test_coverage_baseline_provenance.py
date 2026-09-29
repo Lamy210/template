@@ -100,6 +100,20 @@ class CoverageBaselineProvenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "repositoryId"):
             self.validate(baseline=baseline)
 
+    def test_rejects_non_main_resolver_branch(self) -> None:
+        resolver = resolver_metadata()
+        resolver["branch"] = "release/1.x"
+
+        with self.assertRaisesRegex(ValidationError, "branch must be main"):
+            self.validate(resolver=resolver)
+
+    def test_rejects_resolver_schema_drift(self) -> None:
+        resolver = resolver_metadata()
+        resolver["schemaVersion"] = 2
+
+        with self.assertRaisesRegex(ValidationError, "schemaVersion"):
+            self.validate(resolver=resolver)
+
     def test_rejects_non_push_resolver_event(self) -> None:
         resolver = resolver_metadata()
         resolver["event"] = "schedule"
