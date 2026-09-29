@@ -24,6 +24,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Audit repository merge settings
+        shell: bash
+        run: bash scripts/ci/audit-live-repository-merge-settings.sh "${{ github.repository }}"
+
       - name: Audit live Solo default-branch Ruleset
         shell: bash
         run: bash scripts/ci/audit-live-main-ruleset.sh "${{ github.repository }}"
