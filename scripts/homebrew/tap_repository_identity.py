@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import re
 import sys
 
 
-REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.repository_name import is_canonical_repository_name  # noqa: E402
 
 
 def validate_tap_repository_identity(
@@ -19,15 +22,8 @@ def validate_tap_repository_identity(
 ) -> tuple[list[str], dict[str, object] | None]:
     errors: list[str] = []
 
-    if (
-        not isinstance(expected_repository, str)
-        or REPOSITORY_RE.fullmatch(expected_repository) is None
-    ):
-        errors.append("expected repository must be in owner/repo form")
-    else:
-        owner, name = expected_repository.split("/", 1)
-        if owner in {".", ".."} or name in {".", ".."}:
-            errors.append("expected repository contains an invalid component")
+    if not is_canonical_repository_name(expected_repository):
+        errors.append("expected repository must be canonical owner/repo")
 
     if (
         not isinstance(expected_default_branch, str)
@@ -62,14 +58,10 @@ def validate_tap_repository_identity(
             "tap repository id does not match the trusted repository snapshot"
         )
 
-    if (
-        not isinstance(full_name, str)
-        or REPOSITORY_RE.fullmatch(full_name) is None
-    ):
+    if not is_canonical_repository_name(full_name):
         errors.append("tap repository full_name must be canonical owner/repo")
     elif (
-        isinstance(expected_repository, str)
-        and REPOSITORY_RE.fullmatch(expected_repository) is not None
+        is_canonical_repository_name(expected_repository)
         and full_name.casefold() != expected_repository.casefold()
     ):
         errors.append("tap repository full_name does not match expected repository")
@@ -86,7 +78,7 @@ def validate_tap_repository_identity(
         ):
             errors.append(f"tap repository {field} must be a non-empty single line")
 
-    if isinstance(full_name, str) and REPOSITORY_RE.fullmatch(full_name) is not None:
+    if is_canonical_repository_name(full_name):
         canonical_clone_url = f"https://github.com/{full_name}.git"
         canonical_ssh_url = f"git@github.com:{full_name}.git"
         if clone_url != canonical_clone_url:
