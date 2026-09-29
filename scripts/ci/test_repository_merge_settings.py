@@ -17,6 +17,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/ci/validate-repository-merge-settings.py"
 DOCTOR = REPO_ROOT / "scripts/ci/audit-live-repository-merge-settings.sh"
 QUALITY = REPO_ROOT / ".github/workflows/quality.yml"
+SETUP = REPO_ROOT / "docs/SETUP.md"
+BRANCHING = REPO_ROOT / "docs/BRANCHING.md"
+CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
 
 
 def valid_metadata() -> dict[str, object]:
@@ -136,6 +139,30 @@ class RepositoryMergeSettingsTests(unittest.TestCase):
                 "delete_branch_on_merge=true",
             ],
             result.stdout.splitlines(),
+        )
+
+    def test_documentation_matches_merge_policy_contract(self) -> None:
+        expected_lines = (
+            "- squash merge: enabled",
+            "- merge commits: disabled",
+            "- rebase merge: disabled",
+            "- delete head branches after merge: enabled",
+        )
+        for path in (SETUP, BRANCHING):
+            with self.subTest(path=path):
+                text = path.read_text(encoding="utf-8")
+                for line in expected_lines:
+                    self.assertIn(line, text)
+                self.assertIn(
+                    "bash scripts/ci/audit-live-repository-merge-settings.sh",
+                    text,
+                )
+
+        contributing = CONTRIBUTING.read_text(encoding="utf-8")
+        self.assertIn("Use squash merge", contributing)
+        self.assertIn(
+            "disables merge commits and rebase merges",
+            contributing,
         )
 
     def test_live_doctor_is_read_only_and_rebinds_state(self) -> None:

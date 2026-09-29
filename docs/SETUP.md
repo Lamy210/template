@@ -4,14 +4,20 @@ The files in this template do not automatically create repository Rulesets, Envi
 
 ## 1. Repository merge policy
 
-Recommended for the default `main` branch:
+The template merge-policy contract is:
 
-- enable squash merge
-- disable merge commits unless the project explicitly needs them
-- optionally disable rebase merge to keep one consistent merge strategy
-- enable automatic deletion of merged feature branches when appropriate
+- squash merge: enabled
+- merge commits: disabled
+- rebase merge: disabled
+- delete head branches after merge: enabled
 
-The intended history model is one squash commit per pull request.
+The intended history model is one squash commit per pull request. Configure these repository settings before normal development, then verify the live repository with:
+
+```bash
+bash scripts/ci/audit-live-repository-merge-settings.sh owner/repo
+```
+
+The doctor is read-only and fails closed when any of the four settings drift from this contract. The manual `Governance Audit` workflow runs the same check with the repository workflow token.
 
 ## 2. `main` Ruleset — Solo OSS profile
 
