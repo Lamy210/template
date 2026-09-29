@@ -75,6 +75,28 @@ PY
 }
 
 args="$*"
+if [[ "${1:-}" == "release" && "${2:-}" == "verify" ]]; then
+  if [[ "${3:-}" != "v1.2.3" || "${4:-}" != "--repo" || "${5:-}" != "Example/MyApp" || "${6:-}" != "--format" || "${7:-}" != "json" ]]; then
+    echo "Unexpected release attestation verification arguments: $*" >&2
+    exit 91
+  fi
+  if [[ "${GH_FAKE_SCENARIO}" == "invalid-release-attestation" ]]; then
+    exit 92
+  fi
+  printf '{"verified":true}\n'
+  exit 0
+fi
+if [[ "${1:-}" == "release" && "${2:-}" == "verify-asset" ]]; then
+  if [[ "${3:-}" != "v1.2.3" || -z "${4:-}" || "${5:-}" != "--repo" || "${6:-}" != "Example/MyApp" || "${7:-}" != "--format" || "${8:-}" != "json" ]]; then
+    echo "Unexpected release asset attestation verification arguments: $*" >&2
+    exit 93
+  fi
+  if [[ "${GH_FAKE_SCENARIO}" == "invalid-asset-attestation" && "$(basename "${4}")" == "MyApp-v1.2.3.dmg" ]]; then
+    exit 94
+  fi
+  printf '{"verified":true}\n'
+  exit 0
+fi
 if [[ "${args}" == *" repos/Example/MyApp" ]]; then
   repository_id=123
   if [[ "${GH_FAKE_SCENARIO}" == "repository-drift" && -f "${GH_FAKE_PHASE_FILE}" ]]; then
@@ -220,6 +242,10 @@ grep -F "releases/assets/101" "${temp_root}/gh.log" >/dev/null
 grep -F "releases/assets/102" "${temp_root}/gh.log" >/dev/null
 grep -F "releases/assets/103" "${temp_root}/gh.log" >/dev/null
 grep -F "releases/700" "${temp_root}/gh.log" >/dev/null
+grep -F "release verify v1.2.3 --repo Example/MyApp --format json" "${temp_root}/gh.log" >/dev/null
+grep -F "release verify-asset v1.2.3 " "${temp_root}/gh.log" | grep -F "MyApp-v1.2.3.dmg --repo Example/MyApp --format json" >/dev/null
+grep -F "release verify-asset v1.2.3 " "${temp_root}/gh.log" | grep -F "MyApp-v1.2.3.dmg.sha256 --repo Example/MyApp --format json" >/dev/null
+grep -F "release verify-asset v1.2.3 " "${temp_root}/gh.log" | grep -F "release-provenance.json --repo Example/MyApp --format json" >/dev/null
 if grep -F "release download" "${temp_root}/gh.log" >/dev/null; then
   echo "Exact release downloader unexpectedly used gh release download." >&2
   exit 1
@@ -243,6 +269,24 @@ if run_downloader mutable-release "${mutable_output}" >"${temp_root}/mutable.out
 fi
 grep -F "natively immutable" "${temp_root}/mutable.err" >/dev/null
 assert_no_output_or_staging "${mutable_output}"
+
+: >"${temp_root}/gh.log"
+release_attestation_output="${temp_root}/release-attestation"
+if run_downloader invalid-release-attestation "${release_attestation_output}" >"${temp_root}/release-attestation.out" 2>"${temp_root}/release-attestation.err"; then
+  echo "Exact release downloader accepted an invalid GitHub release attestation." >&2
+  exit 1
+fi
+grep -F "immutable release attestation verification failed" "${temp_root}/release-attestation.err" >/dev/null
+assert_no_output_or_staging "${release_attestation_output}"
+
+: >"${temp_root}/gh.log"
+asset_attestation_output="${temp_root}/asset-attestation"
+if run_downloader invalid-asset-attestation "${asset_attestation_output}" >"${temp_root}/asset-attestation.out" 2>"${temp_root}/asset-attestation.err"; then
+  echo "Exact release downloader accepted an invalid GitHub release asset attestation." >&2
+  exit 1
+fi
+grep -F "release asset attestation verification failed for MyApp-v1.2.3.dmg" "${temp_root}/asset-attestation.err" >/dev/null
+assert_no_output_or_staging "${asset_attestation_output}"
 
 : >"${temp_root}/gh.log"
 corrupt_output="${temp_root}/corrupt"

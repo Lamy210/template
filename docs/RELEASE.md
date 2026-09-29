@@ -152,7 +152,7 @@ Reusable Homebrew Update
 Homebrew tap PR
 ```
 
-Homebrew runs only after signing/publication succeeds and receives the already-validated `source_tag` explicitly. It does not derive release identity from the publisher workflow's `github.ref_name`, because the publisher runs in default-branch context.
+Homebrew runs only after signing/publication succeeds and receives the already-validated `source_tag` explicitly. It does not derive release identity from the publisher workflow's `github.ref_name`, because the publisher runs in default-branch context. The Homebrew consumer additionally verifies GitHub's signed immutable-release attestation and each downloaded release asset before its final release-state/repository-identity revalidation and transactional snapshot publication.
 
 ## Build provenance contract
 
