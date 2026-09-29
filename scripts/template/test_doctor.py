@@ -10,6 +10,8 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCTOR = REPO_ROOT / "scripts/template/doctor.sh"
+SETUP = REPO_ROOT / "docs/SETUP.md"
+README = REPO_ROOT / "README.md"
 
 CORE_CHECKS = (
     "scripts/ci/audit-live-repository-merge-settings.sh",
@@ -175,6 +177,16 @@ printf 'stub pass: %s\\n' "${name}"
             self.assertEqual(2, result.returncode)
             self.assertIn("unavailable or is a symlink", result.stderr)
             self.assertFalse(log.exists())
+
+    def test_operator_documentation_exposes_both_profiles(self) -> None:
+        setup = SETUP.read_text(encoding="utf-8")
+        readme = README.read_text(encoding="utf-8")
+
+        self.assertIn("bash scripts/template/doctor.sh", setup)
+        self.assertIn("--profile core", setup)
+        self.assertIn("--profile release", setup)
+        self.assertIn("scripts/template/doctor.sh", readme)
+        self.assertIn("--profile core", readme)
 
     def test_orchestrator_has_no_direct_github_mutation_surface(self) -> None:
         text = DOCTOR.read_text(encoding="utf-8")
