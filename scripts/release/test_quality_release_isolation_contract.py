@@ -59,6 +59,12 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
             text,
         )
 
+    def test_quality_permission_fixture_is_scoped_to_run_attempt(self) -> None:
+        text = self.quality_text()
+        artifact_name = "release-app-permission-fixture-${{ github.run_attempt }}"
+        self.assertEqual(2, text.count(artifact_name))
+        self.assertNotIn("name: release-app-permission-fixture\n", text)
+
     def test_required_gate_depends_on_repository_hygiene(self) -> None:
         text = self.quality_text()
         self.assertIn("      - repository-hygiene", text)
