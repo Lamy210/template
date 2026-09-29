@@ -76,6 +76,7 @@ jobs:
             scripts.common.test_github_remote \
             scripts.common.test_repository_identity \
             scripts.common.test_repository_name \
+            scripts.common.test_workflow_identity \
             scripts.ci.test_validate_rulesets \
             scripts.ci.test_validate_rulesets_portability \
             scripts.ci.test_audit_effective_rules \
