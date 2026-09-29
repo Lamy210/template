@@ -5,10 +5,7 @@ import hashlib
 from pathlib import Path
 import re
 
-from scripts.common.repository_name import (
-    REPOSITORY_RE,
-    is_canonical_repository_name,
-)
+from scripts.common.repository_name import is_canonical_repository_name
 
 
 SCHEMA_VERSION = 1
