@@ -80,6 +80,10 @@ jobs:
         shell: bash
         run: python3 -m unittest scripts.ci.test_actions_supply_chain_policy -v
 
+      - name: Workflow token permission policy
+        shell: bash
+        run: python3 -m unittest scripts.ci.test_workflow_permission_policy -v
+
       - name: Ruleset governance validation
         shell: bash
         run: |
