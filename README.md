@@ -158,6 +158,7 @@ The following are design requirements, not recommendations:
 - Do not use `pull_request_target` to check out and execute untrusted pull-request code. Repository CI rejects the trigger across executable workflows and examples.
 - Default `GITHUB_TOKEN` permissions are empty/read-only. Repository CI enforces explicit top-level permissions and permits job-level write access only for the documented GitHub Release publication jobs.
 - Do not use `secrets: inherit`; repository CI requires narrow named-secret interfaces. GitHub Environment usage is allowlisted only for the protected macOS signing job and the disposable release-Environment proof example.
+- Do not interpolate GitHub expressions directly inside shell `run:` bodies. Route expression values through `env:`; repository CI enforces this across workflows and executable examples.
 - Pin third-party GitHub Actions to full commit SHAs and update them through Dependabot.
 - A published SemVer tag and its release assets are immutable; fix a release with a new version instead of moving/replacing it.
 

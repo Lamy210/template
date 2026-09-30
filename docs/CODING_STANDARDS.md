@@ -174,7 +174,7 @@ ShellCheck and `shfmt` are required CI gates.
 - Do not use `pull_request_target` to execute untrusted pull-request code.
 - Do not pass privileged secrets wholesale with `secrets: inherit`.
 - Do not attach GitHub Environments to ordinary CI jobs. The protected `release` Environment is restricted to the release signing boundary; the disposable negative-proof example is the only test exception.
-- Put expression-derived user-controlled values into environment variables before using them in shell scripts.
+- Do not place `${{ ... }}` expressions directly inside shell `run:` bodies. Route expression-derived values through `env:` first; this is enforced repository-wide.
 
 `actionlint`, `zizmor`, and the repository workflow policies enforce these invariants automatically.
 
