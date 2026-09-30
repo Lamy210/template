@@ -237,7 +237,7 @@ fi
 IFS=$'\t' read -r _ _ initial_default_branch <<<"${initial_repository_identity}"
 
 initial_ruleset_json="${temp_root}/ruleset-before.json"
-if ! gh api "${api_headers[@]}" --method GET   "repos/${repository}/rulesets/${ruleset_id}?includes_parents=false" >"${initial_ruleset_json}"; then
+if ! gh api "${api_headers[@]}" --method GET "repos/${repository}/rulesets/${ruleset_id}?includes_parents=false" >"${initial_ruleset_json}"; then
   echo "Failed to read selected Ruleset before update." >&2
   exit 4
 fi
@@ -249,7 +249,7 @@ if ! initial_ruleset_identity="$(
 fi
 
 put_json="${temp_root}/ruleset-put.json"
-if ! gh api "${api_headers[@]}" --method PUT   "repos/${repository}/rulesets/${ruleset_id}"   --input "${desired_ruleset}" >"${put_json}"; then
+if ! gh api "${api_headers[@]}" --method PUT "repos/${repository}/rulesets/${ruleset_id}" --input "${desired_ruleset}" >"${put_json}"; then
   echo "Failed to apply Solo default-branch Ruleset." >&2
   exit 5
 fi
