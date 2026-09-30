@@ -72,6 +72,10 @@ jobs:
         shell: bash
         run: python3 -m unittest scripts.ci.test_upload_artifact_rerun_policy -v
 
+      - name: Artifact download handoff policy
+        shell: bash
+        run: python3 -m unittest scripts.ci.test_download_artifact_handoff_policy -v
+
       - name: Ruleset governance validation
         shell: bash
         run: |
