@@ -99,8 +99,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 desired_ruleset="${repo_root}/rulesets/main-solo.json"
 offline_validator="${repo_root}/scripts/ci/validate_rulesets.py"
 live_validator="${repo_root}/scripts/ci/audit_main_ruleset.py"
+effective_rules_auditor="${repo_root}/scripts/ci/audit-live-main-rules.sh"
 
-for required_file in "${desired_ruleset}" "${offline_validator}" "${live_validator}"; do
+for required_file in "${desired_ruleset}" "${offline_validator}" "${live_validator}" "${effective_rules_auditor}"; do
   [[ -f "${required_file}" ]] || {
     echo "Required Ruleset control file is unavailable: ${required_file}" >&2
     exit 2
@@ -290,4 +291,9 @@ if ! python3 "${live_validator}" "${final_ruleset_json}" "${repository}" >/dev/n
   exit 6
 fi
 
-printf 'main Ruleset %s applied and verified for %s\n' "${ruleset_id}" "${repository}"
+if ! bash "${effective_rules_auditor}" "${repository}" >/dev/null; then
+  echo "Ruleset update converged, but effective default-branch rules still violate the Solo contract." >&2
+  exit 6
+fi
+
+printf 'main Ruleset %s applied and effective rules verified for %s\n' "${ruleset_id}" "${repository}"

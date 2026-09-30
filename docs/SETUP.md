@@ -57,9 +57,9 @@ bash scripts/setup/apply-main-ruleset.sh \
   --apply
 ```
 
-The helper validates `rulesets/main-solo.json` offline before any GitHub access, binds the repository numeric identity and default branch, requires the explicitly confirmed Ruleset to be repository-owned and already apply to that default branch, updates only that exact Ruleset ID, re-reads both identities, and requires the existing live Ruleset auditor to pass. It requires **Administration (write)** and must not be called from pull-request CI or from the read-only `Governance Audit` workflow.
+The helper validates `rulesets/main-solo.json` offline before any GitHub access, binds the repository numeric identity and default branch, requires the explicitly confirmed Ruleset to be repository-owned and already apply to that default branch, updates only that exact Ruleset ID, re-reads both identities, requires the selected Ruleset audit to pass, and finally requires GitHub's effective default-branch rules to match the Solo contract. It requires **Administration (write)** and must not be called from pull-request CI or from the read-only `Governance Audit` workflow.
 
-The helper intentionally does **not** discover a Ruleset to mutate, create missing Rulesets, or delete/disable overlapping legacy Rulesets. After reconciliation, still run both default-branch auditors so overlapping organization/repository policy cannot be hidden:
+The helper intentionally does **not** discover a Ruleset to mutate, create missing Rulesets, or delete/disable overlapping legacy Rulesets. If an overlap remains, the selected Ruleset mutation may already have succeeded but the helper exits non-zero because the effective-rules post-condition fails. After reconciliation, the read-only commands remain useful as operator-visible evidence:
 
 ```bash
 bash scripts/ci/audit-live-main-ruleset.sh owner/repo
