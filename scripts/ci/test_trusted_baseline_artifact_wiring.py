@@ -82,6 +82,11 @@ class TrustedBaselineArtifactWiringTests(unittest.TestCase):
         report = step_block(visual, "Upload visual comparison report")
 
         self.assertTrue(coverage)
+        self.assertIn(
+            "name: ${{ inputs.coverage_artifact_name }}-current-"
+            "${{ github.event.pull_request.number }}-${{ github.run_attempt }}",
+            coverage,
+        )
         self.assertIn("github.run_attempt", coverage)
         self.assertNotIn("overwrite: true", coverage)
 
