@@ -12,8 +12,11 @@ ENVIRONMENT_RE = re.compile(
 )
 JOB_RE = re.compile(r"^  (?P<job>[A-Za-z0-9_-]+):\s*(?:#.*)?$")
 PULL_REQUEST_TARGET_RE = re.compile(r"^  pull_request_target:\s*(?:#.*)?$")
+ON_INLINE_RE = re.compile(
+    r"^(?:on|\"on\"|'on'):\s*(?P<value>.+?)\s*$"
+)
 SECRETS_INHERIT_RE = re.compile(
-    r"^\s*secrets:\s*inherit\s*(?:#.*)?$"
+    r"^\s*secrets:\s*(?:inherit|\"inherit\"|'inherit')\s*(?:#.*)?$"
 )
 
 ALLOWED_ENVIRONMENTS: dict[tuple[str, str], str] = {
@@ -95,7 +98,17 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
     relative = path.as_posix()
 
     for index, raw in enumerate(lines):
-        if PULL_REQUEST_TARGET_RE.match(raw):
+        inline_trigger = ON_INLINE_RE.match(raw)
+        has_pull_request_target = PULL_REQUEST_TARGET_RE.match(raw) is not None
+        if inline_trigger is not None:
+            trigger_value = _strip_inline_comment(
+                inline_trigger.group("value")
+            )
+            has_pull_request_target = (
+                re.search(r"\bpull_request_target\b", trigger_value) is not None
+            )
+
+        if has_pull_request_target:
             violations.append(
                 PolicyViolation(
                     path=path,
