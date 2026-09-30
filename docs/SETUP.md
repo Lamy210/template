@@ -46,6 +46,26 @@ Create a branch Ruleset targeting `main` with:
 
 Do not configure one required approval for a repository with only one maintainer; it creates a self-approval deadlock.
 
+For an **existing repository-owned default-branch Ruleset** that has drifted from the reviewed Solo profile, an administrator can reconcile one exact Ruleset ID from a trusted local session:
+
+```bash
+bash scripts/setup/apply-main-ruleset.sh \
+  --repository owner/repo \
+  --confirm-repository owner/repo \
+  --ruleset-id <ruleset-id> \
+  --confirm-ruleset-id <ruleset-id> \
+  --apply
+```
+
+The helper validates `rulesets/main-solo.json` offline before any GitHub access, binds the repository numeric identity and default branch, requires the explicitly confirmed Ruleset to be repository-owned and already apply to that default branch, updates only that exact Ruleset ID, re-reads both identities, and requires the existing live Ruleset auditor to pass. It requires **Administration (write)** and must not be called from pull-request CI or from the read-only `Governance Audit` workflow.
+
+The helper intentionally does **not** discover a Ruleset to mutate, create missing Rulesets, or delete/disable overlapping legacy Rulesets. After reconciliation, still run both default-branch auditors so overlapping organization/repository policy cannot be hidden:
+
+```bash
+bash scripts/ci/audit-live-main-ruleset.sh owner/repo
+bash scripts/ci/audit-live-main-rules.sh owner/repo
+```
+
 ## 3. `main` Ruleset — Team OSS profile
 
 When multiple maintainers exist, change the pull-request policy to:

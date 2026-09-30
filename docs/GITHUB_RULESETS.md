@@ -435,10 +435,23 @@ Disable or replace obsolete overlapping Rulesets deliberately.
 
 Treat Git as the intended policy and GitHub Settings as the enforced policy. A mismatch is drift, not proof that either side changed automatically.
 
-The first-phase template does not reconcile drift automatically. Review the difference, then either:
+The template does not reconcile drift automatically from CI. Review the difference, then either:
 
 - update Git if the policy change was intentional; or
 - update GitHub Settings/import the reviewed desired state if live configuration drifted unintentionally.
+
+For an existing repository-owned Ruleset that already applies to the default branch, a trusted administrator session may use the guarded reconciliation helper:
+
+```bash
+bash scripts/setup/apply-main-ruleset.sh \
+  --repository owner/repo \
+  --confirm-repository owner/repo \
+  --ruleset-id <ruleset-id> \
+  --confirm-ruleset-id <ruleset-id> \
+  --apply
+```
+
+This is an explicit operator action, not continuous reconciliation. The helper requires a confirmed Ruleset ID, validates the checked-in Solo desired state before mutation, verifies repository/Ruleset identity before and after the update, and requires the live Solo Ruleset audit to converge. It neither creates Rulesets nor removes overlapping policy, so the effective-main doctor remains mandatory afterward.
 
 ## Security constraints
 
@@ -449,4 +462,4 @@ Never add the following merely to automate Ruleset import:
 - `pull_request_target` that executes untrusted fork code;
 - a permanent bypass actor used for routine merges.
 
-A future bootstrap/doctor tool may use a narrowly scoped administrator credential outside untrusted PR execution, but that is not part of this phase.
+The guarded setup helper may use a narrowly scoped administrator credential only from a trusted local operator session. Keep that credential outside untrusted PR execution and do not add Ruleset mutation to hosted governance CI.
