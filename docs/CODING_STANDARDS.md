@@ -177,6 +177,7 @@ ShellCheck and `shfmt` are required CI gates.
 - Do not place `${{ ... }}` expressions directly inside shell `run:` bodies. Route expression-derived values through `env:` first; this is enforced repository-wide.
 - Quoting a workflow YAML key does not change its security semantics. Policy enforcement treats plain, single-quoted, and double-quoted forms of security-sensitive keys such as `uses`, `run`, `permissions`, `environment`, `secrets`, and artifact selectors equivalently.
 - Do not use YAML anchors or aliases in executable workflows or workflow examples. GitHub Actions supports them, but this repository intentionally requires explicit workflow structure so security policies can audit the effective trust boundary without alias expansion.
+- Do not use non-empty YAML flow mappings such as `{ contents: write }` or `{ uses: owner/action@ref }` in executable workflows or workflow examples. Keep mappings in block style so line-oriented security policies cannot be bypassed by an alternate mapping representation. The explicit empty mapping `{}` remains allowed.
 
 `actionlint`, `zizmor`, and the repository workflow policies enforce these invariants automatically.
 
