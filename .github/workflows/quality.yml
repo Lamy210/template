@@ -78,7 +78,11 @@ jobs:
 
       - name: Actions supply-chain policy
         shell: bash
-        run: python3 -m unittest scripts.ci.test_actions_supply_chain_policy -v
+        run: |
+          python3 -m unittest \
+            scripts.ci.test_workflow_yaml_keys \
+            scripts.ci.test_actions_supply_chain_policy \
+            -v
 
       - name: Workflow token permission policy
         shell: bash
