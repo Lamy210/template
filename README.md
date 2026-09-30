@@ -155,9 +155,9 @@ The following are design requirements, not recommendations:
 - Privileged publisher control code and entitlements come from the trusted publisher/default-branch checkout, not from the release tag artifact.
 - The privileged job revalidates validator-owned metadata and archive content before importing the certificate.
 - Do not execute pull-request-controlled or release-artifact-controlled scripts in a job that has release secrets.
-- Do not use `pull_request_target` to check out and execute untrusted pull-request code.
+- Do not use `pull_request_target` to check out and execute untrusted pull-request code. Repository CI rejects the trigger across executable workflows and examples.
 - Default `GITHUB_TOKEN` permissions are empty/read-only. Repository CI enforces explicit top-level permissions and permits job-level write access only for the documented GitHub Release publication jobs.
-- Do not use `secrets: inherit` at the Apple release boundary; non-Environment credentials such as the Homebrew tap token use narrow named-secret interfaces.
+- Do not use `secrets: inherit`; repository CI requires narrow named-secret interfaces. GitHub Environment usage is allowlisted only for the protected macOS signing job and the disposable release-Environment proof example.
 - Pin third-party GitHub Actions to full commit SHAs and update them through Dependabot.
 - A published SemVer tag and its release assets are immutable; fix a release with a new version instead of moving/replacing it.
 
