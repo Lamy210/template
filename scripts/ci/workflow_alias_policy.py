@@ -15,11 +15,11 @@ KEY_VALUE_RE = re.compile(
     rf"^(?P<indent>\s*)(?P<item>-\s+)?(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*?)\s*$"
 )
 BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[+-]?[1-9]?|[1-9][+-]?)?$")
-# YAML 1.2 anchor names may use any non-space character except flow indicators.
-# Keep this broader than common parser subsets so the security policy fails closed.
+# YAML 1.2 anchor names may use non-space punctuation beyond common identifier
+# characters. Keep the token grammar broad, but only inspect YAML node positions.
 ANCHOR_NAME_TOKEN = r"[^\s,\[\]{}]+"
 ANCHOR_ALIAS_RE = re.compile(
-    rf"(?:^|[\s,\[\]{{}}:])(?P<token>[&*]{ANCHOR_NAME_TOKEN})"
+    rf"(?:^|[,\[\]{{}}:])\s*(?P<token>[&*]{ANCHOR_NAME_TOKEN})"
     r"(?=$|[\s,\[\]{}])"
 )
 DIRECT_ANCHOR_ALIAS_RE = re.compile(
@@ -99,6 +99,18 @@ def _direct_alias_or_anchor(value: str) -> str | None:
     return match.group("token") if match is not None else None
 
 
+def _structural_tokens(value: str) -> list[str]:
+    structural = _strip_comment_and_quoted_content(value).strip()
+    return [match.group("token") for match in ANCHOR_ALIAS_RE.finditer(structural)]
+
+
+def _block_node_payload(raw: str) -> str:
+    payload = raw.lstrip()
+    if len(payload) >= 2 and payload[0] in "-?:" and payload[1].isspace():
+        return payload[2:].lstrip()
+    return payload
+
+
 def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
     lines = text.splitlines()
     violations: list[PolicyViolation] = []
@@ -139,9 +151,11 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
                 )
                 continue
 
-        structural = _strip_comment_and_quoted_content(raw)
-        for match in ANCHOR_ALIAS_RE.finditer(structural):
-            token = match.group("token")
+            tokens = _structural_tokens(value)
+        else:
+            tokens = _structural_tokens(_block_node_payload(raw))
+
+        for token in tokens:
             violations.append(
                 PolicyViolation(
                     path=path,
