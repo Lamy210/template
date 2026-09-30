@@ -112,6 +112,7 @@ jobs:
       TEST_PLAN: ${{ inputs.test_plan }}
       TEST_FILTER: ${{ inputs.test_filter }}
       TEST_DESTINATION: ${{ inputs.destination }}
+      ENABLE_COVERAGE: ${{ inputs.enable_coverage }}
       COVERAGE_MAX_REGRESSION: ${{ inputs.coverage_max_regression }}
       COVERAGE_ARTIFACT_NAME: ${{ inputs.coverage_artifact_name }}
       BOOTSTRAP_COVERAGE: ${{ inputs.bootstrap_coverage }}
@@ -194,7 +195,7 @@ jobs:
         run: |
           set -euo pipefail
           args=(swift test --package-path "${WORKING_DIRECTORY}")
-          if [[ "${{ inputs.enable_coverage }}" == "true" ]]; then
+          if [[ "${ENABLE_COVERAGE}" == "true" ]]; then
             args+=(--enable-code-coverage)
           fi
           if [[ -n "${TEST_FILTER}" ]]; then
@@ -222,7 +223,7 @@ jobs:
           if [[ -n "${TEST_PLAN}" ]]; then
             args+=(-testPlan "${TEST_PLAN}")
           fi
-          if [[ "${{ inputs.enable_coverage }}" == "true" ]]; then
+          if [[ "${ENABLE_COVERAGE}" == "true" ]]; then
             args+=(-enableCodeCoverage YES)
           fi
           args+=(-resultBundlePath "${result_bundle}")
