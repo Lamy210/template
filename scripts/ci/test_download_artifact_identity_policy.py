@@ -102,6 +102,22 @@ jobs:
         self.assertEqual("Exact", steps[0].step_name)
         self.assertEqual("12345", steps[0].artifact_ids)
 
+    def test_quoted_keys_cannot_bypass_download_identity_policy(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  test:
+    steps:
+      - "uses": actions/download-artifact@deadbeef
+        "with":
+          "name": trusted-output
+          "path": output
+"""
+        )
+        self.assertEqual(2, len(violations))
+        self.assertTrue(any("artifact-ids" in item.message for item in violations))
+        self.assertTrue(any("name selector" in item.message for item in violations))
+
     def test_repository_has_no_name_or_pattern_downloads(self) -> None:
         violations = validate_repository(ROOT)
         self.assertEqual([], violations, violations)
