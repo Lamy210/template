@@ -130,7 +130,7 @@ jobs:
 jobs:
   test:
     steps:
-      - "uses": owner/action@{SHA}
+      - "uses": owner/action@v4
 """
         )
         self.assertEqual(1, len(mutable))
