@@ -17,23 +17,31 @@ class WorkflowTrustBoundaryPolicyTests(unittest.TestCase):
         return validate_workflow_text(Path(path), body)
 
     def test_rejects_pull_request_target(self) -> None:
-        violations = self.validate(
-            """
-on:
-  pull_request_target:
+        for trigger in (
+            "on:\n  pull_request_target:",
+            "on: pull_request_target",
+            "on: [push, pull_request_target]",
+            '"on": [pull_request, pull_request_target]',
+        ):
+            with self.subTest(trigger=trigger):
+                violations = self.validate(
+                    f"""
+{trigger}
 permissions:
   contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
 """
-        )
-        self.assertEqual(1, len(violations))
-        self.assertIn("pull_request_target", violations[0].message)
+                )
+                self.assertEqual(1, len(violations))
+                self.assertIn("pull_request_target", violations[0].message)
 
     def test_rejects_secrets_inherit(self) -> None:
-        violations = self.validate(
-            """
+        for value in ("inherit", '"inherit"', "'inherit'"):
+            with self.subTest(value=value):
+                violations = self.validate(
+                    f"""
 on:
   workflow_dispatch:
 permissions:
@@ -41,11 +49,11 @@ permissions:
 jobs:
   call:
     uses: ./.github/workflows/reusable.yml
-    secrets: inherit
+    secrets: {value}
 """
-        )
-        self.assertEqual(1, len(violations))
-        self.assertIn("secrets: inherit", violations[0].message)
+                )
+                self.assertEqual(1, len(violations))
+                self.assertIn("secrets: inherit", violations[0].message)
 
     def test_rejects_any_unapproved_environment(self) -> None:
         violations = self.validate(
