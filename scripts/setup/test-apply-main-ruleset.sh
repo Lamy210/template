@@ -15,8 +15,7 @@ set -euo pipefail
 : "${GH_FAKE_LOG:?GH_FAKE_LOG is required}"
 : "${GH_FAKE_STATE:?GH_FAKE_STATE is required}"
 
-printf '%q ' "$@" >>"${GH_FAKE_LOG}"
-printf '\n' >>"${GH_FAKE_LOG}"
+printf '%s\n' "$*" >>"${GH_FAKE_LOG}"
 
 scenario="${GH_FAKE_SCENARIO:-success}"
 args="$*"
