@@ -98,6 +98,32 @@ jobs:
         )
         self.assertEqual([], violations)
 
+    def test_quoted_run_key_cannot_bypass_expression_policy(self) -> None:
+        for body in (
+            """
+on:
+  push:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - "run": echo "${{ github.ref }}"
+""",
+            """
+on:
+  push:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - 'run': |
+          echo "${{ github.ref }}"
+""",
+        ):
+            with self.subTest(body=body):
+                violations = self.validate(body)
+                self.assertEqual(1, len(violations))
+
     def test_repository_workflows_have_no_direct_run_expressions(self) -> None:
         violations = validate_repository(ROOT)
         self.assertEqual([], violations, violations)
