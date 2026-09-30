@@ -76,6 +76,10 @@ jobs:
         shell: bash
         run: python3 -m unittest scripts.ci.test_download_artifact_identity_policy -v
 
+      - name: Actions supply-chain policy
+        shell: bash
+        run: python3 -m unittest scripts.ci.test_actions_supply_chain_policy -v
+
       - name: Ruleset governance validation
         shell: bash
         run: |
