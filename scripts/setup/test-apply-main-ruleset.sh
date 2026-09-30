@@ -119,7 +119,7 @@ grep -F -- "--apply is required" "${temp_root}/no-apply.err" >/dev/null
 }
 
 : >"${temp_root}/confirm-repo-gh.log"
-if PATH="${fake_bin}:${PATH}" GH_FAKE_LOG="${temp_root}/confirm-repo-gh.log" GH_FAKE_STATE="${temp_root}/unused2" bash "${script}" --repository Example/Repo --confirm-repository Example/Other --ruleset-id 42 --confirm-ruleset-id 42   --apply >"${temp_root}/confirm-repo.out" 2>"${temp_root}/confirm-repo.err"; then
+if PATH="${fake_bin}:${PATH}" GH_FAKE_LOG="${temp_root}/confirm-repo-gh.log" GH_FAKE_STATE="${temp_root}/unused2" bash "${script}" --repository Example/Repo --confirm-repository Example/Other --ruleset-id 42 --confirm-ruleset-id 42 --apply >"${temp_root}/confirm-repo.out" 2>"${temp_root}/confirm-repo.err"; then
   echo "Ruleset helper accepted mismatched repository confirmation." >&2
   exit 1
 fi
@@ -130,7 +130,7 @@ grep -F -- "--confirm-repository must exactly equal" "${temp_root}/confirm-repo.
 }
 
 : >"${temp_root}/confirm-ruleset-gh.log"
-if PATH="${fake_bin}:${PATH}" GH_FAKE_LOG="${temp_root}/confirm-ruleset-gh.log" GH_FAKE_STATE="${temp_root}/unused3" bash "${script}" --repository Example/Repo --confirm-repository Example/Repo --ruleset-id 42 --confirm-ruleset-id 43   --apply >"${temp_root}/confirm-ruleset.out" 2>"${temp_root}/confirm-ruleset.err"; then
+if PATH="${fake_bin}:${PATH}" GH_FAKE_LOG="${temp_root}/confirm-ruleset-gh.log" GH_FAKE_STATE="${temp_root}/unused3" bash "${script}" --repository Example/Repo --confirm-repository Example/Repo --ruleset-id 42 --confirm-ruleset-id 43 --apply >"${temp_root}/confirm-ruleset.out" 2>"${temp_root}/confirm-ruleset.err"; then
   echo "Ruleset helper accepted mismatched Ruleset confirmation." >&2
   exit 1
 fi
