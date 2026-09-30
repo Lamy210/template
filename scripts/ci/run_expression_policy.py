@@ -8,7 +8,7 @@ from scripts.ci.workflow_permission_policy import workflow_paths
 
 
 RUN_RE = re.compile(
-    r"^(?P<indent>\s*)run:\s*(?P<value>.*?)\s*$"
+    r"^(?P<indent>\s*)(?P<item>-\s+)?run:\s*(?P<value>.*?)\s*$"
 )
 EXPRESSION_RE = re.compile(r"\$\{\{")
 
