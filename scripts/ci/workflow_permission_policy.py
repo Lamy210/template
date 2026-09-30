@@ -5,14 +5,21 @@ from pathlib import Path
 import re
 from typing import Iterable
 
+from scripts.ci.workflow_yaml_keys import (
+    YAML_KEY_TOKEN,
+    normalize_yaml_key,
+    yaml_key_pattern,
+)
+
 
 PERMISSIONS_RE = re.compile(
-    r"^(?P<indent>\s*)permissions:\s*(?P<value>.*?)\s*$"
+    rf"^(?P<indent>\s*){yaml_key_pattern('permissions')}:\s*(?P<value>.*?)\s*$"
 )
 KEY_RE = re.compile(
-    r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*?)\s*$"
+    rf"^(?P<indent>\s*)(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*?)\s*$"
 )
-JOB_RE = re.compile(r"^  (?P<job>[A-Za-z0-9_-]+):\s*(?:#.*)?$")
+JOB_RE = re.compile(rf"^  (?P<job>{YAML_KEY_TOKEN}):\s*(?:#.*)?$")
+JOBS_RE = re.compile(rf"^{yaml_key_pattern('jobs')}:\s*(?:#.*)?$")
 
 ALLOWED_WRITE_PERMISSIONS: dict[tuple[str, str], dict[str, str]] = {
     (
@@ -104,7 +111,7 @@ def _permission_values(
         item_indent = _indent_width(item.group("indent"))
         if item_indent != indent + 2:
             continue
-        values[item.group("key")] = _unquote(item.group("value"))
+        values[normalize_yaml_key(item.group("key"))] = _unquote(item.group("value"))
     return values, None
 
 
@@ -127,7 +134,7 @@ def _top_level_permissions(path: Path, lines: list[str]) -> PermissionBlock | No
 def _job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
     jobs_index = -1
     for index, raw in enumerate(lines):
-        if raw.strip() == "jobs:" and not raw.startswith((" ", "\t")):
+        if JOBS_RE.match(raw) is not None and not raw.startswith((" ", "\t")):
             jobs_index = index
             break
     if jobs_index < 0:
@@ -140,7 +147,7 @@ def _job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
             break
         match = JOB_RE.match(raw)
         if match is not None:
-            starts.append((match.group("job"), index))
+            starts.append((normalize_yaml_key(match.group("job")), index))
 
     ranges: list[tuple[str, int, int]] = []
     for position, (job, start) in enumerate(starts):
@@ -184,7 +191,7 @@ def parse_permission_blocks(path: Path, text: str) -> list[PermissionBlock]:
 def _is_workflow_document(text: str) -> bool:
     lines = text.splitlines()
     has_jobs = any(
-        raw.strip() == "jobs:" and not raw.startswith((" ", "\t"))
+        JOBS_RE.match(raw) is not None and not raw.startswith((" ", "\t"))
         for raw in lines
     )
     has_trigger = any(
