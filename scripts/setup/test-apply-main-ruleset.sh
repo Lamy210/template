@@ -95,6 +95,22 @@ if [[ "${args}" == *"--method PUT repos/Example/Repo/rulesets/42"* ]]; then
   exit 0
 fi
 
+
+if [[ "${args}" == *"repos/Example/Repo"* && "${args}" == *"--jq .default_branch"* ]]; then
+  printf 'main\n'
+  exit 0
+fi
+
+if [[ "${args}" == *"repos/Example/Repo/rules/branches/main?per_page=100"* ]]; then
+  if [[ "${scenario}" == "overlapping-effective" ]]; then
+    printf '%s\n' '[[{"type":"deletion","ruleset_id":42},{"type":"non_fast_forward","ruleset_id":42},{"type":"required_linear_history","ruleset_id":42},{"type":"pull_request","ruleset_id":42,"parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":true,"allowed_merge_methods":["squash"],"required_reviewers":[],"require_extra_approval_for_unattributed_changes":false}},{"type":"pull_request","ruleset_id":999,"parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":false,"allowed_merge_methods":["merge","squash","rebase"]}},{"type":"required_status_checks","ruleset_id":42,"parameters":{"strict_required_status_checks_policy":true,"required_status_checks":[{"context":"Required gate"},{"context":"Tests / Required Gate"},{"context":"swift-quality / Swift quality"}],"do_not_enforce_on_create":false}}]]'
+    exit 0
+  fi
+
+  printf '%s\n' '[[{"type":"deletion","ruleset_id":42},{"type":"non_fast_forward","ruleset_id":42},{"type":"required_linear_history","ruleset_id":42},{"type":"pull_request","ruleset_id":42,"parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":true,"allowed_merge_methods":["squash"],"required_reviewers":[],"require_extra_approval_for_unattributed_changes":false}},{"type":"required_status_checks","ruleset_id":42,"parameters":{"strict_required_status_checks_policy":true,"required_status_checks":[{"context":"Required gate"},{"context":"Tests / Required Gate"},{"context":"swift-quality / Swift quality"}],"do_not_enforce_on_create":false}}]]'
+  exit 0
+fi
+
 echo "Unexpected gh command: ${args}" >&2
 exit 97
 FAKE_GH
@@ -141,10 +157,11 @@ grep -F -- "--confirm-ruleset-id must exactly equal" "${temp_root}/confirm-rules
 }
 
 success_output="$(run_apply success)"
-[[ "${success_output}" == "main Ruleset 42 applied and verified for Example/Repo" ]]
+[[ "${success_output}" == "main Ruleset 42 applied and effective rules verified for Example/Repo" ]]
 [[ "$(grep -Fc -- "--method PUT repos/Example/Repo/rulesets/42" "${temp_root}/gh-success.log")" -eq 1 ]]
 [[ "$(grep -Fc -- "--method GET repos/Example/Repo/rulesets/42?includes_parents=false" "${temp_root}/gh-success.log")" -eq 2 ]]
 [[ "$(grep -Fc -- "--method GET repos/Example/Repo" "${temp_root}/gh-success.log")" -eq 4 ]]
+[[ "$(grep -Fc -- "repos/Example/Repo/rules/branches/main?per_page=100" "${temp_root}/gh-success.log")" -eq 1 ]]
 
 for scenario in identity-mismatch wrong-ruleset-source wrong-ruleset-target ruleset-id-mismatch; do
   if run_apply "${scenario}" >"${temp_root}/${scenario}.out" 2>"${temp_root}/${scenario}.err"; then
@@ -174,5 +191,11 @@ if run_apply nonconvergent >"${temp_root}/nonconvergent.out" 2>"${temp_root}/non
   exit 1
 fi
 grep -F "Ruleset update did not converge to the checked-in Solo contract." "${temp_root}/nonconvergent.err" >/dev/null
+
+if run_apply overlapping-effective >"${temp_root}/overlapping-effective.out" 2>"${temp_root}/overlapping-effective.err"; then
+  echo "Ruleset helper accepted overlapping effective default-branch policy." >&2
+  exit 1
+fi
+grep -F "effective default-branch rules still violate the Solo contract" "${temp_root}/overlapping-effective.err" >/dev/null
 
 printf 'apply-main-ruleset tests passed\n'
