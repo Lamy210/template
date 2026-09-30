@@ -224,14 +224,14 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
             )
         )
     for permission, value in workflow.values.items():
-        if value != "read":
+        if value not in {"read", "none"}:
             violations.append(
                 PolicyViolation(
                     path=path,
                     line=workflow.line,
                     scope=workflow.scope,
                     message=(
-                        f"top-level permission {permission} must be read-only; "
+                        f"top-level permission {permission} must be read/none; "
                         f"found {value!r}"
                     ),
                 )
@@ -266,7 +266,7 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
         invalid_values = {
             permission: value
             for permission, value in block.values.items()
-            if value not in {"read", "write"}
+            if value not in {"read", "write", "none"}
         }
         for permission, value in invalid_values.items():
             violations.append(
@@ -275,7 +275,7 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
                     line=block.line,
                     scope=block.scope,
                     message=(
-                        f"job permission {permission} must be read or write; "
+                        f"job permission {permission} must be read, write, or none; "
                         f"found {value!r}"
                     ),
                 )
