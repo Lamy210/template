@@ -9,6 +9,13 @@ import sys
 from typing import Any
 
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.release.artifact_identity import normalize_uploaded_artifact_identity
+
+
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -52,13 +59,23 @@ def validate_current_run_artifact(
     if metadata.get("expired") is not False:
         raise ValidationError("artifact must exist and not be expired")
 
-    if artifact_id != expected_artifact_id:
+    try:
+        normalized_artifact_id, normalized_artifact_digest = (
+            normalize_uploaded_artifact_identity(
+                str(expected_artifact_id),
+                expected_artifact_digest,
+            )
+        )
+    except ValueError as error:
+        raise ValidationError(str(error)) from error
+
+    if artifact_id != int(normalized_artifact_id):
         raise ValidationError("artifact id does not match producer output")
     if artifact_name != expected_artifact_name:
         raise ValidationError("artifact name does not match producer output")
-    if not DIGEST_RE.fullmatch(expected_artifact_digest):
-        raise ValidationError("expected artifact digest must be sha256:<64 lowercase hex>")
-    if artifact_digest != expected_artifact_digest:
+    if not DIGEST_RE.fullmatch(artifact_digest):
+        raise ValidationError("Artifact API digest must be sha256:<64 lowercase hex>")
+    if artifact_digest != normalized_artifact_digest:
         raise ValidationError("artifact digest does not match producer output")
 
     workflow_run = metadata.get("workflow_run")
