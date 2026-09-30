@@ -5,10 +5,11 @@ from pathlib import Path
 import re
 
 from scripts.ci.workflow_permission_policy import workflow_paths
+from scripts.ci.workflow_yaml_keys import yaml_key_pattern
 
 
 RUN_RE = re.compile(
-    r"^(?P<indent>\s*)(?P<item>-\s+)?run:\s*(?P<value>.*?)\s*$"
+    rf"^(?P<indent>\s*)(?P<item>-\s+)?{yaml_key_pattern('run')}:\s*(?P<value>.*?)\s*$"
 )
 EXPRESSION_RE = re.compile(r"\$\{\{")
 
