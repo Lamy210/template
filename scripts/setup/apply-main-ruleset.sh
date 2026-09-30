@@ -270,7 +270,7 @@ fi
 IFS=$'\t' read -r _ _ final_default_branch <<<"${final_repository_identity}"
 
 final_ruleset_json="${temp_root}/ruleset-after.json"
-if ! gh api "${api_headers[@]}" --method GET   "repos/${repository}/rulesets/${ruleset_id}?includes_parents=false" >"${final_ruleset_json}"; then
+if ! gh api "${api_headers[@]}" --method GET "repos/${repository}/rulesets/${ruleset_id}?includes_parents=false" >"${final_ruleset_json}"; then
   echo "Failed to re-read selected Ruleset after update." >&2
   exit 6
 fi
