@@ -92,6 +92,10 @@ jobs:
         shell: bash
         run: python3 -m unittest scripts.ci.test_workflow_trust_boundary_policy -v
 
+      - name: Workflow anchor and alias policy
+        shell: bash
+        run: python3 -m unittest scripts.ci.test_workflow_alias_policy -v
+
       - name: Shell expression interpolation policy
         shell: bash
         run: python3 -m unittest scripts.ci.test_run_expression_policy -v

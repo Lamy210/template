@@ -159,6 +159,7 @@ The following are design requirements, not recommendations:
 - Default `GITHUB_TOKEN` permissions are empty/read-only. Repository CI enforces explicit top-level permissions and permits job-level write access only for the documented GitHub Release publication jobs.
 - Do not use `secrets: inherit`; repository CI requires narrow named-secret interfaces. GitHub Environment usage is allowlisted only for the protected macOS signing job and the disposable release-Environment proof example.
 - Do not interpolate GitHub expressions directly inside shell `run:` bodies. Route expression values through `env:`; repository CI enforces this across workflows and executable examples.
+- Do not use YAML anchors or aliases in executable workflows/examples; security-sensitive workflow structure must remain explicit for repository policy scanners.
 - Pin third-party GitHub Actions to full commit SHAs and update them through Dependabot.
 - A published SemVer tag and its release assets are immutable; fix a release with a new version instead of moving/replacing it.
 
