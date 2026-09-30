@@ -92,6 +92,17 @@ jobs:
             [item.token for item in violations],
         )
 
+    def test_rejects_flow_collection_anchor_and_alias(self) -> None:
+        violations = self.validate(
+            """
+env: { FIRST: &shared.value production, SECOND: *shared.value }
+"""
+        )
+        self.assertEqual(
+            ["&shared.value", "*shared.value"],
+            [item.token for item in violations],
+        )
+
     def test_accepts_anchor_like_text_inside_quotes(self) -> None:
         violations = self.validate(
             """
@@ -101,6 +112,19 @@ jobs:
     env:
       LITERAL_ONE: "*alias"
       LITERAL_TWO: '&anchor'
+"""
+        )
+        self.assertEqual([], violations)
+
+    def test_accepts_expression_boolean_operators(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  test:
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
 """
         )
         self.assertEqual([], violations)
