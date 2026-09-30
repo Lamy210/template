@@ -451,7 +451,7 @@ bash scripts/setup/apply-main-ruleset.sh \
   --apply
 ```
 
-This is an explicit operator action, not continuous reconciliation. The helper requires a confirmed Ruleset ID, validates the checked-in Solo desired state before mutation, verifies repository/Ruleset identity before and after the update, and requires the live Solo Ruleset audit to converge. It neither creates Rulesets nor removes overlapping policy, so the effective-main doctor remains mandatory afterward.
+This is an explicit operator action, not continuous reconciliation. The helper requires a confirmed Ruleset ID, validates the checked-in Solo desired state before mutation, verifies repository/Ruleset identity before and after the update, requires the selected Ruleset audit to converge, and then validates GitHub's effective default-branch rules. It neither creates Rulesets nor removes overlapping policy; an overlap therefore causes a non-zero post-mutation result instead of a false success.
 
 ## Security constraints
 
