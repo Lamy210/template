@@ -293,7 +293,9 @@ jobs:
     uses: $/.github/workflows/reusable-visual-regression.yml
     with:
       manifest_path: Tests/AdoptionFixtures/Xcode/VisualRegression/visual-regression.json
-      current_artifact_name: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
+      current_artifact_id: ${{ needs.macos-app-e2e.outputs.visual_artifact_id }}
+      current_artifact_digest: ${{ needs.macos-app-e2e.outputs.visual_artifact_digest }}
+      current_artifact_name: ${{ needs.macos-app-e2e.outputs.visual_artifact_name }}
       current_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       baseline_artifact_name: adoption-macos-ui-strict-baseline
       bootstrap_rolling: ${{ needs.prepare-macos-ui-strict.outputs.visual_bootstrap == 'true' }}

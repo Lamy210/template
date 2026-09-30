@@ -35,6 +35,15 @@ on:
       result:
         description: Raw E2E subsystem result before required/optional policy is applied.
         value: ${{ jobs.e2e.outputs.result }}
+      visual_artifact_id:
+        description: Exact visual capture Artifact ID produced by this workflow run.
+        value: ${{ jobs.e2e.outputs.visual_artifact_id }}
+      visual_artifact_digest:
+        description: SHA-256 digest reported by upload-artifact for the visual capture.
+        value: ${{ jobs.e2e.outputs.visual_artifact_digest }}
+      visual_artifact_name:
+        description: Attempt-scoped visual capture artifact name.
+        value: ${{ jobs.e2e.outputs.visual_artifact_name }}
 
 permissions:
   contents: read
@@ -46,6 +55,9 @@ jobs:
     timeout-minutes: 45
     outputs:
       result: ${{ steps.finalize.outputs.result }}
+      visual_artifact_id: ${{ steps.visual_upload.outputs.artifact-id }}
+      visual_artifact_digest: ${{ steps.visual_upload.outputs.artifact-digest }}
+      visual_artifact_name: macos-e2e-visual-${{ github.run_id }}-${{ github.run_attempt }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       WORKING_DIRECTORY: ${{ inputs.working_directory }}

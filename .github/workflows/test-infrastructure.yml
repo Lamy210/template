@@ -72,6 +72,12 @@ jobs:
       - name: Trusted baseline artifact wiring tests
         run: python3 scripts/ci/test_trusted_baseline_artifact_wiring.py -v
 
+      - name: Current-run artifact identity tests
+        run: python3 scripts/ci/test_current_run_artifact_identity.py -v
+
+      - name: Visual artifact handoff wiring tests
+        run: python3 scripts/ci/test_visual_artifact_handoff_wiring.py -v
+
       - name: Visual schedule wiring tests
         run: python3 scripts/ci/test_visual_schedule_wiring.py -v
 
