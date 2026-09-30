@@ -59,6 +59,39 @@ jobs:
         )
         self.assertEqual(["&shared", "*shared"], [item.token for item in violations])
 
+    def test_rejects_yaml_12_anchor_name_characters(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  base: &base.job
+    runs-on: ubuntu-latest
+  copy: *base.job
+  slash: &shared/path
+    runs-on: ubuntu-latest
+  slash-copy: *shared/path
+"""
+        )
+        self.assertEqual(
+            ["&base.job", "*base.job", "&shared/path", "*shared/path"],
+            [item.token for item in violations],
+        )
+
+    def test_rejects_yaml_12_anchor_name_in_run_alias(self) -> None:
+        violations = self.validate(
+            """
+command: &command.v2 echo unsafe
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: *command.v2
+"""
+        )
+        self.assertEqual(
+            ["&command.v2", "*command.v2"],
+            [item.token for item in violations],
+        )
+
     def test_accepts_anchor_like_text_inside_quotes(self) -> None:
         violations = self.validate(
             """
