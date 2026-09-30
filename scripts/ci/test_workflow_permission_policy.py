@@ -191,6 +191,39 @@ jobs:
         self.assertEqual({}, blocks[2].values)
         self.assertEqual("{}", blocks[2].inline)
 
+    def test_quoted_permission_keys_cannot_bypass_write_policy(self) -> None:
+        violations = self.validate(
+            """
+on:
+  push:
+"permissions":
+  "contents": read
+"jobs":
+  "test":
+    runs-on: ubuntu-latest
+    "permissions":
+      "contents": write
+"""
+        )
+        self.assertEqual(1, len(violations))
+        self.assertIn("write permissions are forbidden", violations[0].message)
+
+    def test_accepts_quoted_read_only_permission_keys(self) -> None:
+        violations = self.validate(
+            """
+on:
+  push:
+"permissions":
+  "contents": read
+"jobs":
+  "test":
+    runs-on: ubuntu-latest
+    "permissions":
+      "contents": none
+"""
+        )
+        self.assertEqual([], violations)
+
     def test_repository_workflows_follow_permission_policy(self) -> None:
         violations = validate_repository(ROOT)
         self.assertEqual([], violations, violations)

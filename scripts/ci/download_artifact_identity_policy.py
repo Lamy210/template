@@ -5,14 +5,22 @@ from pathlib import Path
 import re
 from typing import Iterable
 
+from scripts.ci.workflow_yaml_keys import (
+    YAML_KEY_TOKEN,
+    normalize_yaml_key,
+    yaml_key_pattern,
+)
+
 
 DOWNLOAD_ACTION_RE = re.compile(
-    r"^(?P<indent>\s*)(?P<item>-\s+)?uses:\s*['\"]?actions/download-artifact@"
+    rf"^(?P<indent>\s*)(?P<item>-\s+)?{yaml_key_pattern('uses')}:\s*['\"]?actions/download-artifact@"
 )
 STEP_ITEM_RE = re.compile(
-    r"^(?P<indent>\s*)-\s+(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$"
+    rf"^(?P<indent>\s*)-\s+(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*)$"
 )
-KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$")
+KEY_RE = re.compile(
+    rf"^(?P<indent>\s*)(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*)$"
+)
 
 
 @dataclass(frozen=True)
@@ -61,7 +69,7 @@ def _step_bounds(lines: list[str], uses_index: int) -> tuple[int, int, str]:
                 continue
             step_start = index
             step_indent = candidate_indent
-            if match.group("key") == "name" and match.group("value").strip():
+            if normalize_yaml_key(match.group("key")) == "name" and match.group("value").strip():
                 step_name = match.group("value").strip()
             break
 
@@ -85,7 +93,7 @@ def _with_values(lines: list[str], start: int, end: int) -> dict[str, str]:
     with_indent = -1
     for index in range(start, end):
         match = KEY_RE.match(lines[index])
-        if match is None or match.group("key") != "with":
+        if match is None or normalize_yaml_key(match.group("key")) != "with":
             continue
         with_index = index
         with_indent = _indent_width(match.group("indent"))
@@ -106,7 +114,7 @@ def _with_values(lines: list[str], start: int, end: int) -> dict[str, str]:
         if indent <= with_indent:
             break
         if indent == with_indent + 2:
-            values[match.group("key")] = match.group("value").strip()
+            values[normalize_yaml_key(match.group("key"))] = match.group("value").strip()
 
     return values
 

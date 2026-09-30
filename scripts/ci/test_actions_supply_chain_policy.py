@@ -124,6 +124,31 @@ jobs:
             [item.value for item in uses],
         )
 
+    def test_quoted_keys_cannot_bypass_action_policy(self) -> None:
+        mutable = self.validate(
+            f"""
+jobs:
+  test:
+    steps:
+      - "uses": owner/action@v4
+"""
+        )
+        self.assertEqual(1, len(mutable))
+        self.assertIn("full lowercase commit SHA", mutable[0].message)
+
+        checkout = self.validate(
+            f"""
+jobs:
+  test:
+    steps:
+      - "uses": actions/checkout@{SHA}
+        "with":
+          "persist-credentials": true
+"""
+        )
+        self.assertEqual(1, len(checkout))
+        self.assertIn("persist-credentials: false", checkout[0].message)
+
     def test_repository_actions_follow_supply_chain_policy(self) -> None:
         violations = validate_repository(ROOT)
         self.assertEqual([], violations, violations)

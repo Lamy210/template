@@ -5,14 +5,22 @@ from pathlib import Path
 import re
 from typing import Iterable
 
+from scripts.ci.workflow_yaml_keys import (
+    YAML_KEY_TOKEN,
+    normalize_yaml_key,
+    yaml_key_pattern,
+)
+
 
 USES_RE = re.compile(
-    r"^(?P<indent>\s*)(?P<item>-\s+)?uses:\s*(?P<value>.+?)\s*$"
+    rf"^(?P<indent>\s*)(?P<item>-\s+)?{yaml_key_pattern('uses')}:\s*(?P<value>.+?)\s*$"
 )
 STEP_ITEM_RE = re.compile(
-    r"^(?P<indent>\s*)-\s+(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$"
+    rf"^(?P<indent>\s*)-\s+(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*)$"
 )
-KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>.*)$")
+KEY_RE = re.compile(
+    rf"^(?P<indent>\s*)(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*)$"
+)
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 EXTERNAL_USE_RE = re.compile(
     r"^(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)"
@@ -85,7 +93,7 @@ def _step_context(
             continue
         start = index
         step_indent = candidate_indent
-        if item.group("key") == "name" and item.group("value").strip():
+        if normalize_yaml_key(item.group("key")) == "name" and item.group("value").strip():
             step_name = item.group("value").strip()
         break
 
@@ -106,7 +114,7 @@ def _with_values(lines: list[str], start: int, end: int) -> dict[str, str]:
     with_indent = -1
     for index in range(start, end):
         match = KEY_RE.match(lines[index])
-        if match is None or match.group("key") != "with":
+        if match is None or normalize_yaml_key(match.group("key")) != "with":
             continue
         with_index = index
         with_indent = _indent_width(match.group("indent"))
@@ -127,7 +135,7 @@ def _with_values(lines: list[str], start: int, end: int) -> dict[str, str]:
         if indent <= with_indent:
             break
         if indent == with_indent + 2:
-            values[match.group("key")] = _unquote(
+            values[normalize_yaml_key(match.group("key"))] = _unquote(
                 _strip_inline_comment(match.group("value"))
             )
     return values

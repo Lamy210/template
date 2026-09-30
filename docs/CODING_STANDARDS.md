@@ -175,6 +175,7 @@ ShellCheck and `shfmt` are required CI gates.
 - Do not pass privileged secrets wholesale with `secrets: inherit`.
 - Do not attach GitHub Environments to ordinary CI jobs. The protected `release` Environment is restricted to the release signing boundary; the disposable negative-proof example is the only test exception.
 - Do not place `${{ ... }}` expressions directly inside shell `run:` bodies. Route expression-derived values through `env:` first; this is enforced repository-wide.
+- Quoting a workflow YAML key does not change its security semantics. Policy enforcement treats plain, single-quoted, and double-quoted forms of security-sensitive keys such as `uses`, `run`, `permissions`, `environment`, `secrets`, and artifact selectors equivalently.
 
 `actionlint`, `zizmor`, and the repository workflow policies enforce these invariants automatically.
 

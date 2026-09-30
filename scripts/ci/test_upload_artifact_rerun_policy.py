@@ -182,6 +182,21 @@ jobs:
             [step.artifact_name for step in steps],
         )
 
+    def test_quoted_keys_cannot_bypass_upload_rerun_policy(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  test:
+    steps:
+      - "uses": actions/upload-artifact@deadbeef
+        "with":
+          "name": fixed-name
+          "path": output
+"""
+        )
+        self.assertEqual(1, len(violations))
+        self.assertIn("github.run_attempt", violations[0].message)
+
     def test_repository_upload_artifacts_follow_rerun_policy(self) -> None:
         violations = validate_repository(ROOT)
         self.assertEqual(

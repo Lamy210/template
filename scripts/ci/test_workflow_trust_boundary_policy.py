@@ -157,6 +157,48 @@ jobs:
             violations,
         )
 
+    def test_quoted_keys_cannot_bypass_trust_boundaries(self) -> None:
+        trigger = self.validate(
+            """
+on:
+  "pull_request_target":
+permissions: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+"""
+        )
+        self.assertTrue(any("pull_request_target" in item.message for item in trigger))
+
+        secrets = self.validate(
+            """
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  call:
+    uses: ./.github/workflows/reusable.yml
+    "secrets": inherit
+"""
+        )
+        self.assertTrue(any("secrets: inherit" in item.message for item in secrets))
+
+        environment = self.validate(
+            """
+on:
+  push:
+permissions: {}
+"jobs":
+  "deploy":
+    runs-on: ubuntu-latest
+    "environment": production
+"""
+        )
+        self.assertTrue(
+            any("Environment usage is forbidden" in item.message for item in environment),
+            environment,
+        )
+
     def test_repository_workflows_follow_trust_boundary_policy(self) -> None:
         violations = validate_repository(ROOT)
         self.assertEqual([], violations, violations)
