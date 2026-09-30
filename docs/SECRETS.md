@@ -131,7 +131,7 @@ The Apple secrets are resolved only when the called job enters `environment: rel
 
 ## GitHub Actions permissions
 
-Use `permissions: {}` or read-only workflow defaults and grant capabilities at the smallest possible job scope.
+Use `permissions: {}` or explicit read-only workflow defaults and grant capabilities at the smallest possible job scope. Quality enforces this repository-wide for executable workflows and workflow examples: top-level `write`, `read-all`, `write-all`, and expression-based permission shortcuts are rejected; job-level write access is allowlisted only for the GitHub Release publication boundary.
 
 Expected release permissions are:
 
