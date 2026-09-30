@@ -5,18 +5,26 @@ from pathlib import Path
 import re
 
 from scripts.ci.workflow_permission_policy import workflow_paths
+from scripts.ci.workflow_yaml_keys import (
+    YAML_KEY_TOKEN,
+    normalize_yaml_key,
+    yaml_key_pattern,
+)
 
 
 ENVIRONMENT_RE = re.compile(
-    r"^(?P<indent>\s*)environment:\s*(?P<value>.*?)\s*$"
+    rf"^(?P<indent>\s*){yaml_key_pattern('environment')}:\s*(?P<value>.*?)\s*$"
 )
-JOB_RE = re.compile(r"^  (?P<job>[A-Za-z0-9_-]+):\s*(?:#.*)?$")
-PULL_REQUEST_TARGET_RE = re.compile(r"^  pull_request_target:\s*(?:#.*)?$")
+JOB_RE = re.compile(rf"^  (?P<job>{YAML_KEY_TOKEN}):\s*(?:#.*)?$")
+JOBS_RE = re.compile(rf"^{yaml_key_pattern('jobs')}:\s*(?:#.*)?$")
+PULL_REQUEST_TARGET_RE = re.compile(
+    rf"^  {yaml_key_pattern('pull_request_target')}:\s*(?:#.*)?$"
+)
 ON_INLINE_RE = re.compile(
-    r"^(?:on|\"on\"|'on'):\s*(?P<value>.+?)\s*$"
+    rf"^{yaml_key_pattern('on')}:\s*(?P<value>.+?)\s*$"
 )
 SECRETS_INHERIT_RE = re.compile(
-    r"^\s*secrets:\s*(?:inherit|\"inherit\"|'inherit')\s*(?:#.*)?$"
+    rf"^\s*{yaml_key_pattern('secrets')}:\s*(?:inherit|\"inherit\"|'inherit')\s*(?:#.*)?$"
 )
 
 ALLOWED_ENVIRONMENTS: dict[tuple[str, str], str] = {
@@ -63,7 +71,7 @@ def _unquote(value: str) -> str:
 def _job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
     jobs_index = -1
     for index, raw in enumerate(lines):
-        if raw.strip() == "jobs:" and not raw.startswith((" ", "\t")):
+        if JOBS_RE.match(raw) is not None and not raw.startswith((" ", "\t")):
             jobs_index = index
             break
     if jobs_index < 0:
@@ -76,7 +84,7 @@ def _job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
             break
         match = JOB_RE.match(raw)
         if match is not None:
-            starts.append((match.group("job"), index))
+            starts.append((normalize_yaml_key(match.group("job")), index))
 
     ranges: list[tuple[str, int, int]] = []
     for position, (job, start) in enumerate(starts):
