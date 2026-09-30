@@ -7,13 +7,16 @@ import sys
 import tempfile
 import unittest
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from scripts.ci.current_run_artifact_identity import (
     ValidationError,
     validate_current_run_artifact,
 )
 
 
-ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "scripts/ci/current_run_artifact_identity.py"
 SHA = "0123456789abcdef0123456789abcdef01234567"
 DIGEST = "sha256:" + "a" * 64
