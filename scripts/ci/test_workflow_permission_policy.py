@@ -35,6 +35,7 @@ jobs:
             "permissions: {}",
             "permissions:\n  contents: read",
             "permissions:\n  contents: read\n  actions: read",
+            "permissions:\n  contents: none",
         ):
             with self.subTest(permissions=permissions):
                 violations = self.validate(
@@ -71,11 +72,27 @@ jobs:
                 self.assertTrue(
                     any(
                         "top-level permissions" in item.message
-                        or "read-only" in item.message
+                        or "read/none" in item.message
                         for item in violations
                     ),
                     violations,
                 )
+
+    def test_accepts_explicit_none_at_job_scope(self) -> None:
+        violations = self.validate(
+            """
+on:
+  push:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: none
+"""
+        )
+        self.assertEqual([], violations)
 
     def test_rejects_job_write_outside_release_allowlist(self) -> None:
         violations = self.validate(
