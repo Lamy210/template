@@ -15,9 +15,15 @@ KEY_VALUE_RE = re.compile(
     rf"^(?P<indent>\s*)(?P<item>-\s+)?(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*?)\s*$"
 )
 BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[+-]?[1-9]?|[1-9][+-]?)?$")
+# YAML 1.2 anchor names may use any non-space character except flow indicators.
+# Keep this broader than common parser subsets so the security policy fails closed.
+ANCHOR_NAME_TOKEN = r"[^\s,\[\]{}]+"
 ANCHOR_ALIAS_RE = re.compile(
-    r"(?:^|[\s,\[\]{}:])(?P<token>[&*][A-Za-z0-9_-]+)"
-    r"(?=$|[\s,\[\]{}:#])"
+    rf"(?:^|[\s,\[\]{{}}:])(?P<token>[&*]{ANCHOR_NAME_TOKEN})"
+    r"(?=$|[\s,\[\]{}])"
+)
+DIRECT_ANCHOR_ALIAS_RE = re.compile(
+    rf"^(?P<token>[&*]{ANCHOR_NAME_TOKEN})(?=$|[\s,\[\]{{}}])"
 )
 
 
@@ -89,7 +95,7 @@ def _strip_comment_and_quoted_content(value: str) -> str:
 
 def _direct_alias_or_anchor(value: str) -> str | None:
     stripped = _strip_comment_and_quoted_content(value).strip()
-    match = re.match(r"^(?P<token>[&*][A-Za-z0-9_-]+)(?:$|\s)", stripped)
+    match = DIRECT_ANCHOR_ALIAS_RE.match(stripped)
     return match.group("token") if match is not None else None
 
 
