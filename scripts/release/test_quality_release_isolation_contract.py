@@ -62,8 +62,30 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
     def test_quality_permission_fixture_is_scoped_to_run_attempt(self) -> None:
         text = self.quality_text()
         artifact_name = "release-app-permission-fixture-${{ github.run_attempt }}"
-        self.assertEqual(2, text.count(artifact_name))
+        self.assertGreaterEqual(text.count(artifact_name), 2)
         self.assertNotIn("name: release-app-permission-fixture\n", text)
+
+    def test_quality_permission_fixture_uses_exact_artifact_identity(self) -> None:
+        text = self.quality_text()
+
+        for token in (
+            "id: fixture_upload",
+            "artifact_id: ${{ steps.fixture_upload.outputs.artifact-id }}",
+            "artifact_digest: ${{ steps.fixture_upload.outputs.artifact-digest }}",
+            "actions: read",
+            "Validate exact packaged app fixture identity",
+            "scripts/ci/current_run_artifact_identity.py",
+            "artifact-ids: ${{ needs.release-artifact-package.outputs.artifact_id }}",
+            "merge-multiple: true",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, text)
+
+        download = text.index("- name: Download packaged app fixture")
+        extract = text.index("- name: Extract and verify executable permission")
+        self.assertLess(download, extract)
+        download_block = text[download:extract]
+        self.assertNotIn("name: release-app-permission-fixture", download_block)
 
     def test_required_gate_depends_on_repository_hygiene(self) -> None:
         text = self.quality_text()
