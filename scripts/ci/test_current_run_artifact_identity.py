@@ -69,6 +69,19 @@ class CurrentRunArtifactIdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "artifact name"):
             self.validate(metadata)
 
+    def test_accepts_bare_upload_artifact_digest(self) -> None:
+        result = validate_current_run_artifact(
+            artifact(),
+            expected_artifact_id=7001,
+            expected_artifact_name="macos-e2e-visual-12345-2",
+            expected_artifact_digest=DIGEST.removeprefix("sha256:"),
+            expected_run_id=12345,
+            expected_repository_id=1367784801,
+            expected_head_repository_id=1367784801,
+            expected_source_sha=SHA,
+        )
+        self.assertEqual(DIGEST, result["artifactDigest"])
+
     def test_rejects_digest_drift(self) -> None:
         metadata = artifact()
         metadata["digest"] = "sha256:" + "b" * 64
@@ -132,7 +145,7 @@ class CurrentRunArtifactIdentityTests(unittest.TestCase):
                     "--artifact-name",
                     "macos-e2e-visual-12345-2",
                     "--artifact-digest",
-                    DIGEST,
+                    DIGEST.removeprefix("sha256:"),
                     "--run-id",
                     "12345",
                     "--repository-id",
