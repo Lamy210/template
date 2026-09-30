@@ -201,6 +201,9 @@ if (
     or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", source) is None
 ):
     raise SystemExit("selected Ruleset has invalid source")
+source_owner, source_name = source.split("/", 1)
+if source_owner in {".", ".."} or source_name in {".", ".."}:
+    raise SystemExit("selected Ruleset has unsafe source")
 if source.casefold() != expected_repository.casefold():
     raise SystemExit(
         f"Ruleset source mismatch: expected {expected_repository!r}, got {source!r}"
