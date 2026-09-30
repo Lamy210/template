@@ -79,7 +79,13 @@ def _step_context(
 
     uses_indent = _indent_width(match.group("indent"))
     if match.group("item") is not None:
-        return uses_index, len(lines), "<unnamed action step>"
+        end = len(lines)
+        for index in range(uses_index + 1, len(lines)):
+            item = STEP_ITEM_RE.match(lines[index])
+            if item is not None and _indent_width(item.group("indent")) == uses_indent:
+                end = index
+                break
+        return uses_index, end, "<unnamed action step>"
 
     start = -1
     step_indent = -1

@@ -92,6 +92,56 @@ jobs:
                 self.assertEqual(1, len(violations))
                 self.assertIn("persist-credentials: false", violations[0].message)
 
+    def test_compact_checkout_does_not_borrow_later_step_inputs(self) -> None:
+        violations = self.validate(
+            f"""
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@{SHA}
+      - uses: owner/action@{SHA}
+        with:
+          persist-credentials: false
+"""
+        )
+        self.assertEqual(1, len(violations))
+        self.assertIn("persist-credentials: false", violations[0].message)
+
+    def test_compact_checkout_accepts_its_own_with_block(self) -> None:
+        violations = self.validate(
+            f"""
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@{SHA}
+        with:
+          persist-credentials: false
+      - uses: owner/action@{SHA}
+        with:
+          persist-credentials: true
+"""
+        )
+        self.assertEqual([], violations)
+
+    def test_compact_step_parser_keeps_with_values_isolated(self) -> None:
+        uses = parse_action_uses(
+            Path("fixture.yml"),
+            f"""
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@{SHA}
+      - uses: owner/action@{SHA}
+        with:
+          persist-credentials: false
+""",
+        )
+        self.assertEqual({}, uses[0].with_values)
+        self.assertEqual(
+            {"persist-credentials": "false"},
+            uses[1].with_values,
+        )
+
     def test_checkout_accepts_quoted_false_and_inline_action_comment(self) -> None:
         violations = self.validate(
             f"""
