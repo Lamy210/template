@@ -26,6 +26,9 @@ FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 LOCAL_REUSABLE_WORKFLOW_RE = re.compile(
     r"^(?:\./|\$/)\.github/workflows/[^/@]+\.ya?ml$"
 )
+EXTERNAL_REUSABLE_WORKFLOW_SUBPATH_RE = re.compile(
+    r"^/\.github/workflows/[^/@]+\.ya?ml$"
+)
 EXTERNAL_USE_RE = re.compile(
     r"^(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)"
     r"(?P<subpath>/[^@]+)?@(?P<ref>[^\s]+)$"
@@ -199,8 +202,8 @@ def validate_action_use(action: ActionUse) -> list[PolicyViolation]:
                 step_name=action.step_name,
                 message=(
                     "job-level local uses must reference a reusable workflow as "
-                    "./.github/workflows/<filename>.yml or "
-                    "$/.github/workflows/<filename>.yml"
+                    "./.github/workflows/<filename>.yml/.yaml or "
+                    "$/.github/workflows/<filename>.yml/.yaml"
                 ),
             )
         ]
@@ -220,6 +223,25 @@ def validate_action_use(action: ActionUse) -> list[PolicyViolation]:
         ]
 
     violations: list[PolicyViolation] = []
+    if action.scope == "job":
+        subpath = external.group("subpath")
+        if (
+            subpath is None
+            or EXTERNAL_REUSABLE_WORKFLOW_SUBPATH_RE.fullmatch(subpath) is None
+        ):
+            violations.append(
+                PolicyViolation(
+                    path=action.path,
+                    line=action.line,
+                    step_name=action.step_name,
+                    message=(
+                        "job-level external uses must reference "
+                        "owner/repository/.github/workflows/<filename>.yml@"
+                        "<40-char lowercase SHA>"
+                    ),
+                )
+            )
+
     if FULL_SHA_RE.fullmatch(external.group("ref")) is None:
         violations.append(
             PolicyViolation(
