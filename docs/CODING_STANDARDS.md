@@ -169,6 +169,7 @@ ShellCheck and `shfmt` are required CI gates.
 
 - Default `GITHUB_TOKEN` permissions to read-only and grant write scopes per job.
 - Pin third-party actions to full commit SHAs.
+- Keep local `uses:` references scope-correct: step-level local actions may use `$/path/to/action` or `./path/to/action`; job-level local calls must point directly to `$/.github/workflows/<filename>.yml` or `./.github/workflows/<filename>.yml`.
 - Set job timeouts.
 - Use `persist-credentials: false` for checkout when Git credentials are unnecessary.
 - Do not use `pull_request_target` to execute untrusted pull-request code.
