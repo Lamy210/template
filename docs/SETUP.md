@@ -20,7 +20,7 @@ bash scripts/setup/apply-repository-merge-settings.sh \
   --apply
 ```
 
-The helper requires exact repository confirmation before any GitHub access, resolves and snapshots repository identity before mutation, PATCHes only the four merge-policy fields, then re-resolves the repository and requires both stable identity and convergence to the checked-in policy. Run it with an administrator credential from a trusted local operator session; it is deliberately not invoked by pull-request CI or the `Governance Audit` workflow.
+The helper requires exact repository confirmation before any GitHub access, resolves and snapshots repository identity before mutation, PATCHes only the four merge-policy fields, then re-resolves the repository and requires both stable identity and convergence to the checked-in policy. Run it with an administrator credential from a trusted local operator session. The helper refuses ordinary GitHub Actions execution when `GITHUB_ACTIONS=true`; it is deliberately not invoked by pull-request CI or the `Governance Audit` workflow. This guard is defense in depth against accidental CI use, not a substitute for credential isolation: do not expose repository Administration credentials to Actions.
 
 Whether settings are applied manually or with the helper, verify the live repository afterward with:
 
@@ -57,7 +57,7 @@ bash scripts/setup/apply-main-ruleset.sh \
   --apply
 ```
 
-The helper validates `rulesets/main-solo.json` offline before any GitHub access, binds the repository numeric identity and default branch, requires the explicitly confirmed Ruleset to be repository-owned and already apply to that default branch, updates only that exact Ruleset ID, re-reads both identities, requires the selected Ruleset audit to pass, and finally requires GitHub's effective default-branch rules to match the Solo contract. It requires **Administration (write)** and must not be called from pull-request CI or from the read-only `Governance Audit` workflow.
+The helper validates `rulesets/main-solo.json` offline before any GitHub access, binds the repository numeric identity and default branch, requires the explicitly confirmed Ruleset to be repository-owned and already apply to that default branch, updates only that exact Ruleset ID, re-reads both identities, requires the selected Ruleset audit to pass, and finally requires GitHub's effective default-branch rules to match the Solo contract. It requires **Administration (write)** and refuses ordinary GitHub Actions execution when `GITHUB_ACTIONS=true`. This is an accidental-use guard rather than a security boundary; repository Administration credentials must remain outside Actions.
 
 The helper intentionally does **not** discover a Ruleset to mutate, create missing Rulesets, or delete/disable overlapping legacy Rulesets. If an overlap remains, the selected Ruleset mutation may already have succeeded but the helper exits non-zero because the effective-rules post-condition fails. After reconciliation, the read-only commands remain useful as operator-visible evidence:
 
@@ -81,7 +81,7 @@ bash scripts/setup/reconcile-solo-governance.sh \
 
 This command is an orchestrator over the two guarded helpers above; it does not bypass or weaken either helper's identity checks. It deliberately runs both mutation attempts and then the core doctor even if one mutation fails, so an operator gets a complete view of partial convergence in one invocation.
 
-The operation is **not transactional**. For example, repository merge settings may already be corrected when the Ruleset update later fails because an overlapping effective Ruleset remains. The final summary reports merge settings, Ruleset reconciliation, and doctor results independently, and the command exits non-zero unless all three succeed. It never discovers a Ruleset ID, removes overlapping Rulesets, or performs any mutation from hosted CI.
+The operation is **not transactional**. For example, repository merge settings may already be corrected when the Ruleset update later fails because an overlapping effective Ruleset remains. The final summary reports merge settings, Ruleset reconciliation, and doctor results independently, and the command exits non-zero unless all three succeed. It never discovers a Ruleset ID or removes overlapping Rulesets. The orchestrator also refuses ordinary GitHub Actions execution when `GITHUB_ACTIONS=true`; keep the administrator credential outside hosted CI even with this defense-in-depth check.
 
 ## 3. `main` Ruleset — Team OSS profile
 

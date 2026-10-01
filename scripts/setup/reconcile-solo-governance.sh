@@ -88,6 +88,11 @@ if [[ "${apply}" != true ]]; then
   exit 2
 fi
 
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo "Refusing repository governance mutation from GitHub Actions; run from a trusted local operator session." >&2
+  exit 2
+fi
+
 command -v bash >/dev/null 2>&1 || {
   echo "bash is required." >&2
   exit 2
