@@ -41,21 +41,57 @@ jobs:
         )
         self.assertEqual([], violations)
 
+    def test_accepts_local_actions_in_steps(self) -> None:
+        for value in (
+            "./.github/actions/local-action",
+            "$/.github/actions/local-action",
+        ):
+            with self.subTest(value=value):
+                body = f"""
+jobs:
+  test:
+    steps:
+      - uses: {value}
+"""
+                self.assertEqual([], self.validate(body))
+                uses = parse_action_uses(Path("fixture.yml"), body)
+                self.assertEqual("step", uses[0].scope)
+
     def test_accepts_local_reusable_workflows(self) -> None:
         for value in (
             "./.github/workflows/reusable.yml",
             "$/.github/workflows/reusable.yml",
         ):
             with self.subTest(value=value):
-                self.assertEqual(
-                    [],
-                    self.validate(
-                        f"""
+                body = f"""
 jobs:
   reusable:
     uses: {value}
 """
-                    ),
+                self.assertEqual([], self.validate(body))
+                uses = parse_action_uses(Path("fixture.yml"), body)
+                self.assertEqual("job", uses[0].scope)
+
+    def test_rejects_invalid_job_level_local_uses(self) -> None:
+        for value in (
+            "./.github/actions/local-action",
+            "$/.github/actions/local-action",
+            "./scripts/reusable.yml",
+            "$/.github/workflows/nested/reusable.yml",
+            "$/.github/workflows/reusable.yml@main",
+        ):
+            with self.subTest(value=value):
+                violations = self.validate(
+                    f"""
+jobs:
+  reusable:
+    uses: {value}
+"""
+                )
+                self.assertEqual(1, len(violations), violations)
+                self.assertIn(
+                    "job-level local uses must reference a reusable workflow",
+                    violations[0].message,
                 )
 
     def test_rejects_mutable_external_refs(self) -> None:
@@ -191,6 +227,7 @@ jobs:
             [f"owner/action@{SHA}", "./.github/workflows/two.yml"],
             [item.value for item in uses],
         )
+        self.assertEqual(["step", "job"], [item.scope for item in uses])
 
     def test_quoted_keys_cannot_bypass_action_policy(self) -> None:
         mutable = self.validate(
