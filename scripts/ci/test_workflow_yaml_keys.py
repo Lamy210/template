@@ -34,7 +34,6 @@ class WorkflowYamlKeyTests(unittest.TestCase):
     def test_normalize_yaml_key_does_not_modify_plain_key(self) -> None:
         self.assertEqual("pull_request_target", normalize_yaml_key("pull_request_target"))
 
-
     def test_workflow_job_ranges_stop_at_next_top_level_key(self) -> None:
         lines = [
             "jobs:",
@@ -50,6 +49,21 @@ class WorkflowYamlKeyTests(unittest.TestCase):
             workflow_job_ranges(lines),
         )
 
+    def test_workflow_job_ranges_ignore_top_level_comments_inside_jobs(self) -> None:
+        lines = [
+            "jobs:",
+            "  one:",
+            "    runs-on: ubuntu-latest",
+            "# comment between jobs",
+            "  two:",
+            "    runs-on: ubuntu-latest",
+            "permissions: {}",
+        ]
+        self.assertEqual(
+            [("one", 1, 4), ("two", 4, 6)],
+            workflow_job_ranges(lines),
+        )
+
     def test_workflow_job_ranges_reach_eof_when_jobs_is_last_section(self) -> None:
         lines = [
             "'jobs':",
@@ -60,7 +74,6 @@ class WorkflowYamlKeyTests(unittest.TestCase):
             [("test", 1, 3)],
             workflow_job_ranges(lines),
         )
-
 
 if __name__ == "__main__":
     unittest.main()
