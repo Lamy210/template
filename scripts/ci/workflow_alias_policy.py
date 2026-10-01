@@ -132,6 +132,10 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
             value = key_match.group("value").strip()
             if YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(value):
                 block_scalar_indent = indent
+                if key_match.group("item") is not None:
+                    block_scalar_indent += _indent_width(
+                        key_match.group("item")
+                    )
                 continue
 
             if key == "run":
