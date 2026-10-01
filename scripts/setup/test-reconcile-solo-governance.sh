@@ -59,6 +59,7 @@ run_reconcile() {
   local scenario="$1"
   local log="${temp_root}/${scenario}.log"
   PATH="${fake_bin}:${PATH}" \
+    GITHUB_ACTIONS=false \
     RECONCILE_SCENARIO="${scenario}" \
     RECONCILE_FAKE_LOG="${log}" \
     /bin/bash "${script}" \
@@ -116,6 +117,23 @@ fi
 grep -F -- "--apply is required" "${temp_root}/no-apply.err" >/dev/null
 [[ ! -s "${temp_root}/no-apply.log" ]] || {
   echo "Reconciliation invoked child helpers before --apply validation." >&2
+  exit 1
+}
+
+: >"${temp_root}/github-actions.log"
+if PATH="${fake_bin}:${PATH}" GITHUB_ACTIONS=true RECONCILE_FAKE_LOG="${temp_root}/github-actions.log" \
+  /bin/bash "${script}" \
+  --repository Example/Repo \
+  --confirm-repository Example/Repo \
+  --ruleset-id 42 \
+  --confirm-ruleset-id 42 \
+  --apply >"${temp_root}/github-actions.out" 2>"${temp_root}/github-actions.err"; then
+  echo "Reconciliation accepted mutation from GitHub Actions." >&2
+  exit 1
+fi
+grep -F "Refusing repository governance mutation from GitHub Actions" "${temp_root}/github-actions.err" >/dev/null
+[[ ! -s "${temp_root}/github-actions.log" ]] || {
+  echo "Reconciliation invoked child helpers before GitHub Actions refusal." >&2
   exit 1
 }
 
