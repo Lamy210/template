@@ -35,7 +35,11 @@ def workflow_job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
     section_end = len(lines)
     for index in range(jobs_index + 1, len(lines)):
         raw = lines[index]
-        if raw.strip() and not raw.startswith((" ", "\t")):
+        if (
+            raw.strip()
+            and not raw.lstrip().startswith("#")
+            and not raw.startswith((" ", "\t"))
+        ):
             section_end = index
             break
         match = WORKFLOW_JOB_RE.match(raw)
