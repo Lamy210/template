@@ -120,7 +120,7 @@ run_apply() {
   local scenario="$1"
   local log="${temp_root}/gh-${scenario}.log"
   local state="${temp_root}/state-${scenario}"
-  PATH="${fake_bin}:${PATH}" GH_FAKE_SCENARIO="${scenario}" GH_FAKE_LOG="${log}" GH_FAKE_STATE="${state}" bash "${script}" --repository Example/Repo --confirm-repository Example/Repo --ruleset-id 42 --confirm-ruleset-id 42 --apply
+  PATH="${fake_bin}:${PATH}" GITHUB_ACTIONS=false GH_FAKE_SCENARIO="${scenario}" GH_FAKE_LOG="${log}" GH_FAKE_STATE="${state}" bash "${script}" --repository Example/Repo --confirm-repository Example/Repo --ruleset-id 42 --confirm-ruleset-id 42 --apply
 }
 
 : >"${temp_root}/no-apply-gh.log"
@@ -153,6 +153,18 @@ fi
 grep -F -- "--confirm-ruleset-id must exactly equal" "${temp_root}/confirm-ruleset.err" >/dev/null
 [[ ! -s "${temp_root}/confirm-ruleset-gh.log" ]] || {
   echo "Ruleset helper contacted GitHub before Ruleset confirmation." >&2
+  exit 1
+}
+
+: >"${temp_root}/github-actions-gh.log"
+if PATH="${fake_bin}:${PATH}" GITHUB_ACTIONS=true GH_FAKE_LOG="${temp_root}/github-actions-gh.log" GH_FAKE_STATE="${temp_root}/github-actions-state" \
+  bash "${script}" --repository Example/Repo --confirm-repository Example/Repo --ruleset-id 42 --confirm-ruleset-id 42 --apply >"${temp_root}/github-actions.out" 2>"${temp_root}/github-actions.err"; then
+  echo "Ruleset helper accepted a mutation request from GitHub Actions." >&2
+  exit 1
+fi
+grep -F "Refusing repository governance mutation from GitHub Actions" "${temp_root}/github-actions.err" >/dev/null
+[[ ! -s "${temp_root}/github-actions-gh.log" ]] || {
+  echo "Ruleset helper contacted GitHub before GitHub Actions refusal." >&2
   exit 1
 }
 
