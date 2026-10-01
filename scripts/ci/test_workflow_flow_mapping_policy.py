@@ -132,6 +132,23 @@ jobs:
         )
         self.assertEqual([], violations)
 
+    def test_compact_run_block_does_not_hide_sibling_flow_mapping(self) -> None:
+        violations = self.validate(
+            """
+on:
+  push:
+permissions: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo safe
+        env: { UNSAFE: value }
+"""
+        )
+        self.assertEqual(1, len(violations))
+
     def test_accepts_mapping_text_inside_run_block(self) -> None:
         violations = self.validate(
             """

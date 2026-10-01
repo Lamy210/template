@@ -4,6 +4,9 @@ import re
 
 
 YAML_KEY_TOKEN = r'(?:[A-Za-z0-9_-]+|"[A-Za-z0-9_-]+"|\'[A-Za-z0-9_-]+\')'
+YAML_BLOCK_SCALAR_HEADER_RE = re.compile(
+    r"^[|>](?:[+-]?[1-9]?|[1-9][+-]?)?$"
+)
 WORKFLOW_JOB_RE = re.compile(rf"^  (?P<job>{YAML_KEY_TOKEN}):\s*(?:#.*)?$")
 WORKFLOW_JOBS_RE = re.compile(
     rf"^(?:jobs|\"jobs\"|'jobs'):\s*(?:#.*)?$"
@@ -20,6 +23,13 @@ def normalize_yaml_key(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
+
+
+def yaml_mapping_key_indent(indent: str, item: str | None) -> int:
+    width = len(indent.replace("\t", "    "))
+    if item is not None:
+        width += len(item.replace("\t", "    "))
+    return width
 
 
 def workflow_job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:

@@ -129,6 +129,21 @@ jobs:
         )
         self.assertEqual([], violations)
 
+    def test_compact_run_block_does_not_hide_sibling_anchor(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo safe
+        env:
+          UNSAFE: &shared value
+"""
+        )
+        self.assertEqual(["&shared"], [item.token for item in violations])
+
     def test_accepts_shell_globs_and_background_tokens_in_run_blocks(self) -> None:
         violations = self.validate(
             """

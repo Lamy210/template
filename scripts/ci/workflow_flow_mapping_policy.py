@@ -5,13 +5,16 @@ from pathlib import Path
 import re
 
 from scripts.ci.workflow_permission_policy import workflow_paths
-from scripts.ci.workflow_yaml_keys import YAML_KEY_TOKEN
+from scripts.ci.workflow_yaml_keys import (
+    YAML_BLOCK_SCALAR_HEADER_RE,
+    YAML_KEY_TOKEN,
+    yaml_mapping_key_indent,
+)
 
 
 KEY_VALUE_RE = re.compile(
     rf"^(?P<indent>\s*)(?P<item>-\s+)?(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*?)\s*$"
 )
-BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[+-]?[1-9]?|[1-9][+-]?)?$")
 
 
 @dataclass(frozen=True)
@@ -140,8 +143,11 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
         key_match = KEY_VALUE_RE.match(raw)
         if key_match is not None:
             value = key_match.group("value").strip()
-            if BLOCK_SCALAR_RE.fullmatch(value):
-                block_scalar_indent = indent
+            if YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(value):
+                block_scalar_indent = yaml_mapping_key_indent(
+                    key_match.group("indent"),
+                    key_match.group("item"),
+                )
                 continue
             candidate = value
         else:
