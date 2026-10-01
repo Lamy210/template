@@ -61,6 +61,7 @@ jobs:
         for value in (
             "./.github/workflows/reusable.yml",
             "$/.github/workflows/reusable.yml",
+            "./.github/workflows/reusable.yaml",
         ):
             with self.subTest(value=value):
                 body = f"""
@@ -71,6 +72,36 @@ jobs:
                 self.assertEqual([], self.validate(body))
                 uses = parse_action_uses(Path("fixture.yml"), body)
                 self.assertEqual("job", uses[0].scope)
+
+    def test_accepts_sha_pinned_external_reusable_workflow(self) -> None:
+        violations = self.validate(
+            f"""
+jobs:
+  reusable:
+    uses: owner/repo/.github/workflows/reusable.yml@{SHA}
+"""
+        )
+        self.assertEqual([], violations)
+
+    def test_rejects_non_workflow_external_job_uses(self) -> None:
+        for value in (
+            f"owner/action@{SHA}",
+            f"owner/repo/sub/action@{SHA}",
+            f"owner/repo/.github/workflows/nested/reusable.yml@{SHA}",
+        ):
+            with self.subTest(value=value):
+                violations = self.validate(
+                    f"""
+jobs:
+  reusable:
+    uses: {value}
+"""
+                )
+                self.assertEqual(1, len(violations), violations)
+                self.assertIn(
+                    "job-level external uses must reference",
+                    violations[0].message,
+                )
 
     def test_rejects_invalid_job_level_local_uses(self) -> None:
         for value in (
