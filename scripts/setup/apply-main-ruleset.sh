@@ -88,6 +88,11 @@ if [[ "${apply}" != true ]]; then
   exit 2
 fi
 
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo "Refusing repository governance mutation from GitHub Actions; run from a trusted local operator session." >&2
+  exit 2
+fi
+
 for command_name in gh python3 mktemp rm; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
