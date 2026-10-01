@@ -74,14 +74,16 @@ jobs:
                 self.assertEqual("job", uses[0].scope)
 
     def test_accepts_sha_pinned_external_reusable_workflow(self) -> None:
-        violations = self.validate(
-            f"""
+        for extension in ("yml", "yaml"):
+            with self.subTest(extension=extension):
+                violations = self.validate(
+                    f"""
 jobs:
   reusable:
-    uses: owner/repo/.github/workflows/reusable.yml@{SHA}
+    uses: owner/repo/.github/workflows/reusable.{extension}@{SHA}
 """
-        )
-        self.assertEqual([], violations)
+                )
+                self.assertEqual([], violations)
 
     def test_rejects_non_workflow_external_job_uses(self) -> None:
         for value in (
