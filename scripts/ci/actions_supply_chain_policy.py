@@ -202,8 +202,8 @@ def validate_action_use(action: ActionUse) -> list[PolicyViolation]:
                 step_name=action.step_name,
                 message=(
                     "job-level local uses must reference a reusable workflow as "
-                    "./.github/workflows/<filename>.yml/.yaml or "
-                    "$/.github/workflows/<filename>.yml/.yaml"
+                    "./.github/workflows/<filename>.yml (or .yaml) or "
+                    "$/.github/workflows/<filename>.yml (or .yaml)"
                 ),
             )
         ]
@@ -236,8 +236,8 @@ def validate_action_use(action: ActionUse) -> list[PolicyViolation]:
                     step_name=action.step_name,
                     message=(
                         "job-level external uses must reference "
-                        "owner/repository/.github/workflows/<filename>.yml@"
-                        "<40-char lowercase SHA>"
+                        "owner/repository/.github/workflows/<filename>.yml"
+                        " (or .yaml)@<40-char lowercase SHA>"
                     ),
                 )
             )
