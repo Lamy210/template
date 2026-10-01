@@ -123,6 +123,26 @@ jobs:
         )
         self.assertEqual([], violations)
 
+    def test_upload_does_not_borrow_later_job_inputs(self) -> None:
+        body = """
+jobs:
+  upload-job:
+    steps:
+      - uses: actions/upload-artifact@deadbeef
+  reusable-job:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      name: diagnostics-${{ github.run_attempt }}
+      overwrite: true
+"""
+        violations = self.validate(body)
+        self.assertEqual(1, len(violations))
+        self.assertIn("explicit name", violations[0].message)
+
+        steps = parse_upload_artifact_steps(Path("fixture.yml"), body)
+        self.assertIsNone(steps[0].artifact_name)
+        self.assertIsNone(steps[0].overwrite)
+
     def test_missing_name_is_rejected(self) -> None:
         violations = self.validate(
             """

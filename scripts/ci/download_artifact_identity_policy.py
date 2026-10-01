@@ -9,6 +9,7 @@ from scripts.ci.workflow_yaml_keys import (
     YAML_KEY_TOKEN,
     normalize_yaml_key,
     yaml_key_pattern,
+    yaml_sequence_item_end,
 )
 
 
@@ -78,12 +79,11 @@ def _step_bounds(lines: list[str], uses_index: int) -> tuple[int, int, str]:
                 f"download-artifact at line {uses_index + 1} is outside a workflow step"
             )
 
-    step_end = len(lines)
-    for index in range(step_start + 1, len(lines)):
-        match = STEP_ITEM_RE.match(lines[index])
-        if match is not None and _indent_width(match.group("indent")) == step_indent:
-            step_end = index
-            break
+    step_end = yaml_sequence_item_end(
+        lines,
+        start=step_start,
+        item_indent=step_indent,
+    )
 
     return step_start, step_end, step_name
 

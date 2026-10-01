@@ -9,6 +9,7 @@ from scripts.ci.workflow_yaml_keys import (
     YAML_KEY_TOKEN,
     normalize_yaml_key,
     yaml_key_pattern,
+    yaml_sequence_item_end,
 )
 
 
@@ -79,12 +80,11 @@ def _step_context(
 
     uses_indent = _indent_width(match.group("indent"))
     if match.group("item") is not None:
-        end = len(lines)
-        for index in range(uses_index + 1, len(lines)):
-            item = STEP_ITEM_RE.match(lines[index])
-            if item is not None and _indent_width(item.group("indent")) == uses_indent:
-                end = index
-                break
+        end = yaml_sequence_item_end(
+            lines,
+            start=uses_index,
+            item_indent=uses_indent,
+        )
         return uses_index, end, "<unnamed action step>"
 
     start = -1
@@ -106,12 +106,11 @@ def _step_context(
     if start < 0:
         return None
 
-    end = len(lines)
-    for index in range(start + 1, len(lines)):
-        item = STEP_ITEM_RE.match(lines[index])
-        if item is not None and _indent_width(item.group("indent")) == step_indent:
-            end = index
-            break
+    end = yaml_sequence_item_end(
+        lines,
+        start=start,
+        item_indent=step_indent,
+    )
     return start, end, step_name
 
 
