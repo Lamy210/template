@@ -19,6 +19,7 @@ def run_script(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
+    merged["GITHUB_ACTIONS"] = "false"
     if env:
         merged.update(env)
     return subprocess.run(
@@ -155,6 +156,17 @@ class ReleaseTagImmutabilityProofTests(unittest.TestCase):
         )
         self.assertEqual(2, result.returncode)
         self.assertIn("--confirm-disposable", result.stderr)
+
+    def test_refuses_github_actions_execution(self) -> None:
+        result = run_script(
+            *proof_args(),
+            env={"GITHUB_ACTIONS": "true"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn(
+            "Refusing destructive disposable-repository proof from GitHub Actions",
+            result.stderr,
+        )
 
     def test_rejects_current_repository_even_with_confirmation(self) -> None:
         result = run_script(
