@@ -107,6 +107,24 @@ jobs:
         self.assertEqual(1, len(violations))
         self.assertIn("persist-credentials: false", violations[0].message)
 
+    def test_checkout_does_not_borrow_later_job_inputs(self) -> None:
+        body = f"""
+jobs:
+  checkout-job:
+    steps:
+      - uses: actions/checkout@{SHA}
+  reusable-job:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      persist-credentials: false
+"""
+        violations = self.validate(body)
+        self.assertEqual(1, len(violations))
+        self.assertIn("persist-credentials: false", violations[0].message)
+
+        uses = parse_action_uses(Path("fixture.yml"), body)
+        self.assertEqual({}, uses[0].with_values)
+
     def test_compact_checkout_accepts_its_own_with_block(self) -> None:
         violations = self.validate(
             f"""
