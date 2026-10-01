@@ -25,11 +25,31 @@ def normalize_yaml_key(value: str) -> str:
     return value
 
 
+def yaml_indent_width(value: str) -> int:
+    return len(value.replace("\t", "    "))
+
+
 def yaml_mapping_key_indent(indent: str, item: str | None) -> int:
-    width = len(indent.replace("\t", "    "))
+    width = yaml_indent_width(indent)
     if item is not None:
-        width += len(item.replace("\t", "    "))
+        width += yaml_indent_width(item)
     return width
+
+
+def yaml_sequence_item_end(
+    lines: list[str],
+    *,
+    start: int,
+    item_indent: int,
+) -> int:
+    for index in range(start + 1, len(lines)):
+        raw = lines[index]
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = yaml_indent_width(raw) - yaml_indent_width(raw.lstrip())
+        if indent <= item_indent:
+            return index
+    return len(lines)
 
 
 def workflow_job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
