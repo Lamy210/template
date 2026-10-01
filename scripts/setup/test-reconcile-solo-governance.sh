@@ -9,7 +9,7 @@ trap 'rm -rf "${temp_root}"' EXIT
 fake_bin="${temp_root}/bin"
 mkdir -p "${fake_bin}"
 cat >"${fake_bin}/bash" <<'FAKE_BASH'
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 : "${RECONCILE_FAKE_LOG:?RECONCILE_FAKE_LOG is required}"
@@ -83,6 +83,23 @@ fi
 grep -F -- "--confirm-repository must exactly equal" "${temp_root}/prevalidation.err" >/dev/null
 [[ ! -s "${temp_root}/prevalidation.log" ]] || {
   echo "Reconciliation invoked child helpers before repository confirmation." >&2
+  exit 1
+}
+
+: >"${temp_root}/ruleset-confirmation.log"
+if PATH="${fake_bin}:${PATH}" RECONCILE_FAKE_LOG="${temp_root}/ruleset-confirmation.log" \
+  /bin/bash "${script}" \
+  --repository Example/Repo \
+  --confirm-repository Example/Repo \
+  --ruleset-id 42 \
+  --confirm-ruleset-id 43 \
+  --apply >"${temp_root}/ruleset-confirmation.out" 2>"${temp_root}/ruleset-confirmation.err"; then
+  echo "Reconciliation accepted mismatched Ruleset confirmation." >&2
+  exit 1
+fi
+grep -F -- "--confirm-ruleset-id must exactly equal" "${temp_root}/ruleset-confirmation.err" >/dev/null
+[[ ! -s "${temp_root}/ruleset-confirmation.log" ]] || {
+  echo "Reconciliation invoked child helpers before Ruleset confirmation." >&2
   exit 1
 }
 
