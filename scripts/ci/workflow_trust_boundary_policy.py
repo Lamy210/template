@@ -6,8 +6,7 @@ import re
 
 from scripts.ci.workflow_permission_policy import workflow_paths
 from scripts.ci.workflow_yaml_keys import (
-    YAML_KEY_TOKEN,
-    normalize_yaml_key,
+    workflow_job_ranges,
     yaml_key_pattern,
 )
 
@@ -15,8 +14,6 @@ from scripts.ci.workflow_yaml_keys import (
 ENVIRONMENT_RE = re.compile(
     rf"^(?P<indent>\s*){yaml_key_pattern('environment')}:\s*(?P<value>.*?)\s*$"
 )
-JOB_RE = re.compile(rf"^  (?P<job>{YAML_KEY_TOKEN}):\s*(?:#.*)?$")
-JOBS_RE = re.compile(rf"^{yaml_key_pattern('jobs')}:\s*(?:#.*)?$")
 PULL_REQUEST_TARGET_RE = re.compile(
     rf"^  {yaml_key_pattern('pull_request_target')}:\s*(?:#.*)?$"
 )
@@ -68,33 +65,8 @@ def _unquote(value: str) -> str:
     return value
 
 
-def _job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
-    jobs_index = -1
-    for index, raw in enumerate(lines):
-        if JOBS_RE.match(raw) is not None and not raw.startswith((" ", "\t")):
-            jobs_index = index
-            break
-    if jobs_index < 0:
-        return []
-
-    starts: list[tuple[str, int]] = []
-    for index in range(jobs_index + 1, len(lines)):
-        raw = lines[index]
-        if raw.strip() and not raw.startswith((" ", "\t")):
-            break
-        match = JOB_RE.match(raw)
-        if match is not None:
-            starts.append((normalize_yaml_key(match.group("job")), index))
-
-    ranges: list[tuple[str, int, int]] = []
-    for position, (job, start) in enumerate(starts):
-        end = starts[position + 1][1] if position + 1 < len(starts) else len(lines)
-        ranges.append((job, start, end))
-    return ranges
-
-
 def _job_for_line(lines: list[str], line_index: int) -> str | None:
-    for job, start, end in _job_ranges(lines):
+    for job, start, end in workflow_job_ranges(lines):
         if start < line_index < end:
             return job
     return None
