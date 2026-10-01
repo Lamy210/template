@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
-from typing import Iterable
+from typing import Iterable, Literal
 
 from scripts.ci.workflow_yaml_keys import (
     YAML_KEY_TOKEN,
@@ -23,6 +23,12 @@ KEY_RE = re.compile(
     rf"^(?P<indent>\s*)(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*)$"
 )
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+LOCAL_REUSABLE_WORKFLOW_RE = re.compile(
+    r"^(?:\./|\$/)\.github/workflows/[^/@]+\.ya?ml$"
+)
+EXTERNAL_REUSABLE_WORKFLOW_SUBPATH_RE = re.compile(
+    r"^/\.github/workflows/[^/@]+\.ya?ml$"
+)
 EXTERNAL_USE_RE = re.compile(
     r"^(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)"
     r"(?P<subpath>/[^@]+)?@(?P<ref>[^\s]+)$"
@@ -34,6 +40,7 @@ class ActionUse:
     path: Path
     line: int
     step_name: str
+    scope: Literal["step", "job"]
     value: str
     with_values: dict[str, str]
 
@@ -162,6 +169,7 @@ def parse_action_uses(path: Path, text: str) -> list[ActionUse]:
                     path=path,
                     line=index + 1,
                     step_name="<workflow/job-level use>",
+                    scope="job",
                     value=value,
                     with_values={},
                 )
@@ -173,6 +181,7 @@ def parse_action_uses(path: Path, text: str) -> list[ActionUse]:
                 path=path,
                 line=index + 1,
                 step_name=step_name,
+                scope="step",
                 value=value,
                 with_values=_with_values(lines, index + 1, end),
             )
@@ -182,7 +191,22 @@ def parse_action_uses(path: Path, text: str) -> list[ActionUse]:
 
 def validate_action_use(action: ActionUse) -> list[PolicyViolation]:
     if action.value.startswith("./") or action.value.startswith("$/"):
-        return []
+        if action.scope == "step":
+            return []
+        if LOCAL_REUSABLE_WORKFLOW_RE.fullmatch(action.value) is not None:
+            return []
+        return [
+            PolicyViolation(
+                path=action.path,
+                line=action.line,
+                step_name=action.step_name,
+                message=(
+                    "job-level local uses must reference a reusable workflow as "
+                    "./.github/workflows/<filename>.yml (or .yaml) or "
+                    "$/.github/workflows/<filename>.yml (or .yaml)"
+                ),
+            )
+        ]
 
     external = EXTERNAL_USE_RE.fullmatch(action.value)
     if external is None:
@@ -199,6 +223,25 @@ def validate_action_use(action: ActionUse) -> list[PolicyViolation]:
         ]
 
     violations: list[PolicyViolation] = []
+    if action.scope == "job":
+        subpath = external.group("subpath")
+        if (
+            subpath is None
+            or EXTERNAL_REUSABLE_WORKFLOW_SUBPATH_RE.fullmatch(subpath) is None
+        ):
+            violations.append(
+                PolicyViolation(
+                    path=action.path,
+                    line=action.line,
+                    step_name=action.step_name,
+                    message=(
+                        "job-level external uses must reference "
+                        "owner/repository/.github/workflows/<filename>.yml"
+                        " (or .yaml)@<40-char lowercase SHA>"
+                    ),
+                )
+            )
+
     if FULL_SHA_RE.fullmatch(external.group("ref")) is None:
         violations.append(
             PolicyViolation(
