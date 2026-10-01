@@ -173,6 +173,8 @@ bash scripts/release/prove-release-environment-policy.sh \
   --confirm-disposable owner/disposable-release-proof
 ```
 
+Run this destructive proof only from a trusted local operator session. The script refuses ordinary GitHub Actions execution when `GITHUB_ACTIONS=true`; do not work around that guard by moving a write-capable proof credential into hosted CI.
+
 The proof first dispatches the secret-free workflow from the default branch and requires the `release` Environment job to succeed. It then creates a temporary branch and arbitrary tag at the same commit and requires those two Environment jobs to be denied while their non-Environment baseline jobs still succeed. This positive control prevents an accidentally deny-all Environment from producing a false pass. Temporary refs are removed afterward. The script refuses the current `GITHUB_REPOSITORY`, so do not weaken that guardrail to test the production repository.
 
 ### Unified template doctor
