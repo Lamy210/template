@@ -19,6 +19,7 @@ def run_script(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
+    merged["GITHUB_ACTIONS"] = "false"
     if env:
         merged.update(env)
     return subprocess.run(
@@ -246,6 +247,20 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("--confirm-disposable", result.stderr)
 
+    def test_refuses_github_actions_execution(self) -> None:
+        result = run_script(
+            "--repository",
+            "example/disposable",
+            "--confirm-disposable",
+            "example/disposable",
+            env={"GITHUB_ACTIONS": "true"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn(
+            "Refusing destructive disposable-repository proof from GitHub Actions",
+            result.stderr,
+        )
+
     def test_refuses_current_repository(self) -> None:
         result = run_script(
             "--repository",
@@ -292,6 +307,7 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
 
     def test_contract_requires_positive_default_and_negative_branch_tag_controls(self) -> None:
         text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("GITHUB_ACTIONS", text)
         self.assertIn("gh workflow run", text)
         self.assertIn("refs/heads/", text)
         self.assertIn("refs/tags/", text)
@@ -307,6 +323,11 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("resolve-github-repository-from-remote.py", text)
         self.assertIn("same_repository", text)
         self.assertIn("refuses the local checkout repository", text)
+        self.assertLess(
+            text.index("GITHUB_ACTIONS"),
+            text.index("--method POST"),
+            "GitHub Actions refusal must run before temporary ref creation",
+        )
         self.assertLess(
             text.index('git -C "${repo_root}" remote get-url origin'),
             text.index("--method POST"),
