@@ -4,6 +4,7 @@ import re
 import unittest
 
 from scripts.ci.workflow_yaml_keys import (
+    YAML_BLOCK_SCALAR_HEADER_RE,
     YAML_KEY_TOKEN,
     normalize_yaml_key,
     workflow_job_ranges,
@@ -17,6 +18,35 @@ class WorkflowYamlKeyTests(unittest.TestCase):
         for value in ("uses:", '"uses":', "'uses':"):
             with self.subTest(value=value):
                 self.assertIsNotNone(pattern.fullmatch(value))
+
+    def test_block_scalar_header_accepts_chomping_and_indent_indicators(self) -> None:
+        for header in (
+            "|",
+            ">",
+            "|-",
+            "|+",
+            ">-",
+            ">+",
+            "|2",
+            "|2-",
+            "|-2",
+            "|2+",
+            "|+2",
+            ">9",
+            ">9-",
+            ">+9",
+        ):
+            with self.subTest(header=header):
+                self.assertIsNotNone(
+                    YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(header)
+                )
+
+    def test_block_scalar_header_rejects_invalid_indent_indicators(self) -> None:
+        for header in ("|0", ">0", "|10", "|-+", "||"):
+            with self.subTest(header=header):
+                self.assertIsNone(
+                    YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(header)
+                )
 
     def test_generic_key_token_accepts_supported_key_forms(self) -> None:
         pattern = re.compile(rf"^(?P<key>{YAML_KEY_TOKEN}):$")
