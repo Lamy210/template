@@ -84,6 +84,11 @@ if [[ "${initial_sha}" == "${move_sha}" ]]; then
   exit 2
 fi
 
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo "Refusing destructive disposable-repository proof from GitHub Actions; run from a trusted local operator session." >&2
+  exit 2
+fi
+
 for command_name in gh git python3; do
   command -v "${command_name}" >/dev/null 2>&1 || {
     echo "${command_name} is required." >&2
