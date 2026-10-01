@@ -8,6 +8,7 @@ from scripts.ci.workflow_permission_policy import workflow_paths
 from scripts.ci.workflow_yaml_keys import (
     YAML_BLOCK_SCALAR_HEADER_RE,
     YAML_KEY_TOKEN,
+    yaml_mapping_key_indent,
 )
 
 
@@ -143,11 +144,10 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
         if key_match is not None:
             value = key_match.group("value").strip()
             if YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(value):
-                block_scalar_indent = indent
-                if key_match.group("item") is not None:
-                    block_scalar_indent += _indent_width(
-                        key_match.group("item")
-                    )
+                block_scalar_indent = yaml_mapping_key_indent(
+                    key_match.group("indent"),
+                    key_match.group("item"),
+                )
                 continue
             candidate = value
         else:
