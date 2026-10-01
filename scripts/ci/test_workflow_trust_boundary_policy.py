@@ -86,6 +86,37 @@ jobs:
         )
         self.assertEqual([], violations)
 
+    def test_top_level_environment_after_jobs_does_not_satisfy_release_job(self) -> None:
+        violations = self.validate(
+            """
+on:
+  workflow_call:
+permissions: {}
+jobs:
+  release:
+    runs-on: macos-latest
+environment: release
+""",
+            path=".github/workflows/reusable-macos-release.yml",
+        )
+        self.assertEqual(2, len(violations), violations)
+        self.assertTrue(
+            any(
+                item.scope == "workflow"
+                and "Environment usage is forbidden" in item.message
+                for item in violations
+            ),
+            violations,
+        )
+        self.assertTrue(
+            any(
+                item.scope == "job:release"
+                and "required release-boundary Environment" in item.message
+                for item in violations
+            ),
+            violations,
+        )
+
     def test_rejects_expression_or_renamed_release_environment(self) -> None:
         for value in (
             "production",
