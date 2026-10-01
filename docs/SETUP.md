@@ -66,6 +66,23 @@ bash scripts/ci/audit-live-main-ruleset.sh owner/repo
 bash scripts/ci/audit-live-main-rules.sh owner/repo
 ```
 
+### Reconcile the Solo governance baseline in one operator run
+
+After the intended existing default-branch Ruleset ID is known, a trusted administrator can apply both repository merge settings and that Ruleset, then run the full read-only core doctor in one command:
+
+```bash
+bash scripts/setup/reconcile-solo-governance.sh \
+  --repository owner/repo \
+  --confirm-repository owner/repo \
+  --ruleset-id <ruleset-id> \
+  --confirm-ruleset-id <ruleset-id> \
+  --apply
+```
+
+This command is an orchestrator over the two guarded helpers above; it does not bypass or weaken either helper's identity checks. It deliberately runs both mutation attempts and then the core doctor even if one mutation fails, so an operator gets a complete view of partial convergence in one invocation.
+
+The operation is **not transactional**. For example, repository merge settings may already be corrected when the Ruleset update later fails because an overlapping effective Ruleset remains. The final summary reports merge settings, Ruleset reconciliation, and doctor results independently, and the command exits non-zero unless all three succeed. It never discovers a Ruleset ID, removes overlapping Rulesets, or performs any mutation from hosted CI.
+
 ## 3. `main` Ruleset — Team OSS profile
 
 When multiple maintainers exist, change the pull-request policy to:
