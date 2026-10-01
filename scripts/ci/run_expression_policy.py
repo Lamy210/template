@@ -53,7 +53,7 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
 
         run_indent = _indent_width(match.group("indent"))
         if match.group("item") is not None:
-            run_indent += 2
+            run_indent += _indent_width(match.group("item"))
         value = _strip_inline_comment(match.group("value")).strip()
 
         if value and YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(value) is None:
