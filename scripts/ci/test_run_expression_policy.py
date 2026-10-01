@@ -64,7 +64,16 @@ jobs:
         self.assertEqual(1, len(violations))
 
     def test_rejects_expression_in_explicit_indent_run_blocks(self) -> None:
-        for header in ("|2", "|2-", "|-2", "|2+", "|+2", ">2", ">2-", ">+2"):
+        for header in (
+            "|2",
+            "|2-",
+            "|-2",
+            "|2+",
+            "|+2",
+            ">2",
+            ">2-",
+            ">+2",
+        ):
             with self.subTest(header=header):
                 body = (
                     "\non:\n"
@@ -82,6 +91,23 @@ jobs:
                     "route expression values through env",
                     violations[0].message,
                 )
+
+    def test_compact_run_block_stops_before_sibling_env(self) -> None:
+        violations = self.validate(
+            """
+on:
+  push:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          printf '%s\\n' "${REF}"
+        env:
+          REF: ${{ github.ref }}
+"""
+        )
+        self.assertEqual([], violations)
 
     def test_accepts_safe_explicit_indent_run_block(self) -> None:
         violations = self.validate(
