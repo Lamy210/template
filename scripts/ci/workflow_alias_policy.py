@@ -6,6 +6,7 @@ import re
 
 from scripts.ci.workflow_permission_policy import workflow_paths
 from scripts.ci.workflow_yaml_keys import (
+    YAML_BLOCK_SCALAR_HEADER_RE,
     YAML_KEY_TOKEN,
     normalize_yaml_key,
 )
@@ -14,7 +15,6 @@ from scripts.ci.workflow_yaml_keys import (
 KEY_VALUE_RE = re.compile(
     rf"^(?P<indent>\s*)(?P<item>-\s+)?(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*?)\s*$"
 )
-BLOCK_SCALAR_RE = re.compile(r"^[|>](?:[+-]?[1-9]?|[1-9][+-]?)?$")
 # YAML 1.2 anchor names may use non-space punctuation beyond common identifier
 # characters. Keep the token grammar broad, but only inspect YAML node positions.
 ANCHOR_NAME_TOKEN = r"[^\s,\[\]{}]+"
@@ -130,7 +130,7 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
         if key_match is not None:
             key = normalize_yaml_key(key_match.group("key"))
             value = key_match.group("value").strip()
-            if BLOCK_SCALAR_RE.fullmatch(value):
+            if YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(value):
                 block_scalar_indent = indent
                 continue
 
