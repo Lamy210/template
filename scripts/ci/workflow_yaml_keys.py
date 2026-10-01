@@ -4,6 +4,9 @@ import re
 
 
 YAML_KEY_TOKEN = r'(?:[A-Za-z0-9_-]+|"[A-Za-z0-9_-]+"|\'[A-Za-z0-9_-]+\')'
+YAML_BLOCK_SCALAR_HEADER_RE = re.compile(
+    r"^[|>](?:[+-]?[1-9]?|[1-9][+-]?)?$"
+)
 WORKFLOW_JOB_RE = re.compile(rf"^  (?P<job>{YAML_KEY_TOKEN}):\s*(?:#.*)?$")
 WORKFLOW_JOBS_RE = re.compile(
     rf"^(?:jobs|\"jobs\"|'jobs'):\s*(?:#.*)?$"
