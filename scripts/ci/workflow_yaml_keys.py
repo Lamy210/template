@@ -25,6 +25,13 @@ def normalize_yaml_key(value: str) -> str:
     return value
 
 
+def yaml_mapping_key_indent(indent: str, item: str | None) -> int:
+    width = len(indent.replace("\t", "    "))
+    if item is not None:
+        width += len(item.replace("\t", "    "))
+    return width
+
+
 def workflow_job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
     jobs_index = -1
     for index, raw in enumerate(lines):
