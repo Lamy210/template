@@ -5,7 +5,10 @@ from pathlib import Path
 import re
 
 from scripts.ci.workflow_permission_policy import workflow_paths
-from scripts.ci.workflow_yaml_keys import yaml_key_pattern
+from scripts.ci.workflow_yaml_keys import (
+    YAML_BLOCK_SCALAR_HEADER_RE,
+    yaml_key_pattern,
+)
 
 
 RUN_RE = re.compile(
@@ -51,7 +54,7 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
         run_indent = _indent_width(match.group("indent"))
         value = _strip_inline_comment(match.group("value")).strip()
 
-        if value and value not in {"|", ">", "|-", "|+", ">-", ">+"}:
+        if value and YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(value) is None:
             if EXPRESSION_RE.search(value):
                 violations.append(
                     PolicyViolation(
