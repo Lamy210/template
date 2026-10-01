@@ -13,6 +13,7 @@ SCRIPT = REPO_ROOT / "scripts/release/prove-post-split-ancestor-runtime.sh"
 
 def run_script(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
+    merged["GITHUB_ACTIONS"] = "false"
     if env:
         merged.update(env)
     return subprocess.run(
@@ -37,6 +38,24 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
         )
         self.assertEqual(2, result.returncode)
         self.assertIn("--confirm-disposable", result.stderr)
+
+    def test_refuses_github_actions_execution(self) -> None:
+        result = run_script(
+            "--repository",
+            "example/disposable",
+            "--confirm-disposable",
+            "example/disposable",
+            "--source-ref",
+            "old-main",
+            "--tag",
+            "v0.0.1",
+            env={"GITHUB_ACTIONS": "true"},
+        )
+        self.assertEqual(2, result.returncode)
+        self.assertIn(
+            "Refusing destructive disposable-repository proof from GitHub Actions",
+            result.stderr,
+        )
 
     def test_refuses_current_repository(self) -> None:
         result = run_script(
@@ -146,6 +165,12 @@ class PostSplitRuntimeProofRunnerTests(unittest.TestCase):
             with self.subTest(token=token):
                 self.assertIn(token, text)
 
+        self.assertIn("GITHUB_ACTIONS", text)
+        self.assertLess(
+            text.index("GITHUB_ACTIONS"),
+            text.index("--method POST"),
+            "GitHub Actions refusal must run before proof tag creation",
+        )
         self.assertIn("--method POST", text)
         self.assertNotIn("--method DELETE", text)
         self.assertNotIn("contents: write", text)
