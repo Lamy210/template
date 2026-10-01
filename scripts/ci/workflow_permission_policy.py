@@ -8,6 +8,7 @@ from typing import Iterable
 from scripts.ci.workflow_yaml_keys import (
     YAML_KEY_TOKEN,
     normalize_yaml_key,
+    workflow_job_ranges,
     yaml_key_pattern,
 )
 
@@ -18,7 +19,6 @@ PERMISSIONS_RE = re.compile(
 KEY_RE = re.compile(
     rf"^(?P<indent>\s*)(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*?)\s*$"
 )
-JOB_RE = re.compile(rf"^  (?P<job>{YAML_KEY_TOKEN}):\s*(?:#.*)?$")
 JOBS_RE = re.compile(rf"^{yaml_key_pattern('jobs')}:\s*(?:#.*)?$")
 
 ALLOWED_WRITE_PERMISSIONS: dict[tuple[str, str], dict[str, str]] = {
@@ -131,34 +131,9 @@ def _top_level_permissions(path: Path, lines: list[str]) -> PermissionBlock | No
     return None
 
 
-def _job_ranges(lines: list[str]) -> list[tuple[str, int, int]]:
-    jobs_index = -1
-    for index, raw in enumerate(lines):
-        if JOBS_RE.match(raw) is not None and not raw.startswith((" ", "\t")):
-            jobs_index = index
-            break
-    if jobs_index < 0:
-        return []
-
-    starts: list[tuple[str, int]] = []
-    for index in range(jobs_index + 1, len(lines)):
-        raw = lines[index]
-        if raw.strip() and not raw.startswith((" ", "\t")):
-            break
-        match = JOB_RE.match(raw)
-        if match is not None:
-            starts.append((normalize_yaml_key(match.group("job")), index))
-
-    ranges: list[tuple[str, int, int]] = []
-    for position, (job, start) in enumerate(starts):
-        end = starts[position + 1][1] if position + 1 < len(starts) else len(lines)
-        ranges.append((job, start, end))
-    return ranges
-
-
 def _job_permissions(path: Path, lines: list[str]) -> list[PermissionBlock]:
     blocks: list[PermissionBlock] = []
-    for job, start, end in _job_ranges(lines):
+    for job, start, end in workflow_job_ranges(lines):
         for index in range(start + 1, end):
             raw = lines[index]
             match = PERMISSIONS_RE.match(raw)
