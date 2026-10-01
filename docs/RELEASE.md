@@ -432,6 +432,8 @@ bash scripts/release/prove-release-environment-policy.sh \
   --confirm-disposable owner/disposable-release-proof
 ```
 
+Run this state-changing proof only from a trusted local operator session. It refuses ordinary GitHub Actions execution when `GITHUB_ACTIONS=true` before creating refs or dispatching workflows. Keep write-capable proof credentials outside hosted CI.
+
 The example workflow contains two jobs and no secret references:
 
 - `Baseline runner` does **not** reference an Environment and must succeed;
@@ -464,6 +466,8 @@ bash scripts/release/prove-post-split-ancestor-runtime.sh \
   --tag v0.0.1 \
   --evidence-output post-split-proof.json
 ```
+
+The guarded runner is also local-operator-only. It refuses ordinary GitHub Actions execution when `GITHUB_ACTIONS=true` before creating the proof tag; do not introduce an Actions credential capable of bypassing this operating model.
 
 The runner intentionally does **not** delete the stable tag. A correct immutable `v*` Ruleset may deny deletion, and retaining the tag plus workflow-run IDs provides useful audit evidence. Use a fresh disposable repository or a fresh stable version for each proof.
 

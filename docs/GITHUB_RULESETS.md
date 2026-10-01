@@ -220,7 +220,7 @@ Then require all three assurance layers:
 2. `audit-live-release-tag-ruleset.sh`;
 3. the disposable-repository creation/update/deletion runtime proof.
 
-Do not run the destructive tag proof against the production/template repository.
+Do not run the destructive tag proof against the production/template repository. Run it from a trusted local operator session only; the proof refuses ordinary GitHub Actions execution when `GITHUB_ACTIONS=true` before creating the tag. Keep write-capable proof credentials outside hosted CI.
 
 ### 9. Configure and prove the protected release Environment
 

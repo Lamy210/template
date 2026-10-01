@@ -100,6 +100,11 @@ for workflow in "${release_build_workflow}" "${release_publisher_workflow}"; do
     exit 2
   fi
 done
+
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  echo "Refusing destructive disposable-repository proof from GitHub Actions; run from a trusted local operator session." >&2
+  exit 2
+fi
 if [[ -n "${evidence_output}" ]]; then
   if [[ -e "${evidence_output}" || -L "${evidence_output}" ]]; then
     echo "--evidence-output must not already exist: ${evidence_output}" >&2
