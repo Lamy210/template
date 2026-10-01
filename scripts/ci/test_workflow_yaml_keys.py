@@ -10,6 +10,7 @@ from scripts.ci.workflow_yaml_keys import (
     workflow_job_ranges,
     yaml_key_pattern,
     yaml_mapping_key_indent,
+    yaml_sequence_item_end,
 )
 
 
@@ -68,6 +69,32 @@ class WorkflowYamlKeyTests(unittest.TestCase):
     def test_mapping_key_indent_includes_compact_sequence_marker(self) -> None:
         self.assertEqual(8, yaml_mapping_key_indent("      ", "- "))
         self.assertEqual(8, yaml_mapping_key_indent("        ", None))
+
+    def test_sequence_item_end_stops_when_parent_scope_resumes(self) -> None:
+        lines = [
+            "      - uses: owner/action@sha",
+            "        with:",
+            "          key: value",
+            "# comment does not end YAML scope",
+            "  next-job:",
+            "    uses: ./.github/workflows/reusable.yml",
+        ]
+        self.assertEqual(
+            4,
+            yaml_sequence_item_end(lines, start=0, item_indent=6),
+        )
+
+    def test_sequence_item_end_stops_at_next_sibling_item(self) -> None:
+        lines = [
+            "      - uses: owner/one@sha",
+            "        with:",
+            "          key: value",
+            "      - uses: owner/two@sha",
+        ]
+        self.assertEqual(
+            3,
+            yaml_sequence_item_end(lines, start=0, item_indent=6),
+        )
 
     def test_workflow_job_ranges_stop_at_next_top_level_key(self) -> None:
         lines = [
