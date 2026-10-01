@@ -85,6 +85,24 @@ steps:
                 self.assertEqual(1, len(violations))
                 self.assertIn("artifact-ids", violations[0].message)
 
+    def test_download_does_not_borrow_later_job_inputs(self) -> None:
+        body = """
+jobs:
+  download-job:
+    steps:
+      - uses: actions/download-artifact@deadbeef
+  reusable-job:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      artifact-ids: 12345
+"""
+        violations = self.validate(body)
+        self.assertEqual(1, len(violations))
+        self.assertIn("artifact-ids", violations[0].message)
+
+        steps = parse_download_artifact_steps(Path("fixture.yml"), body)
+        self.assertIsNone(steps[0].artifact_ids)
+
     def test_parses_quoted_action_reference(self) -> None:
         steps = parse_download_artifact_steps(
             Path("fixture.yml"),
