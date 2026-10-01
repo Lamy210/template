@@ -132,6 +132,7 @@ jobs:
           bash scripts/ci/test-audit-live-repository-merge-settings.sh
           bash scripts/setup/test-apply-repository-merge-settings.sh
           bash scripts/setup/test-apply-main-ruleset.sh
+          bash scripts/setup/test-reconcile-solo-governance.sh
 
       - name: Release isolation contract
         shell: bash
