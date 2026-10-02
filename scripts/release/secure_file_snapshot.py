@@ -22,8 +22,12 @@ def snapshot_regular_file(
     if not hasattr(os, "O_NOFOLLOW"):
         raise RegularFileSnapshotError("platform does not provide O_NOFOLLOW")
 
+    open_flags = os.O_RDONLY | os.O_NOFOLLOW
+    if hasattr(os, "O_NONBLOCK"):
+        open_flags |= os.O_NONBLOCK
+
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        descriptor = os.open(path, open_flags)
     except OSError as error:
         raise RegularFileSnapshotError(
             f"unable to open regular non-symlink file {path}: {error}"
