@@ -30,6 +30,10 @@ if [[ "${args}" == *"--method GET repos/Example/Repo"* &&
   if [[ "${scenario}" == "identity-mismatch" && "${phase}" == before ]]; then
     full_name="Example/Other"
   fi
+  if [[ "${scenario}" == "snapshot-stable" && "${phase}" == before ]]; then
+    : "${GH_FAKE_MUTATE_RULESET_PATH:?GH_FAKE_MUTATE_RULESET_PATH is required}"
+    printf '{"tampered":true}\n' >"${GH_FAKE_MUTATE_RULESET_PATH}"
+  fi
   if [[ "${scenario}" == "identity-drift" && "${phase}" == after ]]; then
     repository_id=124
   fi
@@ -142,6 +146,38 @@ fi
 grep -F "regular non-symlink file" "${temp_root}/symlink-control.err" >/dev/null
 [[ ! -s "${temp_root}/symlink-control-gh.log" ]] || {
   echo "Ruleset helper contacted GitHub before rejecting symlinked control files." >&2
+  exit 1
+}
+
+snapshot_repo="${temp_root}/snapshot-main-ruleset"
+mkdir -p "${snapshot_repo}/scripts/setup" "${snapshot_repo}/scripts/ci" "${snapshot_repo}/rulesets"
+cp "${script}" "${snapshot_repo}/scripts/setup/apply-main-ruleset.sh"
+cp "${repo_root}/rulesets/main-solo.json" "${snapshot_repo}/rulesets/main-solo.json"
+: >"${snapshot_repo}/scripts/ci/validate_rulesets.py"
+: >"${snapshot_repo}/scripts/ci/audit_main_ruleset.py"
+: >"${snapshot_repo}/scripts/ci/audit-live-main-rules.sh"
+
+: >"${temp_root}/snapshot-stable-gh.log"
+snapshot_output="$(
+  PATH="${fake_bin}:${PATH}" \
+    GITHUB_ACTIONS=false \
+    GH_FAKE_SCENARIO=snapshot-stable \
+    GH_FAKE_LOG="${temp_root}/snapshot-stable-gh.log" \
+    GH_FAKE_STATE="${temp_root}/snapshot-stable-state" \
+    GH_FAKE_MUTATE_RULESET_PATH="${snapshot_repo}/rulesets/main-solo.json" \
+    bash "${snapshot_repo}/scripts/setup/apply-main-ruleset.sh" \
+    --repository Example/Repo \
+    --confirm-repository Example/Repo \
+    --ruleset-id 42 \
+    --confirm-ruleset-id 42 \
+    --apply
+)"
+[[ "${snapshot_output}" == "main Ruleset 42 applied and effective rules verified for Example/Repo" ]]
+grep -F '"tampered":true' "${snapshot_repo}/rulesets/main-solo.json" >/dev/null
+put_line="$(grep -F -- "--method PUT repos/Example/Repo/rulesets/42" "${temp_root}/snapshot-stable-gh.log")"
+[[ "${put_line}" == *"--input "* ]]
+[[ "${put_line}" != *"--input ${snapshot_repo}/rulesets/main-solo.json"* ]] || {
+  echo "Ruleset helper PUT used the mutable checked-in path instead of its snapshot." >&2
   exit 1
 }
 
