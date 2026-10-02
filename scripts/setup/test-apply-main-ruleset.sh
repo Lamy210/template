@@ -181,8 +181,8 @@ repository_reads="$(
     END { print count + 0 }
   ' "${temp_root}/gh-success.log"
 )"
-[[ "${repository_reads}" -eq 4 ]]
-[[ "$(grep -Fc -- "repos/Example/Repo/rules/branches/main?per_page=100" "${temp_root}/gh-success.log")" -eq 1 ]]
+[[ "${repository_reads}" -eq 5 ]]
+[[ "$(grep -Fc -- "repos/Example/Repo/rules/branches/main?per_page=100" "${temp_root}/gh-success.log")" -eq 2 ]]
 
 for scenario in identity-mismatch wrong-ruleset-source wrong-ruleset-target ruleset-id-mismatch; do
   if run_apply "${scenario}" >"${temp_root}/${scenario}.out" 2>"${temp_root}/${scenario}.err"; then

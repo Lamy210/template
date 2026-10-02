@@ -129,4 +129,34 @@ if [[ "${initial_identity}" != "${final_identity}" ||
   exit 5
 fi
 
-python3 "${repo_root}/scripts/ci/audit_effective_rules.py" "${rules_json}"
+final_rules_json="${work_root}/effective-rules-after.json"
+if ! gh api \
+  --paginate \
+  --slurp \
+  "${api_headers[@]}" \
+  "repos/${repository}/rules/branches/${encoded_branch}?per_page=100" >"${final_rules_json}"; then
+  echo "Failed to re-read effective default-branch rules for ${repository}." >&2
+  exit 6
+fi
+
+terminal_json="${work_root}/repository-terminal.json"
+if ! gh api "${api_headers[@]}" --method GET "repos/${repository}" >"${terminal_json}"; then
+  echo "Failed to re-read repository identity after final effective-rules read." >&2
+  exit 7
+fi
+if ! terminal_identity="$(validate_identity "${terminal_json}")"; then
+  echo "Terminal repository identity is invalid for ${repository}." >&2
+  exit 7
+fi
+if ! terminal_default_branch="$(read_default_branch "${terminal_json}")"; then
+  echo "Unable to re-resolve repository default branch after final rules read." >&2
+  exit 7
+fi
+
+if [[ "${initial_identity}" != "${terminal_identity}" ||
+  "${default_branch}" != "${terminal_default_branch}" ]]; then
+  echo "Repository identity or default branch changed during final effective-rules verification." >&2
+  exit 7
+fi
+
+python3 "${repo_root}/scripts/ci/audit_effective_rules.py" "${final_rules_json}"
