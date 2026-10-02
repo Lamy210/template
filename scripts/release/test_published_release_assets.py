@@ -7,8 +7,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
-from scripts.release.published_release_assets import verify_published_release_assets
+from scripts.release.published_release_assets import (
+    MAX_PUBLISHED_METADATA_BYTES,
+    verify_published_release_assets,
+)
 from scripts.release.release_attestation import ExpectedRelease, build_release_attestation
 
 
@@ -80,6 +84,77 @@ class PublishedReleaseAssetsTests(unittest.TestCase):
         self.assertIsNotNone(digest)
         self.assertEqual(64, len(digest or ""))
         self.assertEqual(SOURCE_SHA, source_sha)
+
+    def test_coherent_source_replacement_after_snapshot_does_not_change_verified_set(self) -> None:
+        _, dmg, checksum, provenance = self.fixture()
+        trusted_digest = hashlib.sha256(dmg.read_bytes()).hexdigest()
+        malicious_dmg = b"coherently-replaced-dmg\n"
+        malicious_digest = hashlib.sha256(malicious_dmg).hexdigest()
+        malicious_source_sha = "9" * 40
+        malicious_provenance = json.loads(
+            provenance.read_text(encoding="utf-8")
+        )
+        malicious_provenance["sourceSHA"] = malicious_source_sha
+        malicious_provenance["dmgSha256"] = f"sha256:{malicious_digest}"
+
+        original_read_text = Path.read_text
+        mutated = False
+
+        def replace_original_set_then_read(
+            path: Path,
+            *args,
+            **kwargs,
+        ) -> str:
+            nonlocal mutated
+            if not mutated:
+                dmg.write_bytes(malicious_dmg)
+                checksum.write_text(
+                    f"{malicious_digest}  {dmg.name}\n",
+                    encoding="utf-8",
+                )
+                provenance.write_text(
+                    json.dumps(malicious_provenance, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                mutated = True
+            return original_read_text(path, *args, **kwargs)
+
+        with mock.patch.object(
+            Path,
+            "read_text",
+            new=replace_original_set_then_read,
+        ):
+            errors, digest, source_sha = self.verify(
+                dmg,
+                checksum,
+                provenance,
+            )
+
+        self.assertEqual([], errors)
+        self.assertEqual(trusted_digest, digest)
+        self.assertEqual(SOURCE_SHA, source_sha)
+        self.assertEqual(malicious_dmg, dmg.read_bytes())
+        self.assertEqual(
+            malicious_source_sha,
+            json.loads(provenance.read_text(encoding="utf-8"))["sourceSHA"],
+        )
+
+    def test_rejects_oversized_published_metadata_before_parsing(self) -> None:
+        _, dmg, checksum, provenance = self.fixture()
+        checksum.write_bytes(b"x" * (MAX_PUBLISHED_METADATA_BYTES + 1))
+
+        errors, digest, source_sha = self.verify(
+            dmg,
+            checksum,
+            provenance,
+        )
+
+        self.assertIsNone(digest)
+        self.assertIsNone(source_sha)
+        self.assertTrue(
+            any("snapshot byte limit" in error for error in errors),
+            errors,
+        )
 
     def test_rejects_downloaded_dmg_that_no_longer_matches_checksum_or_provenance(self) -> None:
         _, dmg, checksum, provenance = self.fixture()
