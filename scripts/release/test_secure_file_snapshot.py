@@ -7,6 +7,7 @@ import unittest
 
 from scripts.release.secure_file_snapshot import (
     RegularFileSnapshotError,
+    copy_regular_file_bounded,
     snapshot_regular_file,
 )
 
@@ -18,6 +19,70 @@ class SecureFileSnapshotTests(unittest.TestCase):
         root = Path(temporary_directory.name)
         source = root / "source.bin"
         return temporary_directory, source
+
+    def test_copies_regular_file_with_bound_and_stable_bytes(self) -> None:
+        _, source = self.fixture()
+        destination = source.parent / "copy.bin"
+        source.write_bytes(b"trusted-copy")
+
+        copied = copy_regular_file_bounded(
+            source,
+            destination,
+            max_bytes=1024,
+        )
+
+        self.assertEqual(len(b"trusted-copy"), copied)
+        self.assertEqual(b"trusted-copy", destination.read_bytes())
+        self.assertEqual(0o600, destination.stat().st_mode & 0o777)
+
+        source.write_bytes(b"changed")
+        self.assertEqual(b"trusted-copy", destination.read_bytes())
+
+    def test_bounded_copy_rejects_symlink_and_oversized_input(self) -> None:
+        _, source = self.fixture()
+        destination = source.parent / "copy.bin"
+        target = source.parent / "target.bin"
+        target.write_bytes(b"target")
+        source.symlink_to(target.name)
+
+        with self.assertRaises(RegularFileSnapshotError):
+            copy_regular_file_bounded(
+                source,
+                destination,
+                max_bytes=1024,
+            )
+        self.assertFalse(destination.exists())
+
+        source.unlink()
+        source.write_bytes(b"12345")
+        with self.assertRaisesRegex(
+            RegularFileSnapshotError,
+            "exceeds copy byte limit",
+        ):
+            copy_regular_file_bounded(
+                source,
+                destination,
+                max_bytes=4,
+            )
+        self.assertFalse(destination.exists())
+
+    def test_bounded_copy_rejects_existing_destination(self) -> None:
+        _, source = self.fixture()
+        destination = source.parent / "copy.bin"
+        source.write_bytes(b"source")
+        destination.write_bytes(b"existing")
+
+        with self.assertRaisesRegex(
+            RegularFileSnapshotError,
+            "destination already exists",
+        ):
+            copy_regular_file_bounded(
+                source,
+                destination,
+                max_bytes=1024,
+            )
+
+        self.assertEqual(b"existing", destination.read_bytes())
 
     def test_snapshots_exact_regular_file_bytes(self) -> None:
         _, source = self.fixture()
