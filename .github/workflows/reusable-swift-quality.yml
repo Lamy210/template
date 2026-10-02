@@ -29,6 +29,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: macOS release handoff snapshot smoke
+        shell: bash
+        run: python3 -m unittest scripts.release.test_verified_release_handoff -v
+
       - name: Detect Swift sources
         id: swift
         shell: bash
