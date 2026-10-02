@@ -27,25 +27,65 @@ if (($# > 1)); then
   exit 2
 fi
 
-command -v gh >/dev/null 2>&1 || {
-  echo "gh is required." >&2
-  exit 2
-}
-command -v python3 >/dev/null 2>&1 || {
-  echo "python3 is required." >&2
-  exit 2
-}
+for command_name in gh python3 mktemp rm; do
+  command -v "${command_name}" >/dev/null 2>&1 || {
+    echo "${command_name} is required." >&2
+    exit 2
+  }
+done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+identity_validator="${repo_root}/scripts/common/validate-repository-identity.py"
+[[ -f "${identity_validator}" ]] || {
+  echo "Repository identity validator is unavailable: ${identity_validator}" >&2
+  exit 2
+}
 
-default_branch="$(
-  gh api \
-    -H 'Accept: application/vnd.github+json' \
-    -H 'X-GitHub-Api-Version: 2026-03-10' \
-    "repos/${repository}" \
-    --jq '.default_branch'
-)"
-if [[ -z "${default_branch}" || "${default_branch}" == null ]]; then
+work_root="$(mktemp -d "${TMPDIR:-/tmp}/main-effective-rules-audit.XXXXXX")"
+cleanup() {
+  rm -rf "${work_root}"
+}
+trap cleanup EXIT
+
+api_headers=(
+  -H 'Accept: application/vnd.github+json'
+  -H 'X-GitHub-Api-Version: 2026-03-10'
+)
+
+validate_identity() {
+  local metadata="$1"
+  python3 "${identity_validator}" \
+    --metadata "${metadata}" \
+    --repository "${repository}"
+}
+
+read_default_branch() {
+  local metadata="$1"
+  python3 - "${metadata}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    document = json.load(handle)
+
+default_branch = document.get("default_branch")
+if not isinstance(default_branch, str) or not default_branch:
+    raise SystemExit("repository default_branch must be a non-empty string")
+print(default_branch)
+PY
+}
+
+initial_json="${work_root}/repository-before.json"
+if ! gh api "${api_headers[@]}" --method GET "repos/${repository}" >"${initial_json}"; then
+  echo "Failed to read repository identity for ${repository}." >&2
+  exit 3
+fi
+if ! initial_identity="$(validate_identity "${initial_json}")"; then
+  echo "Repository identity is invalid for ${repository}." >&2
+  exit 3
+fi
+if ! default_branch="$(read_default_branch "${initial_json}")"; then
   echo "Unable to resolve repository default branch." >&2
   exit 3
 fi
@@ -59,10 +99,34 @@ print(quote(sys.argv[1], safe=""))
 PY
 )"
 
-gh api \
+rules_json="${work_root}/effective-rules.json"
+if ! gh api \
   --paginate \
   --slurp \
-  -H 'Accept: application/vnd.github+json' \
-  -H 'X-GitHub-Api-Version: 2026-03-10' \
-  "repos/${repository}/rules/branches/${encoded_branch}?per_page=100" |
-  python3 "${repo_root}/scripts/ci/audit_effective_rules.py" -
+  "${api_headers[@]}" \
+  "repos/${repository}/rules/branches/${encoded_branch}?per_page=100" >"${rules_json}"; then
+  echo "Failed to read effective default-branch rules for ${repository}." >&2
+  exit 4
+fi
+
+final_json="${work_root}/repository-after.json"
+if ! gh api "${api_headers[@]}" --method GET "repos/${repository}" >"${final_json}"; then
+  echo "Failed to re-read repository identity for ${repository}." >&2
+  exit 5
+fi
+if ! final_identity="$(validate_identity "${final_json}")"; then
+  echo "Final repository identity is invalid for ${repository}." >&2
+  exit 5
+fi
+if ! final_default_branch="$(read_default_branch "${final_json}")"; then
+  echo "Unable to re-resolve repository default branch." >&2
+  exit 5
+fi
+
+if [[ "${initial_identity}" != "${final_identity}" ||
+  "${default_branch}" != "${final_default_branch}" ]]; then
+  echo "Repository identity or default branch changed during the effective-rules audit." >&2
+  exit 5
+fi
+
+python3 "${repo_root}/scripts/ci/audit_effective_rules.py" "${rules_json}"
