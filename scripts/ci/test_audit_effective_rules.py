@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 from scripts.ci.audit_effective_rules import validate_effective_main_rules
@@ -165,6 +167,91 @@ class EffectiveMainRulesAuditTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("match the Solo governance contract", result.stdout)
+
+    def test_live_audit_wrapper_binds_repository_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            rules_file = root / "rules.json"
+            rules_file.write_text(
+                json.dumps(desired_rules()) + "\n",
+                encoding="utf-8",
+            )
+            fake_gh.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        count_file = Path(os.environ["GH_FAKE_COUNT_FILE"])
+                        count = int(count_file.read_text() or "0") if count_file.exists() else 0
+                        count += 1
+                        count_file.write_text(str(count))
+                        repository_id = 101
+                        default_branch = "main"
+                        scenario = os.environ.get("GH_FAKE_SCENARIO", "success")
+                        if count >= 2 and scenario == "identity-drift":
+                            repository_id = 202
+                        if count >= 2 and scenario == "branch-drift":
+                            default_branch = "develop"
+                        print(json.dumps({
+                            "id": repository_id,
+                            "full_name": "example/repo",
+                            "default_branch": default_branch,
+                        }))
+                        raise SystemExit(0)
+
+                    if endpoint == "repos/example/repo/rules/branches/main?per_page=100":
+                        rules = json.loads(Path(os.environ["GH_FAKE_RULES_FILE"]).read_text())
+                        print(json.dumps([rules]))
+                        raise SystemExit(0)
+
+                    print("unexpected endpoint: " + endpoint, file=sys.stderr)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            for scenario, expected_success in (
+                ("success", True),
+                ("identity-drift", False),
+                ("branch-drift", False),
+            ):
+                with self.subTest(scenario=scenario):
+                    count_file = root / f"count-{scenario}"
+                    env = os.environ.copy()
+                    env["PATH"] = f"{root}:{env['PATH']}"
+                    env["GH_FAKE_SCENARIO"] = scenario
+                    env["GH_FAKE_COUNT_FILE"] = str(count_file)
+                    env["GH_FAKE_RULES_FILE"] = str(rules_file)
+                    result = subprocess.run(
+                        ["bash", str(LIVE_AUDIT), "example/repo"],
+                        cwd=REPO_ROOT,
+                        env=env,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+
+                    if expected_success:
+                        self.assertEqual(0, result.returncode, result.stderr)
+                        self.assertIn(
+                            "effective default-branch rules match",
+                            result.stdout,
+                        )
+                    else:
+                        self.assertNotEqual(0, result.returncode)
+                        self.assertIn(
+                            "Repository identity or default branch changed",
+                            result.stderr,
+                        )
 
     def test_live_audit_wrapper_is_read_only_and_uses_effective_rules_endpoint(self) -> None:
         text = LIVE_AUDIT.read_text(encoding="utf-8")
