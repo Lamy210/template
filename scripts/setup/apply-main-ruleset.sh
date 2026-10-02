@@ -107,10 +107,10 @@ live_validator="${repo_root}/scripts/ci/audit_main_ruleset.py"
 effective_rules_auditor="${repo_root}/scripts/ci/audit-live-main-rules.sh"
 
 for required_file in "${desired_ruleset}" "${offline_validator}" "${live_validator}" "${effective_rules_auditor}"; do
-  [[ -f "${required_file}" ]] || {
-    echo "Required Ruleset control file is unavailable: ${required_file}" >&2
+  if [[ ! -f "${required_file}" || -L "${required_file}" ]]; then
+    echo "Required Ruleset control file must be a regular non-symlink file: ${required_file}" >&2
     exit 2
-  }
+  fi
 done
 
 if ! python3 "${offline_validator}" >/dev/null; then
