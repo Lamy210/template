@@ -57,8 +57,8 @@ def validate_and_extract_verified_release_artifact(
         return ["verified release DMG name must be a literal basename"]
     if not isinstance(expected_digest, str) or DIGEST_RE.fullmatch(expected_digest) is None:
         return ["verified release artifact digest must use sha256:<64 lowercase hex>"]
-    if output_dir.exists():
-        return [f"output directory must not already exist: {output_dir}"]
+    if output_dir.exists() or output_dir.is_symlink():
+        return [f"output directory must not already exist or be a symlink: {output_dir}"]
 
     expected_names = {
         dmg_name,
@@ -167,6 +167,11 @@ def validate_and_extract_verified_release_artifact(
                                         target.write(chunk)
                             os.chmod(destination, 0o600)
 
+                        if output_dir.exists() or output_dir.is_symlink():
+                            return [
+                                "output directory appeared during verified release extraction: "
+                                f"{output_dir}"
+                            ]
                         stage.rename(output_dir)
             except (zipfile.BadZipFile, OSError, RuntimeError) as error:
                 return [f"invalid verified release Artifact ZIP: {error}"]
