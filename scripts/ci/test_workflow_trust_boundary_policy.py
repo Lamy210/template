@@ -37,6 +37,71 @@ jobs:
                 self.assertEqual(1, len(violations))
                 self.assertIn("pull_request_target", violations[0].message)
 
+    def test_rejects_encoded_inline_pull_request_target(self) -> None:
+        for trigger in (
+            r'on: "pull_request_\u0074arget"',
+            r'on: [push, "pull_request_\u0074arget"]',
+            r'on: !!str pull_request_target',
+        ):
+            with self.subTest(trigger=trigger):
+                violations = self.validate(
+                    f"""
+{trigger}
+permissions: {{}}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+"""
+                )
+                self.assertEqual(1, len(violations), violations)
+                self.assertIn("inline workflow triggers", violations[0].message)
+
+    def test_rejects_block_scalar_and_multiline_flow_triggers(self) -> None:
+        for trigger in (
+            """
+on: >-
+  pull_request_target
+""",
+            """
+on: [
+  push,
+  pull_request_target
+]
+""",
+        ):
+            with self.subTest(trigger=trigger):
+                violations = self.validate(
+                    f"""
+{trigger}
+permissions: {{}}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+"""
+                )
+                self.assertEqual(1, len(violations), violations)
+                self.assertIn("inline workflow triggers", violations[0].message)
+
+    def test_accepts_canonical_inline_trigger_literals(self) -> None:
+        for trigger in (
+            "on: push",
+            'on: "push"',
+            "on: 'workflow_dispatch'",
+            "on: [push, pull_request]",
+            "on: [\"push\", 'workflow_dispatch']",
+        ):
+            with self.subTest(trigger=trigger):
+                violations = self.validate(
+                    f"""
+{trigger}
+permissions: {{}}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+"""
+                )
+                self.assertEqual([], violations)
+
     def test_rejects_deeply_indented_pull_request_target(self) -> None:
         violations = self.validate(
             """

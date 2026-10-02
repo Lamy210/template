@@ -6,6 +6,7 @@ import re
 
 from scripts.ci.workflow_permission_policy import workflow_paths
 from scripts.ci.workflow_yaml_keys import (
+    YAML_KEY_TOKEN,
     YAML_MAPPING_KEY_RE,
     normalize_yaml_key,
     strip_yaml_inline_comment,
@@ -25,6 +26,8 @@ ON_RE = re.compile(
 SECRETS_RE = re.compile(
     rf"^(?P<indent>\s*){yaml_key_pattern('secrets')}:\s*(?P<value>.*?)\s*$"
 )
+INLINE_TRIGGER_TOKEN_RE = re.compile(rf"^(?:{YAML_KEY_TOKEN})$")
+
 
 ALLOWED_ENVIRONMENTS: dict[tuple[str, str], str] = {
     (
@@ -53,6 +56,29 @@ def _unquote(value: str) -> str:
     return value
 
 
+def _inline_trigger_tokens(value: str) -> list[str] | None:
+    value = strip_yaml_inline_comment(value).strip()
+    if not value:
+        return []
+
+    if value.startswith("["):
+        if not value.endswith("]"):
+            return None
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        raw_tokens = [item.strip() for item in inner.split(",")]
+    else:
+        raw_tokens = [value]
+
+    tokens: list[str] = []
+    for raw_token in raw_tokens:
+        if not raw_token or INLINE_TRIGGER_TOKEN_RE.fullmatch(raw_token) is None:
+            return None
+        tokens.append(normalize_yaml_key(raw_token))
+    return tokens
+
+
 def _job_for_line(lines: list[str], line_index: int) -> str | None:
     for job, start, end in workflow_job_ranges(lines):
         if start < line_index < end:
@@ -60,8 +86,11 @@ def _job_for_line(lines: list[str], line_index: int) -> str | None:
     return None
 
 
-def _pull_request_target_lines(lines: list[str]) -> set[int]:
-    matches: set[int] = set()
+def _workflow_trigger_lines(
+    lines: list[str],
+) -> tuple[set[int], set[int]]:
+    pull_request_target: set[int] = set()
+    invalid_inline: set[int] = set()
 
     for index, raw in enumerate(lines):
         trigger = ON_RE.match(raw)
@@ -70,8 +99,11 @@ def _pull_request_target_lines(lines: list[str]) -> set[int]:
 
         value = strip_yaml_inline_comment(trigger.group("value")).strip()
         if value:
-            if re.search(r"\bpull_request_target\b", value) is not None:
-                matches.add(index)
+            tokens = _inline_trigger_tokens(value)
+            if tokens is None:
+                invalid_inline.add(index)
+            elif "pull_request_target" in tokens:
+                pull_request_target.add(index)
             continue
 
         child_indent = yaml_mapping_child_indent(
@@ -94,9 +126,9 @@ def _pull_request_target_lines(lines: list[str]) -> set[int]:
             if item is None or indent != child_indent:
                 continue
             if normalize_yaml_key(item.group("key")) == "pull_request_target":
-                matches.add(child_index)
+                pull_request_target.add(child_index)
 
-    return matches
+    return pull_request_target, invalid_inline
 
 
 def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
@@ -104,9 +136,26 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
     violations: list[PolicyViolation] = []
     relative = path.as_posix()
 
-    pull_request_target_lines = _pull_request_target_lines(lines)
+    pull_request_target_lines, invalid_inline_trigger_lines = (
+        _workflow_trigger_lines(lines)
+    )
 
     for index, raw in enumerate(lines):
+        if index in invalid_inline_trigger_lines:
+            violations.append(
+                PolicyViolation(
+                    path=path,
+                    line=index + 1,
+                    scope="workflow",
+                    message=(
+                        "inline workflow triggers must use literal simple event names "
+                        "or a single-line flow sequence of literal event names; "
+                        "YAML escapes, tags, block scalars, and multiline flow "
+                        "sequences are forbidden"
+                    ),
+                )
+            )
+
         if index in pull_request_target_lines:
             violations.append(
                 PolicyViolation(
