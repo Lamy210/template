@@ -63,7 +63,7 @@ class VerifiedReleaseHandoffTests(unittest.TestCase):
             {entry.name for entry in output.iterdir()},
         )
         self.assertEqual(b"stable-dmg\n", (output / DMG_NAME).read_bytes())
-        self.assertEqual(0o500, output.stat().st_mode & 0o777)
+        self.assertEqual(0o700, output.stat().st_mode & 0o777)
         for entry in output.iterdir():
             self.assertEqual(0o400, entry.stat().st_mode & 0o777)
 
