@@ -56,7 +56,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: "echo \\" # ${{ github.ref }}\\\""
+      - run: "echo \" # ${{ github.ref }}\""
 """
         )
         self.assertEqual(1, len(violations), violations)
