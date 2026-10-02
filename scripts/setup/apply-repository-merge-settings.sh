@@ -83,10 +83,10 @@ done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 validator="${repo_root}/scripts/ci/validate-repository-merge-settings.py"
-[[ -f "${validator}" ]] || {
-  echo "Repository merge settings validator is unavailable: ${validator}" >&2
+if [[ ! -f "${validator}" || -L "${validator}" ]]; then
+  echo "Repository merge settings validator must be a regular non-symlink file: ${validator}" >&2
   exit 2
-}
+fi
 
 temp_root="$(mktemp -d "${TMPDIR:-/tmp}/apply-repository-merge-settings.XXXXXX")"
 cleanup() {
