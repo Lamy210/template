@@ -85,6 +85,35 @@ steps:
                 self.assertEqual(1, len(violations))
                 self.assertIn("artifact-ids", violations[0].message)
 
+    def test_mixed_case_download_action_cannot_bypass_policy(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  test:
+    steps:
+      - uses: Actions/Download-Artifact@deadbeef
+        with:
+          name: trusted-output
+"""
+        )
+        self.assertEqual(2, len(violations), violations)
+        self.assertTrue(any("artifact-ids" in item.message for item in violations))
+        self.assertTrue(any("name selector" in item.message for item in violations))
+
+    def test_deeply_indented_download_inputs_are_parsed(self) -> None:
+        body = """
+jobs:
+  test:
+    steps:
+      - uses: actions/download-artifact@deadbeef
+        with:
+            artifact-ids: 12345
+            path: output
+"""
+        self.assertEqual([], self.validate(body))
+        steps = parse_download_artifact_steps(Path("fixture.yml"), body)
+        self.assertEqual("12345", steps[0].artifact_ids)
+
     def test_download_does_not_borrow_later_job_inputs(self) -> None:
         body = """
 jobs:
