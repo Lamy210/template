@@ -27,7 +27,7 @@ args="$*"
 if [[ "${args}" == *"repos/Example/Repo/immutable-releases"* ]]; then
   setting_count=0
   if [[ -f "${GH_FAKE_STATE}" ]]; then
-    setting_count="$(cat "${GH_FAKE_STATE}")"
+    setting_count="$(<"${GH_FAKE_STATE}")"
   fi
   setting_count="$((setting_count + 1))"
   printf '%s\n' "${setting_count}" >"${GH_FAKE_STATE}"
