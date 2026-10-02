@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from scripts.common.repository_name import is_canonical_repository_name
 from scripts.release.release_asset_limits import (
+    MAX_GITHUB_RELEASE_ASSETS,
     MAX_RELEASE_DMG_BYTES,
     MAX_RELEASE_METADATA_BYTES,
     release_asset_size_limit,
@@ -199,6 +200,12 @@ def validate_release_download_identity(
     assets = document.get("assets")
     if not isinstance(assets, list):
         errors.append("release assets must be an array")
+        return errors, None
+    if len(assets) > MAX_GITHUB_RELEASE_ASSETS:
+        errors.append(
+            "release asset count exceeds GitHub release limit: "
+            f"{len(assets)} > {MAX_GITHUB_RELEASE_ASSETS}"
+        )
         return errors, None
 
     by_name: dict[str, ReleaseAssetIdentity] = {}
