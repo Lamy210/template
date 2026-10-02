@@ -12,6 +12,41 @@ TAG_RE = re.compile(
 )
 ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+MAX_RELEASE_DMG_BYTES = 4 * 1024 * 1024 * 1024
+MAX_RELEASE_METADATA_BYTES = 1024 * 1024
+
+
+def _release_asset_size_limit(name: str) -> int | None:
+    if name.endswith(".dmg"):
+        return MAX_RELEASE_DMG_BYTES
+    if name.endswith(".dmg.sha256") or name == "release-provenance.json":
+        return MAX_RELEASE_METADATA_BYTES
+    return None
+
+
+def _validate_expected_release_asset_contract(
+    names: list[str],
+) -> list[str]:
+    errors: list[str] = []
+    dmg_names = [name for name in names if isinstance(name, str) and name.endswith(".dmg")]
+    if len(names) != 3:
+        errors.append("expected release asset set must contain exactly three assets")
+    if len(dmg_names) != 1:
+        errors.append("expected release asset set must contain exactly one DMG")
+        return errors
+
+    dmg_name = dmg_names[0]
+    required = {
+        dmg_name,
+        f"{dmg_name}.sha256",
+        "release-provenance.json",
+    }
+    if set(names) != required:
+        errors.append(
+            "expected release assets must be the DMG, its matching .sha256, "
+            "and release-provenance.json"
+        )
+    return errors
 
 
 @dataclass(frozen=True)
@@ -121,6 +156,8 @@ def validate_release_download_identity(
     for name in expected_asset_names:
         if not isinstance(name, str) or ASSET_NAME_RE.fullmatch(name) is None:
             errors.append(f"expected asset name is unsafe or malformed: {name!r}")
+    errors.extend(_validate_expected_release_asset_contract(expected_asset_names))
+    expected_set = set(expected_asset_names)
 
     if not isinstance(document, dict):
         errors.append("release response must be a JSON object")
@@ -198,6 +235,17 @@ def validate_release_download_identity(
         if type(size) is not int or size <= 0:
             errors.append(f"release asset {name!r} must have positive size")
             continue
+        if name in expected_set:
+            size_limit = _release_asset_size_limit(name)
+            if size_limit is None:
+                errors.append(f"release asset {name!r} has unsupported asset role")
+                continue
+            if size > size_limit:
+                errors.append(
+                    f"release asset {name!r} exceeds size limit: "
+                    f"{size} > {size_limit}"
+                )
+                continue
         if state != "uploaded":
             errors.append(f"release asset {name!r} must be in uploaded state")
             continue
@@ -234,7 +282,6 @@ def validate_release_download_identity(
             size=size,
         )
 
-    expected_set = set(expected_asset_names)
     actual_set = set(by_name)
     if actual_set != expected_set:
         missing = sorted(expected_set - actual_set)
