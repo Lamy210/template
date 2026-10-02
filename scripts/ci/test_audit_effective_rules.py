@@ -253,6 +253,88 @@ class EffectiveMainRulesAuditTests(unittest.TestCase):
                             result.stderr,
                         )
 
+    def test_live_audit_wrapper_rejects_effective_rules_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            rules_before = root / "rules-before.json"
+            rules_after = root / "rules-after.json"
+            count_file = root / "rules-count"
+
+            rules_before.write_text(
+                json.dumps(desired_rules()) + "\n",
+                encoding="utf-8",
+            )
+            rules_after.write_text(
+                json.dumps(
+                    [
+                        rule
+                        for rule in desired_rules()
+                        if rule.get("type") != "required_status_checks"
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            fake_gh.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        print(json.dumps({
+                            "id": 101,
+                            "full_name": "example/repo",
+                            "default_branch": "main",
+                        }))
+                        raise SystemExit(0)
+
+                    if endpoint == "repos/example/repo/rules/branches/main?per_page=100":
+                        count_file = Path(os.environ["GH_FAKE_RULE_COUNT_FILE"])
+                        count = int(count_file.read_text() or "0") if count_file.exists() else 0
+                        count += 1
+                        count_file.write_text(str(count))
+                        rules_path = (
+                            os.environ["GH_FAKE_RULES_BEFORE"]
+                            if count == 1
+                            else os.environ["GH_FAKE_RULES_AFTER"]
+                        )
+                        rules = json.loads(Path(rules_path).read_text())
+                        print(json.dumps([rules]))
+                        raise SystemExit(0)
+
+                    print("unexpected endpoint: " + endpoint, file=sys.stderr)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            env["GH_FAKE_RULE_COUNT_FILE"] = str(count_file)
+            env["GH_FAKE_RULES_BEFORE"] = str(rules_before)
+            env["GH_FAKE_RULES_AFTER"] = str(rules_after)
+            result = subprocess.run(
+                ["bash", str(LIVE_AUDIT), "example/repo"],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("required_status_checks rule is required", result.stderr)
+        self.assertEqual("2", count_file.read_text())
+
     def test_live_audit_wrapper_is_read_only_and_uses_effective_rules_endpoint(self) -> None:
         text = LIVE_AUDIT.read_text(encoding="utf-8")
         self.assertIn('rules/branches/', text)
