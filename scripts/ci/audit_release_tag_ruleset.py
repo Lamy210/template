@@ -43,7 +43,7 @@ def validate_live_release_tag_ruleset(
         errors.append("source must use canonical owner/repo form")
     elif (
         is_canonical_repository_name(expected_repository)
-        and source != expected_repository
+        and source.casefold() != expected_repository.casefold()
     ):
         errors.append("source must equal expected repository")
 
