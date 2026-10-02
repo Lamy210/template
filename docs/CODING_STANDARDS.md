@@ -172,7 +172,7 @@ ShellCheck and `shfmt` are required CI gates.
 - Keep `uses:` references scope-correct. Step-level local actions may use `$/path/to/action` or `./path/to/action`. Job-level reusable workflow calls must point directly to `$/.github/workflows/<filename>.yml` or `./.github/workflows/<filename>.yml` (with `.yaml` also accepted) for the same repository, or `owner/repository/.github/workflows/<filename>.yml@<full-SHA>` for another repository.
 - Set job timeouts.
 - Use `persist-credentials: false` for checkout when Git credentials are unnecessary.
-- Do not use `pull_request_target` to execute untrusted pull-request code.
+- Do not use `pull_request_target` to execute untrusted pull-request code. Inline `on:` triggers must use literal simple event names, either as one scalar or a single-line flow sequence; do not encode trigger names with YAML escapes, tags, block scalars, or multiline flow sequences.
 - Reusable-workflow callers must pass secrets through an explicit named mapping (or `{}` when no secret is required). Scalar `secrets:` forms such as `secrets: inherit` are forbidden.
 - Do not attach GitHub Environments to ordinary CI jobs. The protected `release` Environment is restricted to the release signing boundary; the disposable negative-proof example is the only test exception.
 - Do not place `${{ ... }}` expressions directly inside shell `run:` bodies. Route expression-derived values through `env:` first; this is enforced repository-wide.
