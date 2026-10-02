@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -367,13 +368,27 @@ def validate_file(path: Path, profile: str) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    if argv not in (None, []):
-        print("validate_rulesets.py does not accept positional arguments", file=sys.stderr)
+    parser = argparse.ArgumentParser(
+        description="Validate checked-in or explicitly supplied Ruleset JSON."
+    )
+    parser.add_argument("--file", type=Path)
+    parser.add_argument("--profile", choices=("main-solo", "release-tags"))
+
+    try:
+        args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    except SystemExit as error:
+        return int(error.code)
+
+    if (args.file is None) != (args.profile is None):
+        print("--file and --profile must be supplied together", file=sys.stderr)
         return 2
 
     errors: list[str] = []
-    for path, profile in CANONICAL_PROFILES:
-        errors.extend(validate_file(path, profile))
+    if args.file is not None and args.profile is not None:
+        errors.extend(validate_file(args.file, args.profile))
+    else:
+        for path, profile in CANONICAL_PROFILES:
+            errors.extend(validate_file(path, profile))
 
     for error in errors:
         print(error, file=sys.stderr)
