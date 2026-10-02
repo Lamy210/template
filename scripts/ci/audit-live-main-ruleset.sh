@@ -163,4 +163,31 @@ if [[ "${initial_identity}" != "${final_identity}" ||
   exit 5
 fi
 
-python3 "${repo_root}/scripts/ci/audit_main_ruleset.py" "${detail_json}" "${repository}"
+final_detail_json="${work_root}/ruleset-after.json"
+if ! gh api "${api_headers[@]}" \
+  "repos/${repository}/rulesets/${candidate_id}?includes_parents=true" >"${final_detail_json}"; then
+  echo "Failed to re-read Ruleset ${candidate_id} for ${repository}." >&2
+  exit 6
+fi
+
+terminal_json="${work_root}/repository-terminal.json"
+if ! gh api "${api_headers[@]}" --method GET "repos/${repository}" >"${terminal_json}"; then
+  echo "Failed to re-read repository identity after final Ruleset read." >&2
+  exit 7
+fi
+if ! terminal_identity="$(validate_identity "${terminal_json}")"; then
+  echo "Terminal repository identity is invalid for ${repository}." >&2
+  exit 7
+fi
+if ! terminal_default_branch="$(read_default_branch "${terminal_json}")"; then
+  echo "Unable to re-resolve repository default branch after final Ruleset read." >&2
+  exit 7
+fi
+
+if [[ "${initial_identity}" != "${terminal_identity}" ||
+  "${initial_default_branch}" != "${terminal_default_branch}" ]]; then
+  echo "Repository identity or default branch changed during final main-Ruleset verification." >&2
+  exit 7
+fi
+
+python3 "${repo_root}/scripts/ci/audit_main_ruleset.py" "${final_detail_json}" "${repository}"
