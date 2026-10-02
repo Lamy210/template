@@ -56,6 +56,18 @@ class LiveReleaseTagRulesetAuditTests(unittest.TestCase):
             ),
         )
 
+    def test_accepts_repository_source_with_different_casing(self) -> None:
+        document = valid_live_ruleset()
+        document["source"] = "Example/Repo"
+
+        self.assertEqual(
+            [],
+            validate_live_release_tag_ruleset(
+                document,
+                expected_repository="EXAMPLE/REPO",
+            ),
+        )
+
     def test_rejects_noncanonical_repository_identities(self) -> None:
         for repository in ("../escape", "./repo", "owner/..", "owner/."):
             with self.subTest(repository=repository):
@@ -180,6 +192,13 @@ class LiveReleaseTagRulesetAuditTests(unittest.TestCase):
                     import sys
 
                     endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        print(json.dumps({
+                            "id": 101,
+                            "full_name": "example/repo",
+                            "default_branch": "main",
+                        }))
+                        raise SystemExit(0)
                     if "rulesets?targets=tag&includes_parents=true&per_page=100" in endpoint:
                         print(json.dumps([[{summary!r}]]))
                         raise SystemExit(0)
@@ -303,6 +322,217 @@ class LiveReleaseTagRulesetAuditTests(unittest.TestCase):
 
         self.assertNotEqual(0, result.returncode)
         self.assertIn("Expected exactly one active tag Ruleset", result.stderr)
+
+    def test_live_wrapper_rejects_repository_identity_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            count_file = root / "repo-count"
+            detail = valid_live_ruleset()
+            summary = {
+                "id": detail["id"],
+                "name": detail["name"],
+                "target": detail["target"],
+                "source_type": detail["source_type"],
+                "source": detail["source"],
+                "enforcement": detail["enforcement"],
+            }
+            fake_gh.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        count_file = Path(os.environ["GH_FAKE_REPO_COUNT_FILE"])
+                        count = int(count_file.read_text() or "0") if count_file.exists() else 0
+                        count += 1
+                        count_file.write_text(str(count))
+                        repository_id = 101 if count == 1 else 202
+                        print(json.dumps({{
+                            "id": repository_id,
+                            "full_name": "example/repo",
+                            "default_branch": "main",
+                        }}))
+                        raise SystemExit(0)
+                    if "rulesets?targets=tag&includes_parents=true&per_page=100" in endpoint:
+                        print(json.dumps([[{summary!r}]]))
+                        raise SystemExit(0)
+                    if endpoint.endswith("rulesets/42?includes_parents=true"):
+                        print(json.dumps({detail!r}))
+                        raise SystemExit(0)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            env["GH_FAKE_REPO_COUNT_FILE"] = str(count_file)
+            result = subprocess.run(
+                ["bash", str(LIVE_AUDIT), "example/repo"],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(
+            "Repository identity changed during release-tag Ruleset audit",
+            result.stderr,
+        )
+
+    def test_live_wrapper_rejects_final_active_ruleset_set_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            list_count_file = root / "list-count"
+            detail = valid_live_ruleset()
+            summary = {
+                "id": detail["id"],
+                "name": detail["name"],
+                "target": detail["target"],
+                "source_type": detail["source_type"],
+                "source": detail["source"],
+                "enforcement": detail["enforcement"],
+            }
+            extra = {
+                "id": 99,
+                "name": "Late tag policy",
+                "target": "tag",
+                "source_type": "Organization",
+                "source": "example",
+                "enforcement": "active",
+            }
+            fake_gh.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        print(json.dumps({{
+                            "id": 101,
+                            "full_name": "example/repo",
+                            "default_branch": "main",
+                        }}))
+                        raise SystemExit(0)
+                    if "rulesets?targets=tag&includes_parents=true&per_page=100" in endpoint:
+                        count_file = Path(os.environ["GH_FAKE_LIST_COUNT_FILE"])
+                        count = int(count_file.read_text() or "0") if count_file.exists() else 0
+                        count += 1
+                        count_file.write_text(str(count))
+                        payload = [{summary!r}]
+                        if count >= 2:
+                            payload.append({extra!r})
+                        print(json.dumps([payload]))
+                        raise SystemExit(0)
+                    if endpoint.endswith("rulesets/42?includes_parents=true"):
+                        print(json.dumps({detail!r}))
+                        raise SystemExit(0)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            env["GH_FAKE_LIST_COUNT_FILE"] = str(list_count_file)
+            result = subprocess.run(
+                ["bash", str(LIVE_AUDIT), "example/repo"],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            observed_count = list_count_file.read_text()
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Expected exactly one active tag Ruleset overall", result.stderr)
+        self.assertEqual("2", observed_count)
+
+    def test_live_wrapper_rejects_final_ruleset_detail_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            detail_count_file = root / "detail-count"
+            detail = valid_live_ruleset()
+            drifted = valid_live_ruleset()
+            drifted["name"] = "Drifted"
+            summary = {
+                "id": detail["id"],
+                "name": detail["name"],
+                "target": detail["target"],
+                "source_type": detail["source_type"],
+                "source": detail["source"],
+                "enforcement": detail["enforcement"],
+            }
+            fake_gh.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        print(json.dumps({{
+                            "id": 101,
+                            "full_name": "example/repo",
+                            "default_branch": "main",
+                        }}))
+                        raise SystemExit(0)
+                    if "rulesets?targets=tag&includes_parents=true&per_page=100" in endpoint:
+                        print(json.dumps([[{summary!r}]]))
+                        raise SystemExit(0)
+                    if endpoint.endswith("rulesets/42?includes_parents=true"):
+                        count_file = Path(os.environ["GH_FAKE_DETAIL_COUNT_FILE"])
+                        count = int(count_file.read_text() or "0") if count_file.exists() else 0
+                        count += 1
+                        count_file.write_text(str(count))
+                        payload = {detail!r} if count == 1 else {drifted!r}
+                        print(json.dumps(payload))
+                        raise SystemExit(0)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            env["GH_FAKE_DETAIL_COUNT_FILE"] = str(detail_count_file)
+            result = subprocess.run(
+                ["bash", str(LIVE_AUDIT), "example/repo"],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            observed_count = detail_count_file.read_text()
+
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("name must equal 'Immutable release tags'", result.stderr)
+        self.assertEqual("2", observed_count)
 
     def test_live_wrapper_is_read_only_and_targets_tag_rulesets(self) -> None:
         text = LIVE_AUDIT.read_text(encoding="utf-8")
