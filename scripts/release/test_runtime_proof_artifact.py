@@ -5,8 +5,10 @@ from pathlib import Path
 import stat
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
+from scripts.release import runtime_proof_artifact
 from scripts.release.runtime_proof_artifact import extract_runtime_proof_metadata
 
 
@@ -50,6 +52,40 @@ class RuntimeProofArtifactTests(unittest.TestCase):
             ),
         )
         self.assertEqual(b'{"schemaVersion":1}\n', output.read_bytes())
+
+    def test_source_path_mutation_after_snapshot_does_not_change_verified_bytes(self) -> None:
+        _, archive, output = self.fixture()
+        metadata = zipfile.ZipInfo("validated-release-metadata.json")
+        app_archive = zipfile.ZipInfo("unsigned-macos-app.tar.gz")
+        trusted_metadata = b'{"schemaVersion":1,"trusted":true}\n'
+        write_zip(
+            archive,
+            [
+                (metadata, trusted_metadata),
+                (app_archive, b"trusted-app-archive"),
+            ],
+        )
+        expected_digest = digest(archive)
+        original_sha256_file = runtime_proof_artifact._sha256_file
+
+        def mutate_original_then_hash(snapshot_path: Path) -> str:
+            archive.write_bytes(b"tampered-after-snapshot")
+            return original_sha256_file(snapshot_path)
+
+        with mock.patch.object(
+            runtime_proof_artifact,
+            "_sha256_file",
+            side_effect=mutate_original_then_hash,
+        ):
+            errors = extract_runtime_proof_metadata(
+                archive,
+                output,
+                expected_digest=expected_digest,
+            )
+
+        self.assertEqual([], errors)
+        self.assertEqual(trusted_metadata, output.read_bytes())
+        self.assertEqual(b"tampered-after-snapshot", archive.read_bytes())
 
     def test_writes_actual_unsigned_archive_digest(self) -> None:
         root, archive, output = self.fixture()
