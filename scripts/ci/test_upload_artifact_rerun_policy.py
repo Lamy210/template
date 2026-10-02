@@ -79,6 +79,39 @@ jobs:
         self.assertEqual(1, len(violations))
         self.assertIn("github.run_attempt", violations[0].message)
 
+    def test_mixed_case_upload_action_cannot_bypass_policy(self) -> None:
+        violations = self.validate(
+            """
+jobs:
+  test:
+    steps:
+      - name: Mixed case upload
+        uses: Actions/Upload-Artifact@deadbeef
+        with:
+          name: fixed-name
+          path: output
+"""
+        )
+        self.assertEqual(1, len(violations), violations)
+        self.assertIn("github.run_attempt", violations[0].message)
+
+    def test_deeply_indented_upload_inputs_are_parsed(self) -> None:
+        body = """
+jobs:
+  test:
+    steps:
+      - uses: actions/upload-artifact@deadbeef
+        with:
+            name: diagnostics-${{ github.run_attempt }}
+            path: output
+"""
+        self.assertEqual([], self.validate(body))
+        steps = parse_upload_artifact_steps(Path("fixture.yml"), body)
+        self.assertEqual(
+            "diagnostics-${{ github.run_attempt }}",
+            steps[0].artifact_name,
+        )
+
     def test_quoted_upload_action_is_still_detected(self) -> None:
         violations = self.validate(
             """
