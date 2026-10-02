@@ -35,10 +35,12 @@ def main() -> int:
     parser.add_argument("--publisher-run-attempt", required=True, type=int)
     parser.add_argument("--publisher-sha", required=True)
     parser.add_argument("--repository-id", required=True, type=int)
+    parser.add_argument("--size-output", type=Path)
     args = parser.parse_args()
 
+    artifact_metadata = load_json(args.metadata)
     errors = verify_verified_release_artifact(
-        artifact_metadata=load_json(args.metadata),
+        artifact_metadata=artifact_metadata,
         artifact_id=args.artifact_id,
         artifact_name=args.artifact_name,
         artifact_digest=args.artifact_digest,
@@ -51,6 +53,19 @@ def main() -> int:
         for error in errors:
             print(error, file=sys.stderr)
         return 1
+
+    if args.size_output is not None:
+        assert isinstance(artifact_metadata, dict)
+        size = artifact_metadata["size_in_bytes"]
+        assert type(size) is int and size > 0
+        try:
+            args.size_output.write_text(f"{size}\n", encoding="utf-8")
+        except OSError as error:
+            print(
+                f"failed to write verified release artifact size: {error}",
+                file=sys.stderr,
+            )
+            return 1
     return 0
 
 
