@@ -304,7 +304,11 @@ import hashlib
 import sys
 
 path = Path(sys.argv[1])
-print("sha256:" + hashlib.sha256(path.read_bytes()).hexdigest())
+digest = hashlib.sha256()
+with path.open("rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+print("sha256:" + digest.hexdigest())
 PY
   )"
   if [[ "${actual_digest}" != "${expected_digest}" ]]; then
