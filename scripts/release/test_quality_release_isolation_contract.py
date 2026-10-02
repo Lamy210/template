@@ -53,6 +53,10 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
             text,
         )
         self.assertIn(
+            "scripts/release/capture_release_asset.py",
+            text,
+        )
+        self.assertIn(
             "scripts/release/extract-verified-release-artifact.py",
             text,
         )
@@ -60,6 +64,8 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
             "ARTIFACT_DIGEST: ${{ needs.verified-release-package.outputs.artifact_digest }}",
             text,
         )
+        self.assertIn("--size-output verified-release-artifact-size.txt", text)
+        self.assertIn('--expected-size "${ARTIFACT_SIZE}"', text)
         self.assertIn('--expected-digest "${ARTIFACT_DIGEST}"', text)
 
     def test_release_isolation_runs_on_pull_requests_and_post_merge_main(self) -> None:
