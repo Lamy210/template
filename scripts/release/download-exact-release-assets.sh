@@ -116,12 +116,17 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 resolver="${repo_root}/scripts/release/resolve-release-download.py"
 publisher="${repo_root}/scripts/release/publish-directory-noreplace.py"
+asset_capture="${repo_root}/scripts/release/capture_release_asset.py"
 [[ -f "${resolver}" ]] || {
   echo "Release download resolver is unavailable: ${resolver}" >&2
   exit 2
 }
 [[ -f "${publisher}" ]] || {
   echo "Atomic release directory publisher is unavailable: ${publisher}" >&2
+  exit 2
+}
+[[ -f "${asset_capture}" ]] || {
+  echo "Bounded release asset capture helper is unavailable: ${asset_capture}" >&2
   exit 2
 }
 
@@ -292,40 +297,12 @@ while IFS=$'\t' read -r asset_id asset_name expected_digest expected_size; do
     -H 'Accept: application/octet-stream' \
     -H 'X-GitHub-Api-Version: 2026-03-10' \
     --method GET \
-    "repos/${repository}/releases/assets/${asset_id}" >"${partial}"; then
-    echo "Failed to download exact release asset id ${asset_id} (${asset_name})." >&2
-    exit 1
-  fi
-
-  actual_digest="$(
-    python3 - "${partial}" <<'PY'
-from pathlib import Path
-import hashlib
-import sys
-
-path = Path(sys.argv[1])
-digest = hashlib.sha256()
-with path.open("rb") as handle:
-    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-        digest.update(chunk)
-print("sha256:" + digest.hexdigest())
-PY
-  )"
-  if [[ "${actual_digest}" != "${expected_digest}" ]]; then
-    echo "Downloaded release asset digest mismatch for ${asset_name}." >&2
-    exit 1
-  fi
-
-  actual_size="$(
-    python3 - "${partial}" <<'PY'
-from pathlib import Path
-import sys
-
-print(Path(sys.argv[1]).stat().st_size)
-PY
-  )"
-  if [[ "${actual_size}" != "${expected_size}" ]]; then
-    echo "Downloaded release asset size mismatch for ${asset_name}." >&2
+    "repos/${repository}/releases/assets/${asset_id}" |
+    python3 "${asset_capture}" \
+      --output "${partial}" \
+      --expected-size "${expected_size}" \
+      --expected-digest "${expected_digest}"; then
+    echo "Failed to download or verify exact release asset id ${asset_id} (${asset_name})." >&2
     exit 1
   fi
 
