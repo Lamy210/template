@@ -32,8 +32,8 @@ if [[ "$(basename "${RELEASE_PROVENANCE_PATH}")" != "release-provenance.json" ]]
   exit 1
 fi
 
-assets=("${DMG_PATH}" "${checksum_path}" "${RELEASE_PROVENANCE_PATH}")
-for file_path in "${assets[@]}"; do
+source_assets=("${DMG_PATH}" "${checksum_path}" "${RELEASE_PROVENANCE_PATH}")
+for file_path in "${source_assets[@]}"; do
   if [[ ! -f "${file_path}" || -L "${file_path}" ]]; then
     echo "Release asset must be a regular non-symlink file: ${file_path}" >&2
     exit 1
@@ -71,16 +71,66 @@ if ! python3 "$(dirname "${BASH_SOURCE[0]}")/validate-release-expectations.py" \
   exit 1
 fi
 
+TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+publication_root="$(mktemp -d "${TEMP_ROOT%/}/release-publication.XXXXXX")"
+cleanup() {
+  rm -rf "${publication_root}"
+}
+trap cleanup EXIT
+
+snapshot_dir="${publication_root}/assets"
+mkdir -p "${snapshot_dir}"
+
+snapshot_regular_file() {
+  local source_path="$1"
+  local destination_path="$2"
+  python3 - "${source_path}" "${destination_path}" <<'PY'
+import os
+from pathlib import Path
+import shutil
+import stat
+import sys
+
+source, destination = map(Path, sys.argv[1:])
+if not hasattr(os, "O_NOFOLLOW"):
+    raise SystemExit("platform does not provide O_NOFOLLOW")
+
+descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+try:
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode):
+        raise SystemExit("source is not a regular file")
+    with os.fdopen(descriptor, "rb", closefd=False) as source_handle:
+        with destination.open("xb") as destination_handle:
+            shutil.copyfileobj(source_handle, destination_handle)
+finally:
+    os.close(descriptor)
+PY
+}
+
+snapshot_dmg="${snapshot_dir}/${dmg_name}"
+snapshot_checksum="${snapshot_dir}/${dmg_name}.sha256"
+snapshot_provenance="${snapshot_dir}/release-provenance.json"
+
+if ! snapshot_regular_file "${DMG_PATH}" "${snapshot_dmg}" ||
+  ! snapshot_regular_file "${checksum_path}" "${snapshot_checksum}" ||
+  ! snapshot_regular_file "${RELEASE_PROVENANCE_PATH}" "${snapshot_provenance}"; then
+  echo "Failed to snapshot release assets before publication." >&2
+  exit 1
+fi
+
+assets=("${snapshot_dmg}" "${snapshot_checksum}" "${snapshot_provenance}")
+
 if ! checksum_digest="$(
   python3 "$(dirname "${BASH_SOURCE[0]}")/release_checksum.py" \
-    "${checksum_path}" \
+    "${snapshot_checksum}" \
     "${dmg_name}"
 )"; then
   echo "Release checksum asset failed canonical validation." >&2
   exit 1
 fi
 
-dmg_digest="$(shasum -a 256 "${DMG_PATH}" | awk '{print $1}')"
+dmg_digest="$(shasum -a 256 "${snapshot_dmg}" | awk '{print $1}')"
 if [[ "${checksum_digest}" != "${dmg_digest}" ]]; then
   echo "Release checksum does not match DMG payload: ${DMG_PATH}" >&2
   exit 1
@@ -211,12 +261,8 @@ case "${release_lookup_status}" in
     ;;
 esac
 
-TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
-download_dir="$(mktemp -d "${TEMP_ROOT%/}/existing-release.XXXXXX")"
-cleanup() {
-  rm -rf "${download_dir}"
-}
-trap cleanup EXIT
+download_dir="${publication_root}/existing-release"
+mkdir -p "${download_dir}"
 
 release_json="${download_dir}/release.json"
 if ! gh release view "${TAG_NAME}" \

@@ -21,6 +21,8 @@ EXPECTED_REPOSITORY_ID="123"
 
 mkdir -p "${LOCAL_DIR}" "${REMOTE_DIR}" "${FAKE_BIN}"
 printf 'stable-release-payload\n' >"${DMG_PATH}"
+EXPECTED_DMG_PATH="${TMP_ROOT}/expected-release.dmg"
+cp "${DMG_PATH}" "${EXPECTED_DMG_PATH}"
 (
   cd "${LOCAL_DIR}"
   shasum -a 256 "$(basename "${DMG_PATH}")" >"$(basename "${CHECKSUM_PATH}")"
@@ -53,6 +55,11 @@ printf '%s\n' "$*" >>"${GH_FAKE_LOG}"
 
 if [[ "$1" == "api" ]]; then
   if [[ "$*" == "api repos/${GITHUB_REPOSITORY}" ]]; then
+    if [[ "${GH_FAKE_MUTATE_LOCAL_AFTER_SNAPSHOT:-false}" == "true" &&
+          ! -f "${GH_FAKE_STATE_FILE}" ]]; then
+      : "${GH_FAKE_LOCAL_DMG_PATH:?GH_FAKE_LOCAL_DMG_PATH is required}"
+      printf 'tampered-after-snapshot\n' >"${GH_FAKE_LOCAL_DMG_PATH}"
+    fi
     repository_full_name="${GITHUB_REPOSITORY}"
     if [[ "${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" == "true" && -f "${GH_FAKE_STATE_FILE}" ]]; then
       repository_full_name="example/renamed-release-repo"
@@ -200,6 +207,8 @@ FAKE_GH
 chmod 0755 "${FAKE_BIN}/gh"
 
 run_publisher() {
+  local publisher_dmg_path="${DMG_PATH}"
+
   GH_FAKE_LOG="${LOG_PATH}" \
     GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
     GH_FAKE_STATE_FILE="${STATE_FILE}" \
@@ -214,6 +223,8 @@ run_publisher() {
     GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE="${GH_FAKE_ATTESTATION_COMMANDS_AVAILABLE:-true}" \
     GH_FAKE_INVALID_ASSET_ATTESTATION_NAME="${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME:-}" \
     GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE="${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" \
+    GH_FAKE_MUTATE_LOCAL_AFTER_SNAPSHOT="${GH_FAKE_MUTATE_LOCAL_AFTER_SNAPSHOT:-false}" \
+    GH_FAKE_LOCAL_DMG_PATH="${publisher_dmg_path}" \
     GH_FAKE_REPOSITORY_ID="${GH_FAKE_REPOSITORY_ID:-123}" \
     PATH="${FAKE_BIN}:${PATH}" \
     GH_TOKEN="test-token" \
@@ -222,7 +233,7 @@ run_publisher() {
     PUBLISHER_SHA="${PUBLISHER_SHA}" \
     EXPECTED_REPOSITORY_ID="${EXPECTED_REPOSITORY_ID}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
-    DMG_PATH="${DMG_PATH}" \
+    DMG_PATH="${publisher_dmg_path}" \
     RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
     bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
 }
@@ -413,6 +424,33 @@ if ! grep -F "api --paginate repos/${GITHUB_REPOSITORY}/releases?per_page=100 --
   exit 1
 fi
 
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
+cp "${EXPECTED_DMG_PATH}" "${DMG_PATH}"
+(
+  cd "${LOCAL_DIR}"
+  shasum -a 256 "$(basename "${DMG_PATH}")" >"$(basename "${CHECKSUM_PATH}")"
+)
+: >"${LOG_PATH}"
+GH_FAKE_RELEASE_EXISTS=false GH_FAKE_MUTATE_LOCAL_AFTER_SNAPSHOT=true run_publisher
+grep -F "tampered-after-snapshot" "${DMG_PATH}" >/dev/null
+cmp -s "${REMOTE_DIR}/$(basename "${DMG_PATH}")" "${EXPECTED_DMG_PATH}" || {
+  echo "Publisher uploaded bytes from the mutable source path instead of the validated snapshot." >&2
+  exit 1
+}
+if grep -F "release create ${TAG_NAME} ${DMG_PATH}" "${LOG_PATH}" >/dev/null; then
+  echo "Publisher passed the mutable original DMG path to release creation." >&2
+  exit 1
+fi
+
+rm -f "${STATE_FILE}"
+rm -f "${REMOTE_DIR}"/*
+cp "${EXPECTED_DMG_PATH}" "${DMG_PATH}"
+(
+  cd "${LOCAL_DIR}"
+  shasum -a 256 "$(basename "${DMG_PATH}")" >"$(basename "${CHECKSUM_PATH}")"
+)
+
 : >"${LOG_PATH}"
 GH_FAKE_RELEASE_EXISTS=false run_publisher
 if ! grep -F "release create ${TAG_NAME}" "${LOG_PATH}" >/dev/null; then
@@ -438,8 +476,14 @@ if ! grep -F "release verify ${TAG_NAME} --repo ${GITHUB_REPOSITORY} --format js
   exit 1
 fi
 for asset_path in "${DMG_PATH}" "${CHECKSUM_PATH}" "${RELEASE_PROVENANCE_PATH}"; do
-  if ! grep -F "release verify-asset ${TAG_NAME} ${asset_path} --repo ${GITHUB_REPOSITORY} --format json" "${LOG_PATH}" >/dev/null; then
-    echo "New release asset attestation was not verified: ${asset_path}" >&2
+  asset_name="$(basename "${asset_path}")"
+  if ! grep -F "release verify-asset ${TAG_NAME} " "${LOG_PATH}" |
+    grep -F "/${asset_name} --repo ${GITHUB_REPOSITORY} --format json" >/dev/null; then
+    echo "New release asset attestation was not verified from a snapshot: ${asset_name}" >&2
+    exit 1
+  fi
+  if grep -F "release verify-asset ${TAG_NAME} ${asset_path} --repo" "${LOG_PATH}" >/dev/null; then
+    echo "Publisher attestation verification reused mutable source path: ${asset_path}" >&2
     exit 1
   fi
 done
