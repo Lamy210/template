@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 from scripts.release.release_asset_limits import MAX_VERIFIED_RELEASE_ZIP_BYTES
@@ -16,6 +21,8 @@ PUBLISHER_SHA = "c" * 40
 REPOSITORY_ID = 1367784801
 ARTIFACT_ID = 7002
 ARTIFACT_SIZE = 4096
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CLI = REPO_ROOT / "scripts/release/verify-verified-release-artifact.py"
 
 
 def artifact_name(attempt: int = PUBLISHER_RUN_ATTEMPT) -> str:
@@ -102,6 +109,106 @@ class VerifiedReleaseArtifactTests(unittest.TestCase):
                 assert isinstance(document["workflow_run"], dict)
                 document["workflow_run"][key] = value
                 self.assertTrue(self.verify(document))
+
+    def test_cli_emits_verified_size_to_new_regular_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata_path = root / "artifact.json"
+            size_output = root / "size.txt"
+            metadata_path.write_text(
+                json.dumps(artifact_metadata()),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLI),
+                    "--metadata",
+                    str(metadata_path),
+                    "--artifact-id",
+                    str(ARTIFACT_ID),
+                    "--artifact-name",
+                    artifact_name(),
+                    "--artifact-digest",
+                    ARTIFACT_DIGEST,
+                    "--publisher-run-id",
+                    str(PUBLISHER_RUN_ID),
+                    "--publisher-run-attempt",
+                    str(PUBLISHER_RUN_ATTEMPT),
+                    "--publisher-sha",
+                    PUBLISHER_SHA,
+                    "--repository-id",
+                    str(REPOSITORY_ID),
+                    "--size-output",
+                    str(size_output),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(f"{ARTIFACT_SIZE}\n", size_output.read_text(encoding="utf-8"))
+            self.assertEqual(0o600, size_output.stat().st_mode & 0o777)
+
+    def test_cli_refuses_existing_or_symlink_size_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata_path = root / "artifact.json"
+            metadata_path.write_text(
+                json.dumps(artifact_metadata()),
+                encoding="utf-8",
+            )
+            target = root / "target.txt"
+            target.write_text("keep\n", encoding="utf-8")
+
+            for mode in ("existing", "symlink"):
+                with self.subTest(mode=mode):
+                    size_output = root / "size.txt"
+                    size_output.unlink(missing_ok=True)
+                    if mode == "existing":
+                        size_output.write_text("keep\n", encoding="utf-8")
+                    else:
+                        size_output.symlink_to(target.name)
+
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(CLI),
+                            "--metadata",
+                            str(metadata_path),
+                            "--artifact-id",
+                            str(ARTIFACT_ID),
+                            "--artifact-name",
+                            artifact_name(),
+                            "--artifact-digest",
+                            ARTIFACT_DIGEST,
+                            "--publisher-run-id",
+                            str(PUBLISHER_RUN_ID),
+                            "--publisher-run-attempt",
+                            str(PUBLISHER_RUN_ATTEMPT),
+                            "--publisher-sha",
+                            PUBLISHER_SHA,
+                            "--repository-id",
+                            str(REPOSITORY_ID),
+                            "--size-output",
+                            str(size_output),
+                        ],
+                        cwd=REPO_ROOT,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+
+                    self.assertEqual(1, result.returncode)
+                    self.assertIn("already exists", result.stderr)
+                    if mode == "existing":
+                        self.assertEqual("keep\n", size_output.read_text(encoding="utf-8"))
+                    else:
+                        self.assertTrue(size_output.is_symlink())
+                        self.assertEqual("keep\n", target.read_text(encoding="utf-8"))
 
     def test_rejects_malformed_expected_values(self) -> None:
         errors = verify_verified_release_artifact(
