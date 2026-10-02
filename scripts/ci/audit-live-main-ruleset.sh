@@ -119,7 +119,8 @@ candidates = [
     and ruleset.get("target") == "branch"
     and ruleset.get("enforcement") == "active"
     and ruleset.get("source_type") == "Repository"
-    and ruleset.get("source") == repository
+    and isinstance(ruleset.get("source"), str)
+    and ruleset["source"].casefold() == repository.casefold()
 ]
 
 if len(candidates) != 1:
