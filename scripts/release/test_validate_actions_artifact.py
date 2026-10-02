@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 from pathlib import Path
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -111,6 +113,37 @@ class ActionsArtifactValidationTests(unittest.TestCase):
 
         self.assertTrue(any("snapshot" in error for error in errors), errors)
         self.assertFalse((root / "out").exists())
+
+    def test_direct_cli_runs_with_package_imports(self) -> None:
+        temporary_directory, archive_path = self.create_zip(
+            sorted(EXPECTED_FILES)
+        )
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        output = root / "cli-out"
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/release/validate-actions-artifact.py",
+                "--archive",
+                str(archive_path),
+                "--output",
+                str(output),
+            ],
+            cwd=Path(__file__).resolve().parents[2],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertTrue(
+            (output / "release-input/unsigned-macos-app.tar.gz").is_file()
+        )
+        self.assertTrue(
+            (output / "release-input/build-provenance.json").is_file()
+        )
 
     def test_rejects_path_traversal(self) -> None:
         temporary_directory, archive_path = self.create_zip(
