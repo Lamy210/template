@@ -98,8 +98,9 @@ if ! gh api --paginate --slurp "${api_headers[@]}" \
   exit 4
 fi
 
-candidate_id="$(
-  python3 - "${rulesets_json}" "${repository}" <<'PY'
+select_candidate_id() {
+  local metadata="$1"
+  python3 - "${metadata}" "${repository}" <<'PY'
 import json
 import sys
 
@@ -134,7 +135,11 @@ if type(ruleset_id) is not int or ruleset_id <= 0:
     raise SystemExit("Live Solo default-branch Ruleset id must be a positive integer")
 print(ruleset_id)
 PY
-)"
+}
+
+if ! candidate_id="$(select_candidate_id "${rulesets_json}")"; then
+  exit 4
+fi
 
 detail_json="${work_root}/ruleset.json"
 if ! gh api "${api_headers[@]}" \
@@ -163,10 +168,24 @@ if [[ "${initial_identity}" != "${final_identity}" ||
   exit 5
 fi
 
+final_rulesets_json="${work_root}/rulesets-after.json"
+if ! gh api --paginate --slurp "${api_headers[@]}" \
+  "repos/${repository}/rulesets?targets=branch&includes_parents=true&per_page=100" >"${final_rulesets_json}"; then
+  echo "Failed to re-read repository Rulesets for ${repository}." >&2
+  exit 6
+fi
+if ! final_candidate_id="$(select_candidate_id "${final_rulesets_json}")"; then
+  exit 6
+fi
+if [[ "${candidate_id}" != "${final_candidate_id}" ]]; then
+  echo "Solo default-branch Ruleset identity changed during audit." >&2
+  exit 6
+fi
+
 final_detail_json="${work_root}/ruleset-after.json"
 if ! gh api "${api_headers[@]}" \
-  "repos/${repository}/rulesets/${candidate_id}?includes_parents=true" >"${final_detail_json}"; then
-  echo "Failed to re-read Ruleset ${candidate_id} for ${repository}." >&2
+  "repos/${repository}/rulesets/${final_candidate_id}?includes_parents=true" >"${final_detail_json}"; then
+  echo "Failed to re-read Ruleset ${final_candidate_id} for ${repository}." >&2
   exit 6
 fi
 
