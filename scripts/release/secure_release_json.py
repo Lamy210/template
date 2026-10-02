@@ -16,6 +16,30 @@ class SecureReleaseJsonError(RuntimeError):
     pass
 
 
+def _unlink_if_same_file(
+    parent_descriptor: int,
+    name: str,
+    descriptor: int,
+) -> None:
+    try:
+        current = os.stat(
+            name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        opened = os.fstat(descriptor)
+    except OSError:
+        return
+    if not stat.S_ISREG(current.st_mode):
+        return
+    if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
+        return
+    try:
+        os.unlink(name, dir_fd=parent_descriptor)
+    except OSError:
+        pass
+
+
 def load_bounded_release_json(
     path: Path,
     *,
@@ -113,11 +137,12 @@ def write_release_json_exclusive(
                 f"unable to write {label} output {path}: {error}"
             ) from error
     except Exception:
-        if created:
-            try:
-                os.unlink(path.name, dir_fd=parent_descriptor)
-            except OSError:
-                pass
+        if created and descriptor is not None:
+            _unlink_if_same_file(
+                parent_descriptor,
+                path.name,
+                descriptor,
+            )
         raise
     finally:
         if descriptor is not None:
