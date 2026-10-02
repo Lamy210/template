@@ -193,11 +193,11 @@ class LiveReleaseTagRulesetAuditTests(unittest.TestCase):
 
                     endpoint = sys.argv[-1]
                     if endpoint == "repos/example/repo":
-                        print(json.dumps({
-                            "id": 101,
-                            "full_name": "example/repo",
-                            "default_branch": "main",
-                        }))
+                        print(json.dumps(dict(
+                            id=101,
+                            full_name="example/repo",
+                            default_branch="main",
+                        )))
                         raise SystemExit(0)
                     if "rulesets?targets=tag&includes_parents=true&per_page=100" in endpoint:
                         print(json.dumps([[{summary!r}]]))
