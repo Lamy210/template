@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from scripts.ci.validate_rulesets import (
+    main,
     validate_file,
     validate_main_solo,
     validate_release_tags,
@@ -248,6 +249,32 @@ class ReleaseTagRulesetTests(unittest.TestCase):
         errors = validate_release_tags(document)
 
         self.assertTrue(any("ref_name.include must equal ['refs/tags/v*']" in error for error in errors))
+
+
+class CliValidationTests(unittest.TestCase):
+    def test_cli_validates_explicit_ruleset_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "snapshot.json"
+            path.write_text(json.dumps(valid_main_solo()), encoding="utf-8")
+            self.assertEqual(
+                0,
+                main(["--file", str(path), "--profile", "main-solo"]),
+            )
+
+    def test_cli_rejects_invalid_explicit_ruleset_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "snapshot.json"
+            document = valid_main_solo()
+            document["bypass_actors"] = [{"actor_id": 1}]
+            path.write_text(json.dumps(document), encoding="utf-8")
+            self.assertEqual(
+                1,
+                main(["--file", str(path), "--profile", "main-solo"]),
+            )
+
+    def test_cli_requires_file_and_profile_together(self) -> None:
+        self.assertEqual(2, main(["--profile", "main-solo"]))
+        self.assertEqual(2, main(["--file", "snapshot.json"]))
 
 
 class FileValidationTests(unittest.TestCase):
