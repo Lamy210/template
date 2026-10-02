@@ -78,6 +78,30 @@ exit 97
 FAKE_GH
 chmod 0755 "${fake_bin}/gh"
 
+symlink_repo="${temp_root}/symlink-merge-settings"
+mkdir -p "${symlink_repo}/scripts/setup" "${symlink_repo}/scripts/ci"
+cp "${script}" "${symlink_repo}/scripts/setup/apply-repository-merge-settings.sh"
+external_validator="${temp_root}/external-merge-validator.py"
+printf '# external validator\n' >"${external_validator}"
+ln -s "${external_validator}" "${symlink_repo}/scripts/ci/validate-repository-merge-settings.py"
+
+: >"${temp_root}/symlink-validator-gh.log"
+if PATH="${fake_bin}:${PATH}" GITHUB_ACTIONS=false \
+  GH_FAKE_LOG="${temp_root}/symlink-validator-gh.log" \
+  GH_FAKE_STATE="${temp_root}/symlink-validator-state" \
+  bash "${symlink_repo}/scripts/setup/apply-repository-merge-settings.sh" \
+  --repository Example/Repo \
+  --confirm-repository Example/Repo \
+  --apply >"${temp_root}/symlink-validator.out" 2>"${temp_root}/symlink-validator.err"; then
+  echo "Merge-settings helper accepted a symlinked validator." >&2
+  exit 1
+fi
+grep -F "regular non-symlink file" "${temp_root}/symlink-validator.err" >/dev/null
+[[ ! -s "${temp_root}/symlink-validator-gh.log" ]] || {
+  echo "Merge-settings helper contacted GitHub before rejecting a symlinked validator." >&2
+  exit 1
+}
+
 run_apply() {
   local scenario="$1"
   local log="${temp_root}/gh-${scenario}.log"

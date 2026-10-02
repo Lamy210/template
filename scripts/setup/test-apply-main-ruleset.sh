@@ -116,6 +116,35 @@ exit 97
 FAKE_GH
 chmod 0755 "${fake_bin}/gh"
 
+symlink_repo="${temp_root}/symlink-main-ruleset"
+mkdir -p "${symlink_repo}/scripts/setup" "${symlink_repo}/scripts/ci" "${symlink_repo}/rulesets"
+cp "${script}" "${symlink_repo}/scripts/setup/apply-main-ruleset.sh"
+: >"${symlink_repo}/scripts/ci/validate_rulesets.py"
+: >"${symlink_repo}/scripts/ci/audit_main_ruleset.py"
+: >"${symlink_repo}/scripts/ci/audit-live-main-rules.sh"
+external_ruleset="${temp_root}/external-main-solo.json"
+printf '{}\n' >"${external_ruleset}"
+ln -s "${external_ruleset}" "${symlink_repo}/rulesets/main-solo.json"
+
+: >"${temp_root}/symlink-control-gh.log"
+if PATH="${fake_bin}:${PATH}" GITHUB_ACTIONS=false \
+  GH_FAKE_LOG="${temp_root}/symlink-control-gh.log" \
+  GH_FAKE_STATE="${temp_root}/symlink-control-state" \
+  bash "${symlink_repo}/scripts/setup/apply-main-ruleset.sh" \
+  --repository Example/Repo \
+  --confirm-repository Example/Repo \
+  --ruleset-id 42 \
+  --confirm-ruleset-id 42 \
+  --apply >"${temp_root}/symlink-control.out" 2>"${temp_root}/symlink-control.err"; then
+  echo "Ruleset helper accepted a symlinked control file." >&2
+  exit 1
+fi
+grep -F "regular non-symlink file" "${temp_root}/symlink-control.err" >/dev/null
+[[ ! -s "${temp_root}/symlink-control-gh.log" ]] || {
+  echo "Ruleset helper contacted GitHub before rejecting symlinked control files." >&2
+  exit 1
+}
+
 run_apply() {
   local scenario="$1"
   local log="${temp_root}/gh-${scenario}.log"
