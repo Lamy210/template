@@ -319,14 +319,15 @@ jobs:
             --dmg-path "${DMG_PATH}" \
             --output release-output/release-provenance.json
 
-      - name: Validate bounded release handoff before upload
+      - name: Snapshot bounded release handoff before upload
         shell: bash
         env:
           DMG_NAME: ${{ inputs.dmg_name }}
         run: |
           set -euo pipefail
-          python3 scripts/release/validate-verified-release-payload.py \
-            --root release-output \
+          python3 scripts/release/prepare-verified-release-handoff.py \
+            --source release-output \
+            --output verified-upload \
             --dmg-name "${DMG_NAME}"
 
       - name: Upload verified release artifacts
@@ -335,9 +336,9 @@ jobs:
         with:
           name: verified-macos-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            release-output/${{ inputs.dmg_name }}
-            release-output/${{ inputs.dmg_name }}.sha256
-            release-output/release-provenance.json
+            verified-upload/${{ inputs.dmg_name }}
+            verified-upload/${{ inputs.dmg_name }}.sha256
+            verified-upload/release-provenance.json
           if-no-files-found: error
           retention-days: 14
 
