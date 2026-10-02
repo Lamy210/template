@@ -263,15 +263,27 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             text,
         )
 
-    def test_verified_release_payload_is_exact_before_provenance_and_publication(self) -> None:
+    def test_verified_release_payload_is_digest_bound_before_provenance_and_publication(self) -> None:
         text = self.release_text()
-        download = text.index("artifact-ids: ${{ needs.release.outputs.verified_artifact_id }}")
+        raw_download = text.index(
+            "/actions/artifacts/${VERIFIED_ARTIFACT_ID}/zip"
+        )
+        extractor = text.index(
+            "scripts/release/extract-verified-release-artifact.py"
+        )
         payload = text.index("scripts/release/validate-verified-release-payload.py")
         provenance = text.index("scripts/release/verify-release-provenance.py")
         publication = text.index("scripts/release/publish-github-release.sh")
-        self.assertLess(download, payload)
+        self.assertLess(raw_download, extractor)
+        self.assertLess(extractor, payload)
         self.assertLess(payload, provenance)
         self.assertLess(payload, publication)
+        self.assertIn(
+            "VERIFIED_ARTIFACT_DIGEST: ${{ needs.release.outputs.verified_artifact_digest }}",
+            text,
+        )
+        self.assertIn('--expected-digest "${VERIFIED_ARTIFACT_DIGEST}"', text)
+        self.assertIn("--output release-output", text)
         self.assertIn("--root release-output", text)
         self.assertIn('DMG_NAME: ${{ inputs.dmg_name }}', text)
         self.assertIn('--dmg-name "${DMG_NAME}"', text)
@@ -340,7 +352,22 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             with self.subTest(token=token):
                 self.assertNotIn(token, block)
         self.assertIn("scripts/release/verify-verified-release-artifact.py", block)
-        self.assertIn("artifact-ids: ${{ needs.release.outputs.verified_artifact_id }}", block)
+        self.assertIn(
+            "/actions/artifacts/${VERIFIED_ARTIFACT_ID}/zip",
+            block,
+        )
+        self.assertIn(
+            "scripts/release/extract-verified-release-artifact.py",
+            block,
+        )
+        self.assertIn(
+            "VERIFIED_ARTIFACT_DIGEST: ${{ needs.release.outputs.verified_artifact_digest }}",
+            block,
+        )
+        self.assertNotIn(
+            "artifact-ids: ${{ needs.release.outputs.verified_artifact_id }}",
+            block,
+        )
         self.assertIn("Rebind release tag before publication", block)
         self.assertIn("Publish immutable GitHub Release", block)
 

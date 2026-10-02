@@ -168,7 +168,7 @@ Before release secrets are available, validate:
 - tar archive digest and confinement;
 - application bundle ID/version/executable contract.
 
-The secret-free validator then re-handoffs only the validated archive plus validator-owned metadata. The privileged job rechecks both before certificate import.
+The secret-free validator then re-handoffs only the validated archive plus validator-owned metadata. The privileged job rechecks both before certificate import. After signing, the separate publication job also binds its input to the exact signer-produced Artifact ID and GitHub-provided raw ZIP digest before extracting the DMG/checksum/provenance payload; it does not rely only on a mutable workspace directory produced by a prior step.
 
 ## Certificate handling
 

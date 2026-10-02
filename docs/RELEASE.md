@@ -73,7 +73,7 @@ Before importing the Developer ID certificate, the signing job:
 
 Only then does it import Apple credentials and perform signing/notarization. After final verification it uploads the signed DMG, checksum, and publisher-owned release provenance as an exact current-run/current-attempt Actions Artifact.
 
-The publication job independently verifies that signer-produced artifact's ID, canonical name, GitHub digest, repository identity, publisher run, publisher attempt, and publisher SHA before downloading it. It then revalidates the trusted DMG basename and release provenance. The publication script itself rebinds the stable tag to the validated source SHA immediately before any GitHub Release lookup/create path and again after remote release-state/asset verification, so tag movement during publication fails closed rather than relying only on a preceding workflow step. The post-create/no-op state check also requires GitHub to report the release as natively immutable; a mutable published release is not accepted as a successful production publication. After byte-for-byte remote asset verification, the publisher also requires GitHub's signed release attestation and verifies each local publication asset against that attestation before the final tag/repository rebinding succeeds.
+The publication job independently verifies that signer-produced artifact's ID, canonical name, GitHub digest, repository identity, publisher run, publisher attempt, and publisher SHA. It then downloads that exact Artifact's raw ZIP through the Artifact API, requires the raw ZIP SHA-256 to equal the GitHub-provided digest, and only then extracts the exact DMG/checksum/provenance payload with the trusted validator. It then revalidates the trusted DMG basename and release provenance. The publication script itself rebinds the stable tag to the validated source SHA immediately before any GitHub Release lookup/create path and again after remote release-state/asset verification, so tag movement during publication fails closed rather than relying only on a preceding workflow step. The post-create/no-op state check also requires GitHub to report the release as natively immutable; a mutable published release is not accepted as a successful production publication. After byte-for-byte remote asset verification, the publisher also requires GitHub's signed release attestation and verifies each local publication asset against that attestation before the final tag/repository rebinding succeeds.
 
 GitHub's native immutable-releases repository setting is a required production gate and an additional server-side supply-chain control. The source-controlled release path does not grant itself Administration permission or silently enable/disable that repository setting. Configure it out of band before production releases and verify it with `scripts/ci/audit-live-immutable-releases.sh`. Because the native setting is not retroactive, the release pipeline and Homebrew consumer continue to bind tags, repository IDs, Release IDs, exact asset IDs, digests, and sizes independently rather than treating the setting as the only immutability control.
 
@@ -140,7 +140,8 @@ Reusable macOS Release / sign (environment: release, contents: read)
   v
 Reusable macOS Release / publish (no Apple secrets, contents: write)
   |
-  | exact artifact identity + digest revalidation
+  | exact artifact identity + raw Artifact ZIP digest revalidation
+  | strict exact-payload extraction + release provenance revalidation
   | release-tag rebinding
   v
 Immutable GitHub Release

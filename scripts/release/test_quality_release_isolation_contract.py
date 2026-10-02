@@ -23,6 +23,7 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
             "scripts.release.test_validate_release_input",
             "scripts.release.test_publisher_attempt_binding",
             "scripts.release.test_validated_artifact",
+            "scripts.release.test_verified_release_archive",
             "scripts.release.test_release_environment_runtime_proof",
             "scripts.release.test_release_workflow_contract",
             "scripts.release.test_release_publisher_workflow_contract",
@@ -44,6 +45,22 @@ class QualityReleaseIsolationContractTests(unittest.TestCase):
         self.assertIn("scripts.homebrew.test_tap_repository_identity", text)
         self.assertIn("scripts.release.test_release_download_identity", text)
         self.assertIn("scripts/release/test-download-exact-release-assets.sh", text)
+
+    def test_release_isolation_roundtrip_binds_verified_artifact_raw_zip(self) -> None:
+        text = RELEASE_ISOLATION_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(
+            "/actions/artifacts/${ARTIFACT_ID}/zip",
+            text,
+        )
+        self.assertIn(
+            "scripts/release/extract-verified-release-artifact.py",
+            text,
+        )
+        self.assertIn(
+            "ARTIFACT_DIGEST: ${{ needs.verified-release-package.outputs.artifact_digest }}",
+            text,
+        )
+        self.assertIn('--expected-digest "${ARTIFACT_DIGEST}"', text)
 
     def test_release_isolation_runs_on_pull_requests_and_post_merge_main(self) -> None:
         text = RELEASE_ISOLATION_WORKFLOW.read_text(encoding="utf-8")
