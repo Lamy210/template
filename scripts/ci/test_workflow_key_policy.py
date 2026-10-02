@@ -71,6 +71,77 @@ jobs:
         )
         self.assertEqual(1, len(violations), violations)
 
+    def test_rejects_explicit_mapping_key_syntax(self) -> None:
+        for body in (
+            """
+on:
+  push:
+permissions: {}
+jobs:
+  ? test
+  :
+    runs-on: ubuntu-latest
+""",
+            """
+on:
+  push:
+permissions: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - ? run
+        : echo unsafe
+""",
+        ):
+            with self.subTest(body=body):
+                violations = self.validate(body)
+                self.assertEqual(1, len(violations), violations)
+                self.assertIn("explicit YAML mapping-key syntax", violations[0].message)
+
+    def test_rejects_yaml_tags_in_structural_positions(self) -> None:
+        for tagged in (
+            "!!str run: echo unsafe",
+            '!!str "run": echo unsafe',
+            "!custom run: echo unsafe",
+            "!<tag:yaml.org,2002:str> run: echo unsafe",
+        ):
+            with self.subTest(tagged=tagged):
+                violations = self.validate(
+                    f"""
+on:
+  push:
+permissions: {{}}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - {tagged}
+"""
+                )
+                self.assertEqual(1, len(violations), violations)
+                self.assertIn("YAML tags", violations[0].message)
+
+    def test_accepts_quoted_bang_scalar_and_ignores_structural_text_in_run_block(self) -> None:
+        violations = self.validate(
+            """
+on:
+  push:
+    branches:
+      - "!release/**"
+permissions: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          ? run
+          !!str run: shell text
+          !custom run: shell text
+"""
+        )
+        self.assertEqual([], violations)
+
     def test_ignores_key_like_text_inside_run_block_and_comments(self) -> None:
         violations = self.validate(
             r"""
