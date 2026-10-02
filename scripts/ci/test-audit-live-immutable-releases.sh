@@ -25,7 +25,13 @@ printf '%s\n' "$*" >>"${GH_FAKE_LOG}"
 args="$*"
 
 if [[ "${args}" == *"repos/Example/Repo/immutable-releases"* ]]; then
-  : >"${GH_FAKE_STATE}"
+  setting_count=0
+  if [[ -f "${GH_FAKE_STATE}" ]]; then
+    setting_count="$(cat "${GH_FAKE_STATE}")"
+  fi
+  setting_count="$((setting_count + 1))"
+  printf '%s\n' "${setting_count}" >"${GH_FAKE_STATE}"
+
   case "${GH_FAKE_SCENARIO}" in
     enabled | repository-drift)
       printf '%s\n' '{"enabled":true,"enforced_by_owner":false}'
@@ -33,6 +39,14 @@ if [[ "${args}" == *"repos/Example/Repo/immutable-releases"* ]]; then
       ;;
     owner-enforced)
       printf '%s\n' '{"enabled":true,"enforced_by_owner":true}'
+      exit 0
+      ;;
+    setting-drift)
+      if [[ "${setting_count}" -eq 1 ]]; then
+        printf '%s\n' '{"enabled":true,"enforced_by_owner":false}'
+      else
+        printf '%s\n' '{"enabled":false,"enforced_by_owner":false}'
+      fi
       exit 0
       ;;
     malformed)
@@ -77,7 +91,8 @@ rm -f "${temp_root}/state"
 output="$(run_doctor enabled)"
 grep -F "native immutable releases enabled for Example/Repo" <<<"${output}" >/dev/null
 grep -F "enforced_by_owner=false" <<<"${output}" >/dev/null
-[[ "$(grep -Fc "repos/Example/Repo" "${temp_root}/gh.log")" -eq 3 ]]
+[[ "$(grep -Fc "repos/Example/Repo" "${temp_root}/gh.log")" -eq 5 ]]
+[[ "$(grep -Fc "repos/Example/Repo/immutable-releases" "${temp_root}/gh.log")" -eq 2 ]]
 if grep -E -- "--method (PUT|POST|PATCH|DELETE)" "${temp_root}/gh.log" >/dev/null; then
   echo "Immutable release doctor unexpectedly attempted a mutation." >&2
   exit 1
@@ -112,6 +127,15 @@ if run_doctor repository-drift >"${temp_root}/drift.out" 2>"${temp_root}/drift.e
   exit 1
 fi
 grep -F "Repository identity changed" "${temp_root}/drift.err" >/dev/null
+
+rm -f "${temp_root}/state"
+: >"${temp_root}/gh.log"
+if run_doctor setting-drift >"${temp_root}/setting-drift.out" 2>"${temp_root}/setting-drift.err"; then
+  echo "Immutable release doctor accepted immutable-release setting drift." >&2
+  exit 1
+fi
+grep -F "Final native immutable releases setting failed validation" "${temp_root}/setting-drift.err" >/dev/null
+grep -F "must be enabled" "${temp_root}/setting-drift.err" >/dev/null
 
 rm -f "${temp_root}/state"
 : >"${temp_root}/gh.log"
