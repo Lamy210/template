@@ -117,6 +117,83 @@ class VerifiedReleaseArchiveTests(unittest.TestCase):
         self.assertEqual(b"trusted-dmg", (output / DMG_NAME).read_bytes())
         self.assertEqual(b"tampered-after-snapshot", archive.read_bytes())
 
+    def test_failed_extraction_does_not_publish_partial_output(self) -> None:
+        _, archive, output = self.fixture()
+        root = output.parent
+        original_open = verified_release_archive.zipfile.ZipFile.open
+
+        def fail_on_checksum(zip_file, member, *args, **kwargs):
+            name = member.filename if isinstance(member, zipfile.ZipInfo) else str(member)
+            if name == f"{DMG_NAME}.sha256":
+                raise RuntimeError("simulated extraction failure")
+            return original_open(zip_file, member, *args, **kwargs)
+
+        with mock.patch.object(
+            verified_release_archive.zipfile.ZipFile,
+            "open",
+            new=fail_on_checksum,
+        ):
+            errors = validate_and_extract_verified_release_artifact(
+                archive,
+                output,
+                dmg_name=DMG_NAME,
+                expected_digest=digest(archive),
+            )
+
+        self.assertTrue(any("invalid verified release Artifact ZIP" in error for error in errors), errors)
+        self.assertFalse(output.exists())
+        self.assertFalse(any(root.glob(".release-output.*")))
+
+    def test_rejects_dangling_symlink_output(self) -> None:
+        _, archive, output = self.fixture()
+        output.symlink_to(output.parent / "missing-output", target_is_directory=True)
+
+        errors = validate_and_extract_verified_release_artifact(
+            archive,
+            output,
+            dmg_name=DMG_NAME,
+            expected_digest=digest(archive),
+        )
+
+        self.assertTrue(any("symlink" in error for error in errors), errors)
+        self.assertTrue(output.is_symlink())
+
+    def test_output_appearance_during_extraction_fails_closed(self) -> None:
+        _, archive, output = self.fixture()
+        root = output.parent
+        original_open = verified_release_archive.zipfile.ZipFile.open
+        output_created = False
+
+        def create_output_then_open(zip_file, member, *args, **kwargs):
+            nonlocal output_created
+            if not output_created:
+                output.mkdir()
+                output_created = True
+            return original_open(zip_file, member, *args, **kwargs)
+
+        with mock.patch.object(
+            verified_release_archive.zipfile.ZipFile,
+            "open",
+            new=create_output_then_open,
+        ):
+            errors = validate_and_extract_verified_release_artifact(
+                archive,
+                output,
+                dmg_name=DMG_NAME,
+                expected_digest=digest(archive),
+            )
+
+        self.assertTrue(
+            any(
+                "appeared during verified release extraction" in error
+                for error in errors
+            ),
+            errors,
+        )
+        self.assertTrue(output.is_dir())
+        self.assertEqual([], list(output.iterdir()))
+        self.assertFalse(any(root.glob(".release-output.*")))
+
     def test_rejects_unexpected_or_duplicate_members(self) -> None:
         for extra_entries in (
             [(regular_info("extra.txt"), b"extra")],
