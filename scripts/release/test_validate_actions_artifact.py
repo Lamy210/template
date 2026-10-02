@@ -97,6 +97,81 @@ class ActionsArtifactValidationTests(unittest.TestCase):
         )
         self.assertEqual(b"tampered-after-snapshot", archive_path.read_bytes())
 
+    def test_failed_extraction_does_not_publish_partial_output(self) -> None:
+        temporary_directory, archive_path = self.create_zip(sorted(EXPECTED_FILES))
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        output = root / "out"
+        original_open = actions_artifact.zipfile.ZipFile.open
+
+        def fail_on_app_archive(zip_file, member, *args, **kwargs):
+            name = member.filename if isinstance(member, zipfile.ZipInfo) else str(member)
+            if name == "release-input/unsigned-macos-app.tar.gz":
+                raise RuntimeError("simulated extraction failure")
+            return original_open(zip_file, member, *args, **kwargs)
+
+        with mock.patch.object(
+            actions_artifact.zipfile.ZipFile,
+            "open",
+            new=fail_on_app_archive,
+        ):
+            errors = validate_and_extract_release_artifact(
+                archive_path,
+                output,
+            )
+
+        self.assertTrue(any("invalid ZIP artifact" in error for error in errors), errors)
+        self.assertFalse(output.exists())
+        self.assertFalse(any(root.glob(".out.*")))
+
+    def test_rejects_dangling_symlink_output(self) -> None:
+        temporary_directory, archive_path = self.create_zip(sorted(EXPECTED_FILES))
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        output = root / "out"
+        output.symlink_to(root / "missing-output", target_is_directory=True)
+
+        errors = validate_and_extract_release_artifact(
+            archive_path,
+            output,
+        )
+
+        self.assertTrue(any("symlink" in error for error in errors), errors)
+        self.assertTrue(output.is_symlink())
+
+    def test_output_appearance_during_extraction_fails_closed(self) -> None:
+        temporary_directory, archive_path = self.create_zip(sorted(EXPECTED_FILES))
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        output = root / "out"
+        original_open = actions_artifact.zipfile.ZipFile.open
+        output_created = False
+
+        def create_output_then_open(zip_file, member, *args, **kwargs):
+            nonlocal output_created
+            if not output_created:
+                output.mkdir()
+                output_created = True
+            return original_open(zip_file, member, *args, **kwargs)
+
+        with mock.patch.object(
+            actions_artifact.zipfile.ZipFile,
+            "open",
+            new=create_output_then_open,
+        ):
+            errors = validate_and_extract_release_artifact(
+                archive_path,
+                output,
+            )
+
+        self.assertTrue(
+            any("appeared during artifact extraction" in error for error in errors),
+            errors,
+        )
+        self.assertTrue(output.is_dir())
+        self.assertEqual([], list(output.iterdir()))
+        self.assertFalse(any(root.glob(".out.*")))
+
     def test_rejects_symlinked_artifact_container(self) -> None:
         temporary_directory, archive_path = self.create_zip(
             sorted(EXPECTED_FILES)
