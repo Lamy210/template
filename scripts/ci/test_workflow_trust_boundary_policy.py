@@ -51,6 +51,54 @@ jobs:
         self.assertEqual(1, len(violations), violations)
         self.assertIn("pull_request_target", violations[0].message)
 
+    def test_rejects_encoded_or_block_scalar_secrets_inherit(self) -> None:
+        for body in (
+            r"""
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  call:
+    uses: ./.github/workflows/reusable.yml
+    secrets: "inhe\u0072it"
+""",
+            """
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  call:
+    uses: ./.github/workflows/reusable.yml
+    secrets: >-
+      inherit
+""",
+        ):
+            with self.subTest(body=body):
+                violations = self.validate(body)
+                self.assertEqual(1, len(violations), violations)
+                self.assertEqual("job:call", violations[0].scope)
+                self.assertIn("secrets scalar forms", violations[0].message)
+
+    def test_accepts_named_secret_mapping_and_empty_mapping(self) -> None:
+        for secrets in (
+            """secrets:
+      token: ${{ secrets.TOKEN }}""",
+            "secrets: {}",
+        ):
+            with self.subTest(secrets=secrets):
+                violations = self.validate(
+                    f"""
+on:
+  workflow_dispatch:
+permissions: {{}}
+jobs:
+  call:
+    uses: ./.github/workflows/reusable.yml
+    {secrets}
+"""
+                )
+                self.assertEqual([], violations)
+
     def test_rejects_secrets_inherit(self) -> None:
         for value in ("inherit", '"inherit"', "'inherit'"):
             with self.subTest(value=value):
