@@ -8,6 +8,10 @@ import sys
 import tempfile
 import unittest
 
+from scripts.release.proof_workflow_input import (
+    MAX_GITHUB_CONTENTS_JSON_BYTES,
+    MAX_PROOF_WORKFLOW_BYTES,
+)
 from scripts.release.unprivileged_release_build_workflow import (
     EXPECTED_WORKFLOW_PATH,
     WorkflowValidationError,
@@ -249,6 +253,63 @@ class HistoricalReleaseBuildWorkflowTests(unittest.TestCase):
             1,
         )
         self.assertEqual([], validate_unprivileged_release_build_workflow(text))
+
+    def test_rejects_oversized_decoded_contents_workflow(self) -> None:
+        document = github_document(workflow_text())
+        document["content"] = base64.b64encode(
+            b"x" * (MAX_PROOF_WORKFLOW_BYTES + 1)
+        ).decode("ascii")
+
+        with self.assertRaisesRegex(
+            WorkflowValidationError,
+            "decoded proof workflow exceeds byte limit",
+        ):
+            decode_github_contents_document(document)
+
+    def test_cli_rejects_oversized_and_symlinked_contents_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            oversized = root / "oversized.json"
+            with oversized.open("wb") as handle:
+                handle.truncate(MAX_GITHUB_CONTENTS_JSON_BYTES + 1)
+
+            oversized_result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLI),
+                    "--github-content-json",
+                    str(oversized),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            real = root / "real.json"
+            real.write_text(
+                json.dumps(github_document(workflow_text())),
+                encoding="utf-8",
+            )
+            symlink = root / "symlink.json"
+            symlink.symlink_to(real.name)
+            symlink_result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLI),
+                    "--github-content-json",
+                    str(symlink),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, oversized_result.returncode)
+        self.assertIn("snapshot byte limit", oversized_result.stderr)
+        self.assertEqual(1, symlink_result.returncode)
+        self.assertIn("regular non-symlink file", symlink_result.stderr)
 
     def test_cli_accepts_valid_contents_and_rejects_privileged_contents(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

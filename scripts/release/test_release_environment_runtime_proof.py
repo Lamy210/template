@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
 
+from scripts.release.proof_workflow_input import (
+    MAX_GITHUB_CONTENTS_JSON_BYTES,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts/release/prove-release-environment-policy.sh"
+VALIDATOR = (
+    REPO_ROOT
+    / "scripts/release/validate-release-environment-proof-workflow.py"
+)
 WORKFLOW = REPO_ROOT / "examples/release-environment-proof.yml"
 
 
@@ -241,6 +251,63 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
         self.assertIn("Baseline runner", text)
         self.assertIn("Release environment probe", text)
         self.assertNotIn("secrets.", text)
+
+    def test_validator_rejects_oversized_stdin_before_json_parse(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(VALIDATOR),
+                "--expected-path",
+                ".github/workflows/release-environment-proof.yml",
+                "--trusted-workflow",
+                str(WORKFLOW),
+            ],
+            cwd=REPO_ROOT,
+            input=" " * (MAX_GITHUB_CONTENTS_JSON_BYTES + 1),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("exceeds byte limit", result.stderr)
+
+    def test_validator_rejects_symlinked_trusted_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            trusted = root / "trusted.yml"
+            trusted.symlink_to(WORKFLOW)
+            document = {
+                "type": "file",
+                "path": ".github/workflows/release-environment-proof.yml",
+                "sha": "a" * 40,
+                "encoding": "base64",
+                "content": base64.b64encode(WORKFLOW.read_bytes()).decode(
+                    "ascii"
+                ),
+            }
+            metadata = root / "contents.json"
+            metadata.write_text(json.dumps(document), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(VALIDATOR),
+                    "--github-content-json",
+                    str(metadata),
+                    "--expected-path",
+                    ".github/workflows/release-environment-proof.yml",
+                    "--trusted-workflow",
+                    str(trusted),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("regular non-symlink file", result.stderr)
 
     def test_requires_explicit_disposable_confirmation(self) -> None:
         result = run_script("--repository", "example/disposable")

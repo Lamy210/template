@@ -2,13 +2,23 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import binascii
 import hashlib
-import json
 from pathlib import Path
 import re
 import sys
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.release.proof_workflow_input import (  # noqa: E402
+    ProofWorkflowInputError,
+    decode_bounded_workflow_base64,
+    load_bounded_github_contents_file,
+    load_bounded_github_contents_stream,
+    read_bounded_trusted_workflow,
+)
 
 
 def fail(message: str) -> int:
@@ -30,12 +40,12 @@ def main() -> int:
 
     try:
         if args.github_content_json is None:
-            document = json.load(sys.stdin)
+            document = load_bounded_github_contents_stream(sys.stdin.buffer)
         else:
-            document = json.loads(
-                args.github_content_json.read_text(encoding="utf-8")
+            document = load_bounded_github_contents_file(
+                args.github_content_json
             )
-    except (OSError, json.JSONDecodeError) as error:
+    except ProofWorkflowInputError as error:
         return fail(f"unable to read GitHub Contents response: {error}")
 
     if not isinstance(document, dict):
@@ -55,22 +65,15 @@ def main() -> int:
     if document.get("encoding") != "base64":
         return fail("GitHub Contents workflow encoding must be base64")
 
-    content = document.get("content")
-    if not isinstance(content, str) or not content:
-        return fail("GitHub Contents workflow content must be non-empty")
-
-    normalized_content = "".join(content.split())
-    if not normalized_content:
-        return fail("GitHub Contents workflow content must contain base64 payload")
     try:
-        remote_bytes = base64.b64decode(normalized_content, validate=True)
-    except (binascii.Error, ValueError) as error:
-        return fail(f"GitHub Contents workflow content is not valid base64: {error}")
-
-    try:
-        trusted_bytes = args.trusted_workflow.read_bytes()
-    except OSError as error:
-        return fail(f"unable to read trusted proof workflow: {error}")
+        remote_bytes = decode_bounded_workflow_base64(
+            document.get("content")
+        )
+        trusted_bytes = read_bounded_trusted_workflow(
+            args.trusted_workflow
+        )
+    except ProofWorkflowInputError as error:
+        return fail(str(error))
 
     if remote_bytes != trusted_bytes:
         remote_digest = hashlib.sha256(remote_bytes).hexdigest()

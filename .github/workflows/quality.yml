@@ -150,6 +150,7 @@ jobs:
             scripts.release.test_release_environment_runtime_proof \
             scripts.release.test_post_split_runtime_proof \
             scripts.release.test_post_split_runtime_proof_runner \
+            scripts.release.test_proof_workflow_input \
             scripts.release.test_post_split_proof_evidence \
             scripts.release.test_unprivileged_release_build_workflow \
             scripts.release.test_runtime_proof_artifact \

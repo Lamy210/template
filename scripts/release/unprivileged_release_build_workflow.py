@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import base64
-import binascii
-import json
 from pathlib import Path
 import re
-from typing import Any
+
+from scripts.release.proof_workflow_input import (
+    ProofWorkflowInputError,
+    decode_bounded_workflow_base64,
+    load_bounded_github_contents_file,
+)
 
 
 CANONICAL_TAG_PATTERN = '"v[0-9]+.[0-9]+.[0-9]+"'
@@ -54,21 +56,10 @@ def decode_github_contents_document(
         )
     if document.get("encoding") != "base64":
         raise WorkflowValidationError("GitHub Contents workflow encoding must be base64")
-    content = document.get("content")
-    if not isinstance(content, str) or not content:
-        raise WorkflowValidationError("GitHub Contents workflow content must be non-empty")
-
-    normalized_content = "".join(content.split())
-    if not normalized_content:
-        raise WorkflowValidationError(
-            "GitHub Contents workflow content must contain base64 payload"
-        )
     try:
-        payload = base64.b64decode(normalized_content, validate=True)
-    except (binascii.Error, ValueError) as error:
-        raise WorkflowValidationError(
-            f"GitHub Contents workflow content is not valid base64: {error}"
-        ) from error
+        payload = decode_bounded_workflow_base64(document.get("content"))
+    except ProofWorkflowInputError as error:
+        raise WorkflowValidationError(str(error)) from error
     try:
         return payload.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -384,9 +375,8 @@ def validate_unprivileged_release_build_workflow(text: str) -> list[str]:
 
 def load_and_validate_github_contents(path: Path) -> list[str]:
     try:
-        with path.open(encoding="utf-8") as handle:
-            document: Any = json.load(handle)
+        document = load_bounded_github_contents_file(path)
         text = decode_github_contents_document(document)
-    except (OSError, json.JSONDecodeError, WorkflowValidationError) as error:
+    except (ProofWorkflowInputError, WorkflowValidationError) as error:
         return [str(error)]
     return validate_unprivileged_release_build_workflow(text)
