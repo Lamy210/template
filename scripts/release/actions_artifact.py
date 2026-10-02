@@ -22,6 +22,10 @@ EXPECTED_RELEASE_FILES = frozenset(
 DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:[/\\]")
 DEFAULT_MAX_MEMBERS = 16
 DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024 + 1024 * 1024
+ZIP_CONTAINER_OVERHEAD_BYTES = 16 * 1024 * 1024
+MAX_ARTIFACT_ZIP_BYTES = (
+    DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES + ZIP_CONTAINER_OVERHEAD_BYTES
+)
 MAX_APP_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 MAX_BUILD_PROVENANCE_BYTES = 1024 * 1024
 
@@ -164,6 +168,7 @@ def _validate_and_extract_snapshot(
 
     return []
 
+
 def validate_and_extract_release_artifact(
     archive_path: Path,
     output_dir: Path,
@@ -185,6 +190,7 @@ def validate_and_extract_release_artifact(
         with snapshot_regular_file(
             archive_path,
             prefix="actions-artifact.",
+            max_bytes=max_total_uncompressed_bytes + ZIP_CONTAINER_OVERHEAD_BYTES,
         ) as snapshot_path:
             return _validate_and_extract_snapshot(
                 snapshot_path,
