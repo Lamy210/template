@@ -47,6 +47,21 @@ jobs:
         )
         self.assertEqual(1, len(violations))
 
+    def test_escaped_quote_cannot_hide_expression_behind_hash(self) -> None:
+        violations = self.validate(
+            r"""
+on:
+  push:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "echo \\" # ${{ github.ref }}\\\""
+"""
+        )
+        self.assertEqual(1, len(violations), violations)
+        self.assertIn("route expression values through env", violations[0].message)
+
     def test_rejects_expression_in_folded_run_block(self) -> None:
         violations = self.validate(
             """
