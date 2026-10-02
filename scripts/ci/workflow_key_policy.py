@@ -37,6 +37,13 @@ def _indent_width(value: str) -> int:
     return len(value.replace("\t", "    "))
 
 
+def _structural_payload(raw: str) -> str:
+    payload = raw.lstrip()
+    if payload.startswith("- "):
+        return payload[2:].lstrip()
+    return payload
+
+
 def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
     lines = text.splitlines()
     violations: list[PolicyViolation] = []
@@ -51,6 +58,27 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
             if indent > block_scalar_indent:
                 continue
             block_scalar_indent = None
+
+        payload = _structural_payload(raw)
+        if (
+            payload == "?"
+            or payload.startswith("? ")
+            or payload.startswith("!")
+        ):
+            violations.append(
+                PolicyViolation(
+                    path=path,
+                    line=index + 1,
+                    key=payload,
+                    message=(
+                        "explicit YAML mapping-key syntax and YAML tags are "
+                        "forbidden in executable workflow structure; spell mapping "
+                        "keys directly so security policies inspect one canonical "
+                        "representation"
+                    ),
+                )
+            )
+            continue
 
         canonical_key = KEY_VALUE_RE.match(raw)
         if canonical_key is not None:
