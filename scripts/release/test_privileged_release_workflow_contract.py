@@ -263,19 +263,32 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             text,
         )
 
-    def test_verified_release_payload_is_bounded_before_upload(self) -> None:
+    def test_verified_release_payload_is_snapshotted_before_upload(self) -> None:
         text = self.release_text()
         writer = text.index("- name: Write final release attestation")
-        validation = text.index("- name: Validate bounded release handoff before upload")
+        snapshot = text.index("- name: Snapshot bounded release handoff before upload")
         upload = text.index("- name: Upload verified release artifacts")
 
-        self.assertLess(writer, validation)
-        self.assertLess(validation, upload)
-        block = text[validation:upload]
-        self.assertIn("scripts/release/validate-verified-release-payload.py", block)
-        self.assertIn("--root release-output", block)
+        self.assertLess(writer, snapshot)
+        self.assertLess(snapshot, upload)
+        block = text[snapshot:upload]
+        self.assertIn("scripts/release/prepare-verified-release-handoff.py", block)
+        self.assertIn("--source release-output", block)
+        self.assertIn("--output verified-upload", block)
         self.assertIn('DMG_NAME: ${{ inputs.dmg_name }}', block)
         self.assertIn('--dmg-name "${DMG_NAME}"', block)
+
+        upload_block = text[upload : upload + 700]
+        self.assertIn("verified-upload/${{ inputs.dmg_name }}", upload_block)
+        self.assertIn(
+            "verified-upload/${{ inputs.dmg_name }}.sha256",
+            upload_block,
+        )
+        self.assertIn(
+            "verified-upload/release-provenance.json",
+            upload_block,
+        )
+        self.assertNotIn("release-output/${{ inputs.dmg_name }}", upload_block)
 
     def test_verified_release_payload_is_digest_bound_before_provenance_and_publication(self) -> None:
         text = self.release_text()
