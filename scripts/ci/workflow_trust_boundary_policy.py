@@ -22,8 +22,8 @@ ENVIRONMENT_RE = re.compile(
 ON_RE = re.compile(
     rf"^{yaml_key_pattern('on')}:\s*(?P<value>.*?)\s*$"
 )
-SECRETS_INHERIT_RE = re.compile(
-    rf"^\s*{yaml_key_pattern('secrets')}:\s*(?:inherit|\"inherit\"|'inherit')\s*(?:#.*)?$"
+SECRETS_RE = re.compile(
+    rf"^(?P<indent>\s*){yaml_key_pattern('secrets')}:\s*(?P<value>.*?)\s*$"
 )
 
 ALLOWED_ENVIRONMENTS: dict[tuple[str, str], str] = {
@@ -117,16 +117,24 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
                 )
             )
 
-        if SECRETS_INHERIT_RE.match(raw):
-            job = _job_for_line(lines, index)
-            violations.append(
-                PolicyViolation(
-                    path=path,
-                    line=index + 1,
-                    scope=f"job:{job}" if job is not None else "workflow",
-                    message="secrets: inherit is forbidden; map narrow named secrets",
+        secrets = SECRETS_RE.match(raw)
+        if secrets is not None:
+            value = strip_yaml_inline_comment(
+                secrets.group("value")
+            ).strip()
+            if value and value != "{}":
+                job = _job_for_line(lines, index)
+                violations.append(
+                    PolicyViolation(
+                        path=path,
+                        line=index + 1,
+                        scope=f"job:{job}" if job is not None else "workflow",
+                        message=(
+                            "secrets scalar forms (including secrets: inherit) "
+                            "are forbidden; map narrow named secrets"
+                        ),
+                    )
                 )
-            )
 
         environment = ENVIRONMENT_RE.match(raw)
         if environment is None:
