@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
@@ -11,14 +10,18 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.release.release_input import validate_release_input
+from scripts.release.secure_release_json import (
+    SecureReleaseJsonError,
+    load_bounded_release_json,
+    write_release_json_exclusive,
+)
 
 
-def load_json(path: Path) -> object:
+def load_json(path: Path, *, label: str) -> object:
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except (OSError, json.JSONDecodeError) as error:
-        raise SystemExit(f"failed to read JSON {path}: {error}") from error
+        return load_bounded_release_json(path, label=label)
+    except SecureReleaseJsonError as error:
+        raise SystemExit(str(error)) from error
 
 
 def main() -> int:
@@ -39,8 +42,14 @@ def main() -> int:
     args = parser.parse_args()
 
     errors, validated = validate_release_input(
-        provenance_document=load_json(args.provenance),
-        source_metadata=load_json(args.source_metadata),
+        provenance_document=load_json(
+            args.provenance,
+            label="build provenance",
+        ),
+        source_metadata=load_json(
+            args.source_metadata,
+            label="source artifact metadata",
+        ),
         archive_path=args.archive,
         expected_repository=args.repository,
         expected_workflow_path=args.workflow_path,
@@ -58,11 +67,15 @@ def main() -> int:
             print(error)
         return 1
     assert validated is not None
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(validated, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    try:
+        write_release_json_exclusive(
+            args.output,
+            validated,
+            label="validated release metadata",
+        )
+    except SecureReleaseJsonError as error:
+        print(error, file=sys.stderr)
+        return 1
     return 0
 
 
