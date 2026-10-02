@@ -207,6 +207,8 @@ FAKE_GH
 chmod 0755 "${FAKE_BIN}/gh"
 
 run_publisher() {
+  local publisher_dmg_path="${DMG_PATH}"
+
   GH_FAKE_LOG="${LOG_PATH}" \
     GH_FAKE_REMOTE_DIR="${REMOTE_DIR}" \
     GH_FAKE_STATE_FILE="${STATE_FILE}" \
@@ -222,7 +224,7 @@ run_publisher() {
     GH_FAKE_INVALID_ASSET_ATTESTATION_NAME="${GH_FAKE_INVALID_ASSET_ATTESTATION_NAME:-}" \
     GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE="${GH_FAKE_REPOSITORY_DRIFT_AFTER_CREATE:-false}" \
     GH_FAKE_MUTATE_LOCAL_AFTER_SNAPSHOT="${GH_FAKE_MUTATE_LOCAL_AFTER_SNAPSHOT:-false}" \
-    GH_FAKE_LOCAL_DMG_PATH="${DMG_PATH}" \
+    GH_FAKE_LOCAL_DMG_PATH="${publisher_dmg_path}" \
     GH_FAKE_REPOSITORY_ID="${GH_FAKE_REPOSITORY_ID:-123}" \
     PATH="${FAKE_BIN}:${PATH}" \
     GH_TOKEN="test-token" \
@@ -231,7 +233,7 @@ run_publisher() {
     PUBLISHER_SHA="${PUBLISHER_SHA}" \
     EXPECTED_REPOSITORY_ID="${EXPECTED_REPOSITORY_ID}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
-    DMG_PATH="${DMG_PATH}" \
+    DMG_PATH="${publisher_dmg_path}" \
     RELEASE_PROVENANCE_PATH="${RELEASE_PROVENANCE_PATH}" \
     bash "${ROOT_DIR}/scripts/release/publish-github-release.sh"
 }
