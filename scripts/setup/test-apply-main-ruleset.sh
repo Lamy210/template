@@ -172,7 +172,13 @@ success_output="$(run_apply success)"
 [[ "${success_output}" == "main Ruleset 42 applied and effective rules verified for Example/Repo" ]]
 [[ "$(grep -Fc -- "--method PUT repos/Example/Repo/rulesets/42" "${temp_root}/gh-success.log")" -eq 1 ]]
 [[ "$(grep -Fc -- "--method GET repos/Example/Repo/rulesets/42?includes_parents=false" "${temp_root}/gh-success.log")" -eq 2 ]]
-[[ "$(grep -Fc -- "--method GET repos/Example/Repo" "${temp_root}/gh-success.log")" -eq 4 ]]
+repository_reads="$(
+  grep -F -- "--method GET repos/Example/Repo" "${temp_root}/gh-success.log" |
+    grep -Fv -- "/rulesets/" |
+    wc -l |
+    tr -d ' '
+)"
+[[ "${repository_reads}" -eq 4 ]]
 [[ "$(grep -Fc -- "repos/Example/Repo/rules/branches/main?per_page=100" "${temp_root}/gh-success.log")" -eq 1 ]]
 
 for scenario in identity-mismatch wrong-ruleset-source wrong-ruleset-target ruleset-id-mismatch; do
