@@ -9,12 +9,14 @@ from scripts.ci.workflow_yaml_keys import (
     YAML_KEY_TOKEN,
     normalize_yaml_key,
     yaml_key_pattern,
+    yaml_line_indent,
+    yaml_mapping_child_indent,
     yaml_sequence_item_end,
 )
 
 
 UPLOAD_ACTION_RE = re.compile(
-    rf"^(?P<indent>\s*)(?P<item>-\s+)?{yaml_key_pattern('uses')}:\s*['\"]?actions/upload-artifact@"
+    rf"^(?P<indent>\s*)(?P<item>-\s+)?{yaml_key_pattern('uses')}:\s*['\"]?(?i:actions/upload-artifact)@"
 )
 STEP_ITEM_RE = re.compile(
     rf"^(?P<indent>\s*)-\s+(?P<key>{YAML_KEY_TOKEN}):\s*(?P<value>.*)$"
@@ -104,6 +106,14 @@ def _with_values(lines: list[str], start: int, end: int) -> dict[str, str]:
     if with_index < 0:
         return {}
 
+    child_indent = yaml_mapping_child_indent(
+        lines,
+        parent_index=with_index,
+        end=end,
+    )
+    if child_indent is None:
+        return {}
+
     values: dict[str, str] = {}
     for index in range(with_index + 1, end):
         raw = lines[index]
@@ -112,10 +122,10 @@ def _with_values(lines: list[str], start: int, end: int) -> dict[str, str]:
         match = KEY_RE.match(raw)
         if match is None:
             continue
-        indent = _indent_width(match.group("indent"))
+        indent = yaml_line_indent(raw)
         if indent <= with_indent:
             break
-        if indent == with_indent + 2:
+        if indent == child_indent:
             values[normalize_yaml_key(match.group("key"))] = match.group("value").strip()
 
     return values
