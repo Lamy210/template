@@ -8,6 +8,10 @@ import stat
 import tempfile
 import zipfile
 
+from scripts.release.atomic_directory_publish import (
+    AtomicDirectoryPublishError,
+    atomic_publish_directory_noreplace,
+)
 from scripts.release.secure_file_snapshot import (
     RegularFileSnapshotError,
     snapshot_regular_file,
@@ -189,7 +193,13 @@ def _validate_and_extract_snapshot(
                         "output directory appeared during artifact extraction: "
                         f"{output_dir}"
                     ]
-                stage_root.rename(output_dir)
+                try:
+                    atomic_publish_directory_noreplace(stage_root, output_dir)
+                except AtomicDirectoryPublishError as error:
+                    return [
+                        "unable to publish artifact output atomically: "
+                        f"{error}"
+                    ]
     except (zipfile.BadZipFile, OSError, RuntimeError) as error:
         return [f"invalid ZIP artifact: {error}"]
 

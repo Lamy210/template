@@ -115,8 +115,13 @@ fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 resolver="${repo_root}/scripts/release/resolve-release-download.py"
+publisher="${repo_root}/scripts/release/publish-directory-noreplace.py"
 [[ -f "${resolver}" ]] || {
   echo "Release download resolver is unavailable: ${resolver}" >&2
+  exit 2
+}
+[[ -f "${publisher}" ]] || {
+  echo "Atomic release directory publisher is unavailable: ${publisher}" >&2
   exit 2
 }
 
@@ -386,22 +391,9 @@ if [[ -e "${output_dir}" || -L "${output_dir}" ]]; then
   exit 1
 fi
 
-if ! python3 - "${staging_dir}" "${output_dir}" <<'PY'
-import os
-from pathlib import Path
-import sys
-
-source = Path(sys.argv[1])
-destination = Path(sys.argv[2])
-
-if not source.is_dir() or source.is_symlink():
-    raise SystemExit("staging output must be a real directory")
-if destination.exists() or destination.is_symlink():
-    raise SystemExit(f"final output already exists: {destination}")
-
-os.rename(source, destination)
-PY
-then
+if ! python3 "${publisher}" \
+  --source "${staging_dir}" \
+  --destination "${output_dir}"; then
   echo "Failed to publish verified release assets transactionally: ${output_dir}" >&2
   exit 1
 fi
