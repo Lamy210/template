@@ -130,6 +130,9 @@ fi
 if [[ "${args}" == *"repos/Example/MyApp/releases/assets/101"* ]]; then
   if [[ "${GH_FAKE_SCENARIO}" == "corrupt-dmg" ]]; then
     printf 'corrupt-dmg\n'
+  elif [[ "${GH_FAKE_SCENARIO}" == "oversized-body" ]]; then
+    cat "${GH_FAKE_DMG}"
+    printf 'x'
   else
     cat "${GH_FAKE_DMG}"
   fi
@@ -300,6 +303,19 @@ if grep -F "releases/assets/" "${temp_root}/gh.log" >/dev/null; then
   exit 1
 fi
 assert_no_output_or_staging "${oversized_output}"
+
+: >"${temp_root}/gh.log"
+oversized_body_output="${temp_root}/oversized-body"
+if run_downloader oversized-body "${oversized_body_output}" >"${temp_root}/oversized-body.out" 2>"${temp_root}/oversized-body.err"; then
+  echo "Exact release downloader accepted an asset response body larger than metadata." >&2
+  exit 1
+fi
+grep -F "exceeded expected size" "${temp_root}/oversized-body.err" >/dev/null
+if grep -F "release verify v1.2.3" "${temp_root}/gh.log" >/dev/null; then
+  echo "Exact release downloader reached attestation verification after an oversized body." >&2
+  exit 1
+fi
+assert_no_output_or_staging "${oversized_body_output}"
 
 : >"${temp_root}/gh.log"
 mutable_output="${temp_root}/mutable"
