@@ -5,6 +5,11 @@ import re
 from urllib.parse import urlparse
 
 from scripts.common.repository_name import is_canonical_repository_name
+from scripts.release.release_asset_limits import (
+    MAX_RELEASE_DMG_BYTES,
+    MAX_RELEASE_METADATA_BYTES,
+    release_asset_size_limit,
+)
 
 
 TAG_RE = re.compile(
@@ -12,16 +17,6 @@ TAG_RE = re.compile(
 )
 ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-MAX_RELEASE_DMG_BYTES = 4 * 1024 * 1024 * 1024
-MAX_RELEASE_METADATA_BYTES = 1024 * 1024
-
-
-def _release_asset_size_limit(name: str) -> int | None:
-    if name.endswith(".dmg"):
-        return MAX_RELEASE_DMG_BYTES
-    if name.endswith(".dmg.sha256") or name == "release-provenance.json":
-        return MAX_RELEASE_METADATA_BYTES
-    return None
 
 
 def _validate_expected_release_asset_contract(
@@ -236,7 +231,7 @@ def validate_release_download_identity(
             errors.append(f"release asset {name!r} must have positive size")
             continue
         if name in expected_set:
-            size_limit = _release_asset_size_limit(name)
+            size_limit = release_asset_size_limit(name)
             if size_limit is None:
                 errors.append(f"release asset {name!r} has unsupported asset role")
                 continue
