@@ -319,6 +319,16 @@ jobs:
             --dmg-path "${DMG_PATH}" \
             --output release-output/release-provenance.json
 
+      - name: Validate bounded release handoff before upload
+        shell: bash
+        env:
+          DMG_NAME: ${{ inputs.dmg_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/validate-verified-release-payload.py \
+            --root release-output \
+            --dmg-name "${DMG_NAME}"
+
       - name: Upload verified release artifacts
         id: verified_upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

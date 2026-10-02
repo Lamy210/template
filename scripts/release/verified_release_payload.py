@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from scripts.release.release_asset_limits import release_asset_size_limit
+
 
 def validate_verified_release_payload(root: Path, dmg_name: str) -> list[str]:
     errors: list[str] = []
@@ -33,6 +35,18 @@ def validate_verified_release_payload(root: Path, dmg_name: str) -> list[str]:
         if path.is_symlink() or not path.is_file():
             errors.append(
                 f"verified release payload entry must be a regular non-symlink file: {name}"
+            )
+            continue
+
+        limit = release_asset_size_limit(name, dmg_name=dmg_name)
+        if limit is None:
+            errors.append(f"verified release payload entry has unsupported role: {name}")
+            continue
+        size = path.stat().st_size
+        if size > limit:
+            errors.append(
+                f"verified release payload entry exceeds size limit: "
+                f"{name}: {size} > {limit}"
             )
 
     return errors

@@ -5,7 +5,14 @@ import argparse
 from pathlib import Path
 import sys
 
-from verified_release_payload import validate_verified_release_payload
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.release.verified_release_payload import (  # noqa: E402
+    validate_verified_release_payload,
+)
 
 
 def main() -> int:

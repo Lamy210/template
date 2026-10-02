@@ -6,6 +6,10 @@ import sys
 import tempfile
 import unittest
 
+from scripts.release.release_asset_limits import (
+    MAX_RELEASE_DMG_BYTES,
+    MAX_RELEASE_METADATA_BYTES,
+)
 from scripts.release.verified_release_payload import validate_verified_release_payload
 
 
@@ -64,6 +68,28 @@ class VerifiedReleasePayloadTests(unittest.TestCase):
 
         self.assertTrue(any("non-symlink" in error for error in errors))
         self.assertTrue(any("unexpected entries" in error for error in errors))
+
+    def test_rejects_oversized_payload_before_handoff(self) -> None:
+        cases = (
+            (DMG_NAME, MAX_RELEASE_DMG_BYTES + 1),
+            (f"{DMG_NAME}.sha256", MAX_RELEASE_METADATA_BYTES + 1),
+            ("release-provenance.json", MAX_RELEASE_METADATA_BYTES + 1),
+        )
+        for name, size in cases:
+            with self.subTest(name=name):
+                _, root = self.fixture()
+                with (root / name).open("r+b") as handle:
+                    handle.truncate(size)
+
+                errors = validate_verified_release_payload(root, DMG_NAME)
+
+                self.assertTrue(
+                    any(
+                        name in error and "exceeds size limit" in error
+                        for error in errors
+                    ),
+                    errors,
+                )
 
     def test_cli_rejects_extra_payload_before_publication_boundary(self) -> None:
         _, root = self.fixture()
