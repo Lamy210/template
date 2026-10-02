@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -11,6 +12,32 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.release.verified_release_artifact import verify_verified_release_artifact
+
+
+def write_positive_integer_output(path: Path, value: int) -> None:
+    if type(value) is not int or value <= 0:
+        raise OSError("output value must be a positive integer")
+    if path.exists() or path.is_symlink():
+        raise OSError(f"output path already exists: {path}")
+    if not path.parent.is_dir() or path.parent.is_symlink():
+        raise OSError(f"output parent must be a real directory: {path.parent}")
+
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", closefd=False) as handle:
+            handle.write(f"{value}\n")
+    except Exception:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    finally:
+        os.close(descriptor)
 
 
 def load_json(path: Path) -> object:
@@ -35,10 +62,12 @@ def main() -> int:
     parser.add_argument("--publisher-run-attempt", required=True, type=int)
     parser.add_argument("--publisher-sha", required=True)
     parser.add_argument("--repository-id", required=True, type=int)
+    parser.add_argument("--size-output", type=Path)
     args = parser.parse_args()
 
+    artifact_metadata = load_json(args.metadata)
     errors = verify_verified_release_artifact(
-        artifact_metadata=load_json(args.metadata),
+        artifact_metadata=artifact_metadata,
         artifact_id=args.artifact_id,
         artifact_name=args.artifact_name,
         artifact_digest=args.artifact_digest,
@@ -51,6 +80,19 @@ def main() -> int:
         for error in errors:
             print(error, file=sys.stderr)
         return 1
+
+    if args.size_output is not None:
+        assert isinstance(artifact_metadata, dict)
+        size = artifact_metadata["size_in_bytes"]
+        assert type(size) is int and size > 0
+        try:
+            write_positive_integer_output(args.size_output, size)
+        except OSError as error:
+            print(
+                f"failed to write verified release artifact size: {error}",
+                file=sys.stderr,
+            )
+            return 1
     return 0
 
 

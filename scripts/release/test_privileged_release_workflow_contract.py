@@ -297,13 +297,17 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
         raw_download = publish.index(
             "/actions/artifacts/${VERIFIED_ARTIFACT_ID}/zip"
         )
+        bounded_capture = publish.index(
+            "scripts/release/capture_release_asset.py"
+        )
         extractor = publish.index(
             "scripts/release/extract-verified-release-artifact.py"
         )
         payload = publish.index("scripts/release/validate-verified-release-payload.py")
         provenance = publish.index("scripts/release/verify-release-provenance.py")
         publication = publish.index("scripts/release/publish-github-release.sh")
-        self.assertLess(raw_download, extractor)
+        self.assertLess(raw_download, bounded_capture)
+        self.assertLess(bounded_capture, extractor)
         self.assertLess(extractor, payload)
         self.assertLess(payload, provenance)
         self.assertLess(payload, publication)
@@ -311,6 +315,9 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             "VERIFIED_ARTIFACT_DIGEST: ${{ needs.release.outputs.verified_artifact_digest }}",
             publish,
         )
+        self.assertIn('--size-output verified-release-artifact-size.txt', publish)
+        self.assertIn("scripts/release/capture_release_asset.py", publish)
+        self.assertIn('--expected-size "${VERIFIED_ARTIFACT_SIZE}"', publish)
         self.assertIn('--expected-digest "${VERIFIED_ARTIFACT_DIGEST}"', publish)
         self.assertIn("--output release-output", publish)
         self.assertIn("--root release-output", publish)

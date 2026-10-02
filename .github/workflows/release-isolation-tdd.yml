@@ -287,7 +287,8 @@ jobs:
             --publisher-run-id "${PUBLISHER_RUN_ID}" \
             --publisher-run-attempt "${PUBLISHER_RUN_ATTEMPT}" \
             --publisher-sha "${PUBLISHER_SHA}" \
-            --repository-id "${REPOSITORY_ID}"
+            --repository-id "${REPOSITORY_ID}" \
+            --size-output verified-release-artifact-size.txt
 
       - name: Download and bind exact verified release artifact
         shell: bash
@@ -298,8 +299,13 @@ jobs:
         run: |
           set -euo pipefail
           [[ "${ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]
-          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
-            >verified-release-artifact.zip
+          ARTIFACT_SIZE="$(cat verified-release-artifact-size.txt)"
+          [[ "${ARTIFACT_SIZE}" =~ ^[1-9][0-9]*$ ]]
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" |
+            python3 scripts/release/capture_release_asset.py \
+              --output verified-release-artifact.zip \
+              --expected-size "${ARTIFACT_SIZE}" \
+              --expected-digest "${ARTIFACT_DIGEST}"
           python3 scripts/release/extract-verified-release-artifact.py \
             --archive verified-release-artifact.zip \
             --output verified-release-output \
