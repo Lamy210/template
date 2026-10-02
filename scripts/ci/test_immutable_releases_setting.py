@@ -62,10 +62,14 @@ class ImmutableReleasesSettingTests(unittest.TestCase):
 
     def test_live_doctor_is_read_only_and_rebinds_repository_identity(self) -> None:
         text = DOCTOR.read_text(encoding="utf-8")
-        self.assertIn('"repos/${repository}/immutable-releases"', text)
+        self.assertGreaterEqual(
+            text.count('"repos/${repository}/immutable-releases"'),
+            2,
+        )
         self.assertIn("Administration(read)", text)
-        self.assertGreaterEqual(text.count('"repos/${repository}"'), 2)
+        self.assertGreaterEqual(text.count('"repos/${repository}"'), 3)
         self.assertIn("Repository identity changed during immutable-release audit", text)
+        self.assertIn("Final native immutable releases setting failed validation", text)
         for forbidden in (
             "--method PUT",
             "--method POST",

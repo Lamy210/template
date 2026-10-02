@@ -138,5 +138,39 @@ if [[ "${final_repository_id}" != "${initial_repository_id}" ||
   exit 5
 fi
 
+final_settings_json="${temp_root}/immutable-releases-after.json"
+if ! gh api "${api_headers[@]}" --method GET \
+  "repos/${repository}/immutable-releases" >"${final_settings_json}"; then
+  echo "Unable to reconfirm native immutable releases for ${repository}." >&2
+  exit 6
+fi
+if ! setting_output="$(python3 "${validator}" --metadata "${final_settings_json}")"; then
+  echo "Final native immutable releases setting failed validation for ${repository}." >&2
+  exit 6
+fi
+
+terminal_repository_json="${temp_root}/repository-terminal.json"
+if ! gh api "${api_headers[@]}" --method GET "repos/${repository}" >"${terminal_repository_json}"; then
+  echo "Failed to re-resolve repository identity after final immutable-release read." >&2
+  exit 7
+fi
+if ! terminal_identity="$(repository_identity "${terminal_repository_json}")"; then
+  echo "Repository identity failed terminal immutable-release audit validation." >&2
+  exit 7
+fi
+terminal_repository_id="$(printf '%s\n' "${terminal_identity}" | sed -n '1p')"
+terminal_repository_name="$(printf '%s\n' "${terminal_identity}" | sed -n '2p')"
+terminal_repository_extra="$(printf '%s\n' "${terminal_identity}" | sed -n '3p')"
+if [[ -z "${terminal_repository_id}" || -z "${terminal_repository_name}" ||
+  -n "${terminal_repository_extra}" ]]; then
+  echo "Terminal repository identity output was malformed." >&2
+  exit 7
+fi
+if [[ "${terminal_repository_id}" != "${initial_repository_id}" ||
+  "${terminal_repository_name}" != "${initial_repository_name}" ]]; then
+  echo "Repository identity changed during final immutable-release verification." >&2
+  exit 7
+fi
+
 printf 'native immutable releases enabled for %s (%s)\n' \
   "${repository}" "$(printf '%s\n' "${setting_output}" | tail -n 1)"
