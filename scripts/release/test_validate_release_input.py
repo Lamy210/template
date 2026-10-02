@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 import unittest
 
+from scripts.release.release_asset_limits import MAX_RELEASE_METADATA_BYTES
 from scripts.release.release_input import validate_release_input
 from scripts.release.test_release_provenance import SHA, valid_document
 
@@ -267,8 +268,6 @@ class ReleaseInputValidationTests(unittest.TestCase):
             self.assertEqual("keep\n", target.read_text(encoding="utf-8"))
 
     def test_cli_rejects_oversized_provenance_before_validation(self) -> None:
-        from scripts.release.release_asset_limits import MAX_RELEASE_METADATA_BYTES
-
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             provenance_path = root / "build-provenance.json"
