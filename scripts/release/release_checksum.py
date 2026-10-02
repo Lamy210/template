@@ -7,6 +7,19 @@ import re
 import sys
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.release.release_asset_limits import (  # noqa: E402
+    MAX_RELEASE_METADATA_BYTES,
+)
+from scripts.release.secure_file_snapshot import (  # noqa: E402
+    RegularFileSnapshotError,
+    snapshot_regular_file,
+)
+
+
 DMG_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*\.dmg$")
 CHECKSUM_LINE_RE = re.compile(
     r"^(?P<digest>[0-9a-f]{64})  (?P<filename>[A-Za-z0-9][A-Za-z0-9._+-]*\.dmg)\n$"
@@ -44,12 +57,22 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        payload = args.checksum.read_text(encoding="utf-8")
+        with snapshot_regular_file(
+            args.checksum,
+            prefix="release-checksum.",
+            max_bytes=MAX_RELEASE_METADATA_BYTES,
+        ) as checksum_snapshot:
+            payload = checksum_snapshot.read_text(encoding="utf-8")
         digest = parse_release_checksum(
             payload,
             expected_filename=args.expected_filename,
         )
-    except (OSError, UnicodeError, ValueError) as error:
+    except (
+        RegularFileSnapshotError,
+        OSError,
+        UnicodeError,
+        ValueError,
+    ) as error:
         print(f"invalid release checksum: {error}", file=sys.stderr)
         return 1
 
