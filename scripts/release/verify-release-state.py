@@ -11,7 +11,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.release.release_asset_limits import (
+    MAX_RELEASE_METADATA_JSON_BYTES,
+)
 from scripts.release.release_state import validate_release_state
+from scripts.release.secure_file_snapshot import (
+    RegularFileSnapshotError,
+    snapshot_regular_file,
+)
 
 
 def main() -> int:
@@ -24,9 +31,24 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        document = json.loads(args.metadata.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        print(f"failed to read release metadata {args.metadata}: {error}", file=sys.stderr)
+        with snapshot_regular_file(
+            args.metadata,
+            prefix="release-state-metadata.",
+            max_bytes=MAX_RELEASE_METADATA_JSON_BYTES,
+        ) as metadata_snapshot:
+            document = json.loads(
+                metadata_snapshot.read_text(encoding="utf-8")
+            )
+    except (
+        RegularFileSnapshotError,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+    ) as error:
+        print(
+            f"failed to read bounded release metadata {args.metadata}: {error}",
+            file=sys.stderr,
+        )
         return 1
 
     errors = validate_release_state(
