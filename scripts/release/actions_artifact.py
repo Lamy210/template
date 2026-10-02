@@ -5,6 +5,7 @@ from pathlib import Path
 import posixpath
 import re
 import stat
+import tempfile
 import zipfile
 
 from scripts.release.secure_file_snapshot import (
@@ -77,8 +78,8 @@ def _validate_and_extract_snapshot(
 
     if not archive_path.is_file():
         return [f"artifact ZIP not found: {archive_path}"]
-    if output_dir.exists():
-        return [f"output directory must not already exist: {output_dir}"]
+    if output_dir.exists() or output_dir.is_symlink():
+        return [f"output directory must not already exist or be a symlink: {output_dir}"]
 
     try:
         with zipfile.ZipFile(archive_path, "r") as archive:
@@ -151,18 +152,44 @@ def _validate_and_extract_snapshot(
             if errors:
                 return errors
 
-            output_dir.mkdir(parents=True, exist_ok=False)
-            for canonical in sorted(EXPECTED_RELEASE_FILES):
-                info = file_infos[canonical]
-                destination = output_dir.joinpath(*canonical.split("/"))
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                with archive.open(info, "r") as source, destination.open("xb") as target:
-                    while True:
-                        chunk = source.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        target.write(chunk)
-                os.chmod(destination, 0o600)
+            output_dir.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(
+                prefix=f".{output_dir.name}.",
+                dir=output_dir.parent,
+            ) as temporary_directory:
+                stage_root = Path(temporary_directory) / "payload"
+                stage_root.mkdir(mode=0o700)
+
+                for canonical in sorted(EXPECTED_RELEASE_FILES):
+                    info = file_infos[canonical]
+                    destination = stage_root.joinpath(*canonical.split("/"))
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    limit = (
+                        MAX_APP_ARCHIVE_BYTES
+                        if canonical == "release-input/unsigned-macos-app.tar.gz"
+                        else MAX_BUILD_PROVENANCE_BYTES
+                    )
+                    copied = 0
+                    with archive.open(info, "r") as source, destination.open("xb") as target:
+                        while True:
+                            chunk = source.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            copied += len(chunk)
+                            if copied > limit:
+                                return [
+                                    "artifact ZIP member grew beyond configured limit while "
+                                    f"extracting: {canonical}: {copied} > {limit}"
+                                ]
+                            target.write(chunk)
+                    os.chmod(destination, 0o600)
+
+                if output_dir.exists() or output_dir.is_symlink():
+                    return [
+                        "output directory appeared during artifact extraction: "
+                        f"{output_dir}"
+                    ]
+                stage_root.rename(output_dir)
     except (zipfile.BadZipFile, OSError, RuntimeError) as error:
         return [f"invalid ZIP artifact: {error}"]
 
@@ -183,8 +210,8 @@ def validate_and_extract_release_artifact(
 
     if not archive_path.exists():
         return [f"artifact ZIP not found: {archive_path}"]
-    if output_dir.exists():
-        return [f"output directory must not already exist: {output_dir}"]
+    if output_dir.exists() or output_dir.is_symlink():
+        return [f"output directory must not already exist or be a symlink: {output_dir}"]
 
     try:
         with snapshot_regular_file(
