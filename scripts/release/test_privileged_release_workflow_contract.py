@@ -279,28 +279,30 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
 
     def test_verified_release_payload_is_digest_bound_before_provenance_and_publication(self) -> None:
         text = self.release_text()
-        raw_download = text.index(
+        publish = job_block(text, "publish")
+        self.assertTrue(publish, "separate publish job is required")
+        raw_download = publish.index(
             "/actions/artifacts/${VERIFIED_ARTIFACT_ID}/zip"
         )
-        extractor = text.index(
+        extractor = publish.index(
             "scripts/release/extract-verified-release-artifact.py"
         )
-        payload = text.index("scripts/release/validate-verified-release-payload.py")
-        provenance = text.index("scripts/release/verify-release-provenance.py")
-        publication = text.index("scripts/release/publish-github-release.sh")
+        payload = publish.index("scripts/release/validate-verified-release-payload.py")
+        provenance = publish.index("scripts/release/verify-release-provenance.py")
+        publication = publish.index("scripts/release/publish-github-release.sh")
         self.assertLess(raw_download, extractor)
         self.assertLess(extractor, payload)
         self.assertLess(payload, provenance)
         self.assertLess(payload, publication)
         self.assertIn(
             "VERIFIED_ARTIFACT_DIGEST: ${{ needs.release.outputs.verified_artifact_digest }}",
-            text,
+            publish,
         )
-        self.assertIn('--expected-digest "${VERIFIED_ARTIFACT_DIGEST}"', text)
-        self.assertIn("--output release-output", text)
-        self.assertIn("--root release-output", text)
-        self.assertIn('DMG_NAME: ${{ inputs.dmg_name }}', text)
-        self.assertIn('--dmg-name "${DMG_NAME}"', text)
+        self.assertIn('--expected-digest "${VERIFIED_ARTIFACT_DIGEST}"', publish)
+        self.assertIn("--output release-output", publish)
+        self.assertIn("--root release-output", publish)
+        self.assertIn('DMG_NAME: ${{ inputs.dmg_name }}', publish)
+        self.assertIn('--dmg-name "${DMG_NAME}"', publish)
 
     def test_final_release_attestation_is_reverified_before_publication(self) -> None:
         text = self.release_text()
