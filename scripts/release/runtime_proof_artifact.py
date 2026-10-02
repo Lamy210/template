@@ -7,6 +7,10 @@ import stat
 import zipfile
 
 from scripts.release.actions_artifact import MAX_APP_ARCHIVE_BYTES
+from scripts.release.secure_file_snapshot import (
+    RegularFileSnapshotError,
+    snapshot_regular_file,
+)
 
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -64,116 +68,123 @@ def extract_runtime_proof_metadata(
             f"{app_archive_digest_output_path}"
         ]
 
-    actual_digest = _sha256_file(archive_path)
-    if actual_digest != expected_digest:
-        return [
-            "runtime proof artifact ZIP digest mismatch: "
-            f"expected {expected_digest}, got {actual_digest}"
-        ]
-
     try:
-        with zipfile.ZipFile(archive_path, "r") as archive:
-            infos = archive.infolist()
-            metadata_candidates: list[zipfile.ZipInfo] = []
-            app_candidates: list[zipfile.ZipInfo] = []
-            for member in infos:
-                if member.is_dir():
-                    continue
-
-                basename = PurePosixPath(member.filename).name
-                if basename in EXPECTED_FILES and member.filename != basename:
-                    label = (
-                        "metadata"
-                        if basename == METADATA_NAME
-                        else "unsigned app archive"
-                    )
-                    errors.append(
-                        f"runtime proof {label} must be a root-level Artifact entry"
-                    )
-                    continue
-
-                if member.filename == METADATA_NAME:
-                    metadata_candidates.append(member)
-                elif member.filename == APP_ARCHIVE_NAME:
-                    app_candidates.append(member)
-                else:
-                    errors.append(
-                        f"unexpected file in runtime proof artifact: {member.filename}"
-                    )
-
-            if len(metadata_candidates) != 1:
-                errors.append(
-                    f"runtime proof artifact must contain exactly one {METADATA_NAME}; "
-                    f"found {len(metadata_candidates)}"
-                )
-            if len(app_candidates) != 1:
-                errors.append(
-                    "runtime proof artifact must contain exactly one root-level "
-                    f"unsigned app archive {APP_ARCHIVE_NAME}; found {len(app_candidates)}"
-                )
-
-            if errors:
-                return errors
-
-            info = metadata_candidates[0]
-            app_info = app_candidates[0]
-            if _is_symlink(info):
-                errors.append("runtime proof metadata ZIP entry must not be a symbolic link")
-            elif _unix_file_type(info) not in {0, stat.S_IFREG}:
-                errors.append("runtime proof metadata ZIP entry must be a regular file")
-            if _is_symlink(app_info):
-                errors.append("runtime proof unsigned app archive must not be a symbolic link")
-            elif _unix_file_type(app_info) not in {0, stat.S_IFREG}:
-                errors.append("runtime proof unsigned app archive must be a regular file")
-            if info.file_size > max_metadata_bytes:
-                errors.append(
-                    "runtime proof metadata exceeds configured size limit: "
-                    f"{info.file_size} > {max_metadata_bytes}"
-                )
-            if app_info.file_size > max_app_archive_bytes:
-                errors.append(
-                    "runtime proof unsigned app archive exceeds configured size limit: "
-                    f"{app_info.file_size} > {max_app_archive_bytes}"
-                )
-            if errors:
-                return errors
-
-            with archive.open(info, "r") as source:
-                payload = source.read(max_metadata_bytes + 1)
-            if len(payload) > max_metadata_bytes:
+        with snapshot_regular_file(
+            archive_path,
+            prefix="runtime-proof-artifact.",
+        ) as snapshot_path:
+            actual_digest = _sha256_file(snapshot_path)
+            if actual_digest != expected_digest:
                 return [
-                    "runtime proof metadata expanded beyond configured size limit: "
-                    f"{len(payload)} > {max_metadata_bytes}"
+                    "runtime proof artifact ZIP digest mismatch: "
+                    f"expected {expected_digest}, got {actual_digest}"
                 ]
 
-            app_hasher = hashlib.sha256()
-            app_bytes = 0
-            with archive.open(app_info, "r") as source:
-                while True:
-                    chunk = source.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    app_bytes += len(chunk)
-                    if app_bytes > max_app_archive_bytes:
+            try:
+                with zipfile.ZipFile(snapshot_path, "r") as archive:
+                    infos = archive.infolist()
+                    metadata_candidates: list[zipfile.ZipInfo] = []
+                    app_candidates: list[zipfile.ZipInfo] = []
+                    for member in infos:
+                        if member.is_dir():
+                            continue
+
+                        basename = PurePosixPath(member.filename).name
+                        if basename in EXPECTED_FILES and member.filename != basename:
+                            label = (
+                                "metadata"
+                                if basename == METADATA_NAME
+                                else "unsigned app archive"
+                            )
+                            errors.append(
+                                f"runtime proof {label} must be a root-level Artifact entry"
+                            )
+                            continue
+
+                        if member.filename == METADATA_NAME:
+                            metadata_candidates.append(member)
+                        elif member.filename == APP_ARCHIVE_NAME:
+                            app_candidates.append(member)
+                        else:
+                            errors.append(
+                                f"unexpected file in runtime proof artifact: {member.filename}"
+                            )
+
+                    if len(metadata_candidates) != 1:
+                        errors.append(
+                            f"runtime proof artifact must contain exactly one {METADATA_NAME}; "
+                            f"found {len(metadata_candidates)}"
+                        )
+                    if len(app_candidates) != 1:
+                        errors.append(
+                            "runtime proof artifact must contain exactly one root-level "
+                            f"unsigned app archive {APP_ARCHIVE_NAME}; found {len(app_candidates)}"
+                        )
+
+                    if errors:
+                        return errors
+
+                    info = metadata_candidates[0]
+                    app_info = app_candidates[0]
+                    if _is_symlink(info):
+                        errors.append("runtime proof metadata ZIP entry must not be a symbolic link")
+                    elif _unix_file_type(info) not in {0, stat.S_IFREG}:
+                        errors.append("runtime proof metadata ZIP entry must be a regular file")
+                    if _is_symlink(app_info):
+                        errors.append("runtime proof unsigned app archive must not be a symbolic link")
+                    elif _unix_file_type(app_info) not in {0, stat.S_IFREG}:
+                        errors.append("runtime proof unsigned app archive must be a regular file")
+                    if info.file_size > max_metadata_bytes:
+                        errors.append(
+                            "runtime proof metadata exceeds configured size limit: "
+                            f"{info.file_size} > {max_metadata_bytes}"
+                        )
+                    if app_info.file_size > max_app_archive_bytes:
+                        errors.append(
+                            "runtime proof unsigned app archive exceeds configured size limit: "
+                            f"{app_info.file_size} > {max_app_archive_bytes}"
+                        )
+                    if errors:
+                        return errors
+
+                    with archive.open(info, "r") as source:
+                        payload = source.read(max_metadata_bytes + 1)
+                    if len(payload) > max_metadata_bytes:
                         return [
-                            "runtime proof unsigned app archive expanded beyond configured "
-                            f"size limit: {app_bytes} > {max_app_archive_bytes}"
+                            "runtime proof metadata expanded beyond configured size limit: "
+                            f"{len(payload)} > {max_metadata_bytes}"
                         ]
-                    app_hasher.update(chunk)
-            app_digest = "sha256:" + app_hasher.hexdigest()
 
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            with output_path.open("xb") as handle:
-                handle.write(payload)
+                    app_hasher = hashlib.sha256()
+                    app_bytes = 0
+                    with archive.open(app_info, "r") as source:
+                        while True:
+                            chunk = source.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            app_bytes += len(chunk)
+                            if app_bytes > max_app_archive_bytes:
+                                return [
+                                    "runtime proof unsigned app archive expanded beyond configured "
+                                    f"size limit: {app_bytes} > {max_app_archive_bytes}"
+                                ]
+                            app_hasher.update(chunk)
+                    app_digest = "sha256:" + app_hasher.hexdigest()
 
-            if app_archive_digest_output_path is not None:
-                app_archive_digest_output_path.parent.mkdir(parents=True, exist_ok=True)
-                with app_archive_digest_output_path.open("x", encoding="utf-8") as handle:
-                    handle.write(app_digest + "\n")
-    except (OSError, RuntimeError, zipfile.BadZipFile) as error:
-        return [f"invalid runtime proof artifact ZIP: {error}"]
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    with output_path.open("xb") as handle:
+                        handle.write(payload)
 
-    return []
+                    if app_archive_digest_output_path is not None:
+                        app_archive_digest_output_path.parent.mkdir(parents=True, exist_ok=True)
+                        with app_archive_digest_output_path.open("x", encoding="utf-8") as handle:
+                            handle.write(app_digest + "\n")
+            except (OSError, RuntimeError, zipfile.BadZipFile) as error:
+                return [f"invalid runtime proof artifact ZIP: {error}"]
+
+            return []
+    except RegularFileSnapshotError as error:
+        return [f"unable to snapshot runtime proof artifact ZIP: {error}"]
 
 
 __all__ = [

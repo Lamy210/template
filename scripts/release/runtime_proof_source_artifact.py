@@ -5,6 +5,10 @@ from pathlib import Path
 import re
 
 from scripts.release.actions_artifact import validate_and_extract_release_artifact
+from scripts.release.secure_file_snapshot import (
+    RegularFileSnapshotError,
+    snapshot_regular_file,
+)
 
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -48,19 +52,40 @@ def verify_runtime_proof_source_artifact(
             f"source Artifact ZIP must be a regular non-symlink file: {archive_path}"
         ]
 
-    actual_artifact_digest = _sha256_file(archive_path)
-    if actual_artifact_digest != expected_artifact_digest:
-        return [
-            "source Artifact ZIP digest mismatch: "
-            f"expected {expected_artifact_digest}, got {actual_artifact_digest}"
-        ]
+    try:
+        with snapshot_regular_file(
+            archive_path,
+            prefix="runtime-proof-source-artifact.",
+        ) as snapshot_path:
+            actual_artifact_digest = _sha256_file(snapshot_path)
+            if actual_artifact_digest != expected_artifact_digest:
+                return [
+                    "source Artifact ZIP digest mismatch: "
+                    f"expected {expected_artifact_digest}, got {actual_artifact_digest}"
+                ]
 
-    extraction_errors = validate_and_extract_release_artifact(archive_path, output_dir)
-    if extraction_errors:
-        return [f"source Artifact payload: {error}" for error in extraction_errors]
+            extraction_errors = validate_and_extract_release_artifact(
+                snapshot_path,
+                output_dir,
+            )
+            if extraction_errors:
+                return [
+                    f"source Artifact payload: {error}"
+                    for error in extraction_errors
+                ]
+    except RegularFileSnapshotError as error:
+        return [f"unable to snapshot source Artifact ZIP: {error}"]
 
     app_archive_path = output_dir / APP_ARCHIVE_PATH
-    actual_app_archive_digest = _sha256_file(app_archive_path)
+    try:
+        with snapshot_regular_file(
+            app_archive_path,
+            prefix="runtime-proof-source-app.",
+        ) as app_snapshot_path:
+            actual_app_archive_digest = _sha256_file(app_snapshot_path)
+    except RegularFileSnapshotError as error:
+        return [f"unable to snapshot source unsigned app archive: {error}"]
+
     if actual_app_archive_digest != expected_app_archive_digest:
         return [
             "source unsigned app archive digest mismatch: "
