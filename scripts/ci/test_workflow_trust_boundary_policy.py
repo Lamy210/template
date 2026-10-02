@@ -37,6 +37,20 @@ jobs:
                 self.assertEqual(1, len(violations))
                 self.assertIn("pull_request_target", violations[0].message)
 
+    def test_rejects_deeply_indented_pull_request_target(self) -> None:
+        violations = self.validate(
+            """
+on:
+    pull_request_target:
+permissions: {}
+jobs:
+    test:
+        runs-on: ubuntu-latest
+"""
+        )
+        self.assertEqual(1, len(violations), violations)
+        self.assertIn("pull_request_target", violations[0].message)
+
     def test_rejects_secrets_inherit(self) -> None:
         for value in ("inherit", '"inherit"', "'inherit'"):
             with self.subTest(value=value):
@@ -69,6 +83,22 @@ jobs:
 """
         )
         self.assertEqual(1, len(violations))
+        self.assertIn("Environment usage is forbidden", violations[0].message)
+
+    def test_deeply_indented_environment_keeps_job_scope(self) -> None:
+        violations = self.validate(
+            """
+on:
+    push:
+permissions: {}
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        environment: production
+"""
+        )
+        self.assertEqual(1, len(violations), violations)
+        self.assertEqual("job:deploy", violations[0].scope)
         self.assertIn("Environment usage is forbidden", violations[0].message)
 
     def test_accepts_exact_privileged_release_environment(self) -> None:

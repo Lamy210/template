@@ -6,19 +6,20 @@ import re
 
 from scripts.ci.workflow_permission_policy import workflow_paths
 from scripts.ci.workflow_yaml_keys import (
+    YAML_MAPPING_KEY_RE,
+    normalize_yaml_key,
     workflow_job_ranges,
     yaml_key_pattern,
+    yaml_line_indent,
+    yaml_mapping_child_indent,
 )
 
 
 ENVIRONMENT_RE = re.compile(
     rf"^(?P<indent>\s*){yaml_key_pattern('environment')}:\s*(?P<value>.*?)\s*$"
 )
-PULL_REQUEST_TARGET_RE = re.compile(
-    rf"^  {yaml_key_pattern('pull_request_target')}:\s*(?:#.*)?$"
-)
-ON_INLINE_RE = re.compile(
-    rf"^{yaml_key_pattern('on')}:\s*(?P<value>.+?)\s*$"
+ON_RE = re.compile(
+    rf"^{yaml_key_pattern('on')}:\s*(?P<value>.*?)\s*$"
 )
 SECRETS_INHERIT_RE = re.compile(
     rf"^\s*{yaml_key_pattern('secrets')}:\s*(?:inherit|\"inherit\"|'inherit')\s*(?:#.*)?$"
@@ -72,23 +73,54 @@ def _job_for_line(lines: list[str], line_index: int) -> str | None:
     return None
 
 
+def _pull_request_target_lines(lines: list[str]) -> set[int]:
+    matches: set[int] = set()
+
+    for index, raw in enumerate(lines):
+        trigger = ON_RE.match(raw)
+        if trigger is None or yaml_line_indent(raw) != 0:
+            continue
+
+        value = _strip_inline_comment(trigger.group("value")).strip()
+        if value:
+            if re.search(r"\bpull_request_target\b", value) is not None:
+                matches.add(index)
+            continue
+
+        child_indent = yaml_mapping_child_indent(
+            lines,
+            parent_index=index,
+        )
+        if child_indent is None:
+            continue
+
+        for child_index in range(index + 1, len(lines)):
+            child = lines[child_index]
+            if not child.strip() or child.lstrip().startswith("#"):
+                continue
+
+            indent = yaml_line_indent(child)
+            if indent <= 0:
+                break
+
+            item = YAML_MAPPING_KEY_RE.match(child)
+            if item is None or indent != child_indent:
+                continue
+            if normalize_yaml_key(item.group("key")) == "pull_request_target":
+                matches.add(child_index)
+
+    return matches
+
+
 def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
     lines = text.splitlines()
     violations: list[PolicyViolation] = []
     relative = path.as_posix()
 
-    for index, raw in enumerate(lines):
-        inline_trigger = ON_INLINE_RE.match(raw)
-        has_pull_request_target = PULL_REQUEST_TARGET_RE.match(raw) is not None
-        if inline_trigger is not None:
-            trigger_value = _strip_inline_comment(
-                inline_trigger.group("value")
-            )
-            has_pull_request_target = (
-                re.search(r"\bpull_request_target\b", trigger_value) is not None
-            )
+    pull_request_target_lines = _pull_request_target_lines(lines)
 
-        if has_pull_request_target:
+    for index, raw in enumerate(lines):
+        if index in pull_request_target_lines:
             violations.append(
                 PolicyViolation(
                     path=path,

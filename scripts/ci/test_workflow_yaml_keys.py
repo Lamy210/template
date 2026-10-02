@@ -9,6 +9,7 @@ from scripts.ci.workflow_yaml_keys import (
     normalize_yaml_key,
     workflow_job_ranges,
     yaml_key_pattern,
+    yaml_mapping_child_indent,
     yaml_mapping_key_indent,
     yaml_sequence_item_end,
 )
@@ -94,6 +95,41 @@ class WorkflowYamlKeyTests(unittest.TestCase):
         self.assertEqual(
             3,
             yaml_sequence_item_end(lines, start=0, item_indent=6),
+        )
+
+    def test_mapping_child_indent_uses_actual_yaml_indentation(self) -> None:
+        lines = [
+            "jobs:",
+            "    test:",
+            "        runs-on: ubuntu-latest",
+            "        permissions:",
+            "              contents: write",
+        ]
+        self.assertEqual(
+            4,
+            yaml_mapping_child_indent(lines, parent_index=0),
+        )
+        self.assertEqual(
+            8,
+            yaml_mapping_child_indent(lines, parent_index=1),
+        )
+        self.assertEqual(
+            14,
+            yaml_mapping_child_indent(lines, parent_index=3),
+        )
+
+    def test_workflow_job_ranges_accept_deeper_valid_indentation(self) -> None:
+        lines = [
+            "jobs:",
+            "    one:",
+            "        runs-on: ubuntu-latest",
+            '    "two":',
+            "        runs-on: ubuntu-latest",
+            "permissions: {}",
+        ]
+        self.assertEqual(
+            [("one", 1, 3), ("two", 3, 5)],
+            workflow_job_ranges(lines),
         )
 
     def test_workflow_job_ranges_stop_at_next_top_level_key(self) -> None:
