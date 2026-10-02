@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 import json
 from pathlib import Path
 import re
@@ -11,9 +12,14 @@ from scripts.release.release_attestation import (
     validate_release_attestation,
 )
 from scripts.release.release_checksum import parse_release_checksum
+from scripts.release.secure_file_snapshot import (
+    RegularFileSnapshotError,
+    snapshot_regular_file,
+)
 
 
 TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
+MAX_PUBLISHED_METADATA_BYTES = 1024 * 1024
 
 
 def verify_published_release_assets(
@@ -51,52 +57,91 @@ def verify_published_release_assets(
         return errors, None, None
 
     try:
-        checksum_payload = checksum_path.read_text(encoding="utf-8")
-        checksum_digest = parse_release_checksum(
-            checksum_payload,
-            expected_filename=dmg_path.name,
-        )
-    except (OSError, UnicodeError, ValueError) as error:
-        errors.append(f"invalid published release checksum: {error}")
-        checksum_digest = None
-
-    try:
-        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        errors.append(f"invalid published release provenance: {error}")
-        provenance = None
-
-    actual_digest = sha256_file(dmg_path)
-    actual_hex = actual_digest.removeprefix("sha256:")
-
-    if checksum_digest is not None and checksum_digest != actual_hex:
-        errors.append("published checksum does not match the downloaded DMG")
-
-    provenance_errors = validate_release_attestation(provenance)
-    errors.extend(f"published release provenance: {error}" for error in provenance_errors)
-
-    source_sha: str | None = None
-    if isinstance(provenance, dict):
-        if provenance.get("tag") != expected_tag:
-            errors.append("published release provenance tag does not match expected release tag")
-        if provenance.get("sourceRepository") != expected_repository:
-            errors.append(
-                "published release provenance repository does not match trusted repository"
+        with ExitStack() as snapshots:
+            dmg_snapshot = snapshots.enter_context(
+                snapshot_regular_file(
+                    dmg_path,
+                    prefix="published-release-dmg.",
+                )
             )
-        if provenance.get("publisherSHA") != expected_publisher_sha:
-            errors.append(
-                "published release provenance publisher SHA does not match trusted publisher"
+            checksum_snapshot = snapshots.enter_context(
+                snapshot_regular_file(
+                    checksum_path,
+                    prefix="published-release-checksum.",
+                    max_bytes=MAX_PUBLISHED_METADATA_BYTES,
+                )
             )
-        if provenance.get("dmgSha256") != actual_digest:
-            errors.append("published release provenance DMG digest does not match downloaded DMG")
+            provenance_snapshot = snapshots.enter_context(
+                snapshot_regular_file(
+                    provenance_path,
+                    prefix="published-release-provenance.",
+                    max_bytes=MAX_PUBLISHED_METADATA_BYTES,
+                )
+            )
 
-        candidate_source_sha = provenance.get("sourceSHA")
-        if isinstance(candidate_source_sha, str) and SHA_RE.fullmatch(candidate_source_sha):
-            source_sha = candidate_source_sha
+            try:
+                checksum_payload = checksum_snapshot.read_text(encoding="utf-8")
+                checksum_digest = parse_release_checksum(
+                    checksum_payload,
+                    expected_filename=dmg_path.name,
+                )
+            except (OSError, UnicodeError, ValueError) as error:
+                errors.append(f"invalid published release checksum: {error}")
+                checksum_digest = None
 
-    if source_sha is None and not errors:
-        errors.append("published release provenance source SHA is unavailable after validation")
+            try:
+                provenance = json.loads(
+                    provenance_snapshot.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError) as error:
+                errors.append(f"invalid published release provenance: {error}")
+                provenance = None
 
-    if errors:
-        return errors, None, None
-    return errors, actual_hex, source_sha
+            actual_digest = sha256_file(dmg_snapshot)
+            actual_hex = actual_digest.removeprefix("sha256:")
+
+            if checksum_digest is not None and checksum_digest != actual_hex:
+                errors.append("published checksum does not match the downloaded DMG")
+
+            provenance_errors = validate_release_attestation(provenance)
+            errors.extend(
+                f"published release provenance: {error}"
+                for error in provenance_errors
+            )
+
+            source_sha: str | None = None
+            if isinstance(provenance, dict):
+                if provenance.get("tag") != expected_tag:
+                    errors.append(
+                        "published release provenance tag does not match expected release tag"
+                    )
+                if provenance.get("sourceRepository") != expected_repository:
+                    errors.append(
+                        "published release provenance repository does not match trusted repository"
+                    )
+                if provenance.get("publisherSHA") != expected_publisher_sha:
+                    errors.append(
+                        "published release provenance publisher SHA does not match trusted publisher"
+                    )
+                if provenance.get("dmgSha256") != actual_digest:
+                    errors.append(
+                        "published release provenance DMG digest does not match downloaded DMG"
+                    )
+
+                candidate_source_sha = provenance.get("sourceSHA")
+                if (
+                    isinstance(candidate_source_sha, str)
+                    and SHA_RE.fullmatch(candidate_source_sha)
+                ):
+                    source_sha = candidate_source_sha
+
+            if source_sha is None and not errors:
+                errors.append(
+                    "published release provenance source SHA is unavailable after validation"
+                )
+
+            if errors:
+                return errors, None, None
+            return errors, actual_hex, source_sha
+    except RegularFileSnapshotError as error:
+        return [f"unable to snapshot published release assets: {error}"], None, None
