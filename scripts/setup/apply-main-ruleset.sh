@@ -113,16 +113,55 @@ for required_file in "${desired_ruleset}" "${offline_validator}" "${live_validat
   fi
 done
 
-if ! python3 "${offline_validator}" >/dev/null; then
-  echo "Checked-in Ruleset desired state failed offline validation; refusing mutation." >&2
-  exit 3
-fi
-
 temp_root="$(mktemp -d "${TMPDIR:-/tmp}/apply-main-ruleset.XXXXXX")"
 cleanup() {
   rm -rf "${temp_root}"
 }
 trap cleanup EXIT
+
+snapshot_regular_file() {
+  local source_path="$1"
+  local destination_path="$2"
+  python3 - "${source_path}" "${destination_path}" <<'PY'
+import os
+from pathlib import Path
+import shutil
+import stat
+import sys
+
+source, destination = map(Path, sys.argv[1:])
+if not hasattr(os, "O_NOFOLLOW"):
+    raise SystemExit("platform does not provide O_NOFOLLOW")
+
+descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+try:
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode):
+        raise SystemExit("source is not a regular file")
+    with os.fdopen(descriptor, "rb", closefd=False) as source_handle:
+        with destination.open("xb") as destination_handle:
+            shutil.copyfileobj(source_handle, destination_handle)
+finally:
+    os.close(descriptor)
+PY
+}
+
+desired_ruleset_snapshot="${temp_root}/main-solo.json"
+if ! snapshot_regular_file "${desired_ruleset}" "${desired_ruleset_snapshot}"; then
+  echo "Failed to snapshot checked-in Ruleset desired state; refusing mutation." >&2
+  exit 3
+fi
+
+if ! python3 "${offline_validator}" >/dev/null; then
+  echo "Checked-in Ruleset desired state failed offline validation; refusing mutation." >&2
+  exit 3
+fi
+if ! python3 "${offline_validator}" \
+  --file "${desired_ruleset_snapshot}" \
+  --profile main-solo >/dev/null; then
+  echo "Snapshotted Ruleset desired state failed validation; refusing mutation." >&2
+  exit 3
+fi
 
 api_headers=(
   -H 'Accept: application/vnd.github+json'
@@ -255,7 +294,7 @@ if ! initial_ruleset_identity="$(
 fi
 
 put_json="${temp_root}/ruleset-put.json"
-if ! gh api "${api_headers[@]}" --method PUT "repos/${repository}/rulesets/${ruleset_id}" --input "${desired_ruleset}" >"${put_json}"; then
+if ! gh api "${api_headers[@]}" --method PUT "repos/${repository}/rulesets/${ruleset_id}" --input "${desired_ruleset_snapshot}" >"${put_json}"; then
   echo "Failed to apply Solo default-branch Ruleset." >&2
   exit 5
 fi
