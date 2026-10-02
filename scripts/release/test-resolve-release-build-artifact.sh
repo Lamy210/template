@@ -52,6 +52,10 @@ emit_digest() {
   emit_zip | python3 -c 'import hashlib,sys; print("sha256:" + hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
 }
 
+emit_size() {
+  emit_zip | python3 -c 'import sys; print(len(sys.stdin.buffer.read()))'
+}
+
 if [[ "${args}" == "api repos/Lamy210/template" ]]; then
   printf '{"id":%s,"full_name":"Lamy210/template"}' "${repository_id}"
   exit 0
@@ -209,10 +213,43 @@ PY
   exit 0
 fi
 
-if [[ "${args}" == *"/actions/artifacts/7001/zip"* || ( "${scenario}" == "boolean-artifact-id" && "${args}" == *"/actions/artifacts/True/zip"* ) ]]; then
-  emit_zip
+if [[ "${args}" == "api repos/Lamy210/template/actions/artifacts/7001" ]]; then
+  digest="$(emit_digest)"
+  size="$(emit_size)"
+  name="unsigned-macos-release-9001-2"
+  expired=false
+  artifact_run_id=9001
+  artifact_head_sha="${sha}"
+
+  case "${scenario}" in
+    artifact-metadata-boolean-size) size=true ;;
+    artifact-metadata-zero-size) size=0 ;;
+    artifact-metadata-oversized) size=999999999999 ;;
+    artifact-metadata-digest-drift) digest="sha256:$(printf '%064d' 0)" ;;
+    artifact-metadata-wrong-run) artifact_run_id=9999 ;;
+    artifact-metadata-wrong-sha) artifact_head_sha="ffffffffffffffffffffffffffffffffffffffff" ;;
+    artifact-metadata-wrong-name) name="other" ;;
+    artifact-metadata-expired) expired=true ;;
+    artifact-body-short) size=$((size + 1)) ;;
+  esac
+
+  printf '{"id":7001,"name":"%s","expired":%s,"digest":"%s","size_in_bytes":%s,"workflow_run":{"id":%s,"head_sha":"%s"}}' \
+    "${name}" "${expired}" "${digest}" "${size}" "${artifact_run_id}" "${artifact_head_sha}"
   exit 0
 fi
+
+if [[ "${args}" == *"/actions/artifacts/7001/zip"* || ( "${scenario}" == "boolean-artifact-id" && "${args}" == *"/actions/artifacts/True/zip"* ) ]]; then
+  if [[ "${scenario}" == "artifact-body-oversized" ]]; then
+    emit_zip
+    printf 'unexpected-extra-body'
+  elif [[ "${scenario}" == "artifact-body-short" ]]; then
+    emit_zip
+  else
+    emit_zip
+  fi
+  exit 0
+fi
+
 
 printf 'unexpected gh invocation: %s\n' "${args}" >&2
 exit 2
@@ -317,7 +354,33 @@ assert_status malformed-digest 6
 assert_status wrong-algorithm-digest 6
 assert_status digest-mismatch 6
 assert_status artifact-wrong-run 4
+assert_status artifact-metadata-boolean-size 3
+assert_status artifact-metadata-zero-size 3
+assert_status artifact-metadata-oversized 4
+assert_status artifact-metadata-digest-drift 6
+assert_status artifact-metadata-wrong-run 4
+assert_status artifact-metadata-wrong-sha 4
+assert_status artifact-metadata-wrong-name 4
+assert_status artifact-metadata-expired 4
+assert_status artifact-body-oversized 6
+assert_status artifact-body-short 6
 assert_status traversal 5
 
 [[ ! -e "${TEMP_ROOT}/escape" ]]
+
+dangling_output="${TEMP_ROOT}/dangling-output"
+dangling_target="${TEMP_ROOT}/missing-output"
+ln -s "${dangling_target}" "${dangling_output}"
+set +e
+run_resolver success "${dangling_output}" >"${TEMP_ROOT}/dangling.stdout" 2>"${TEMP_ROOT}/dangling.stderr"
+dangling_status=$?
+set -e
+[[ "${dangling_status}" -eq 2 ]] || {
+  echo "Dangling output symlink was not rejected as usage error." >&2
+  cat "${TEMP_ROOT}/dangling.stderr" >&2 || true
+  exit 1
+}
+[[ -L "${dangling_output}" ]]
+grep -F -- "--output must not already exist or be a symlink" "${TEMP_ROOT}/dangling.stderr" >/dev/null
+
 printf 'release build artifact resolver tests passed\n'
