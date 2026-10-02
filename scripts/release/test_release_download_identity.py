@@ -8,6 +8,10 @@ import sys
 import tempfile
 import unittest
 
+from scripts.release.release_asset_limits import (
+    MAX_GITHUB_RELEASE_ASSETS,
+    MAX_RELEASE_METADATA_JSON_BYTES,
+)
 from scripts.release.release_download_identity import (
     MAX_RELEASE_DMG_BYTES,
     MAX_RELEASE_METADATA_BYTES,
@@ -223,6 +227,22 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
                     errors,
                 )
 
+    def test_rejects_asset_count_above_github_release_limit(self) -> None:
+        document = release_document()
+        document["assets"] = [
+            asset(
+                1000 + index,
+                f"extra-{index}.zip",
+            )
+            for index in range(MAX_GITHUB_RELEASE_ASSETS + 1)
+        ]
+
+        errors, identity = self.validate(document)
+
+        self.assertIsNone(identity)
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("asset count exceeds GitHub release limit", errors[0])
+
     def test_requires_exact_release_asset_roles(self) -> None:
         errors, identity = self.validate(
             release_document(),
@@ -291,6 +311,82 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
         self.assertTrue(any("stable SemVer" in error for error in errors))
         self.assertTrue(any("unique" in error for error in errors))
         self.assertTrue(any("unsafe" in error for error in errors))
+
+    def test_cli_rejects_oversized_metadata_before_json_parse(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata = root / "release.json"
+            output = root / "manifest.json"
+            with metadata.open("wb") as handle:
+                handle.truncate(MAX_RELEASE_METADATA_JSON_BYTES + 1)
+
+            command = [
+                sys.executable,
+                str(CLI),
+                "--metadata",
+                str(metadata),
+                "--repository",
+                REPOSITORY,
+                "--repository-id",
+                str(REPOSITORY_ID),
+                "--tag",
+                TAG,
+            ]
+            for name in ASSETS:
+                command.extend(["--asset", name])
+            command.extend(["--output", str(output)])
+
+            result = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("snapshot byte limit", result.stderr)
+        self.assertFalse(output.exists())
+
+    def test_cli_rejects_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            real_metadata = root / "real-release.json"
+            metadata = root / "release.json"
+            output = root / "manifest.json"
+            real_metadata.write_text(
+                json.dumps(release_document()) + "\n",
+                encoding="utf-8",
+            )
+            metadata.symlink_to(real_metadata.name)
+
+            command = [
+                sys.executable,
+                str(CLI),
+                "--metadata",
+                str(metadata),
+                "--repository",
+                REPOSITORY,
+                "--repository-id",
+                str(REPOSITORY_ID),
+                "--tag",
+                TAG,
+            ]
+            for name in ASSETS:
+                command.extend(["--asset", name])
+            command.extend(["--output", str(output)])
+
+            result = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("regular non-symlink file", result.stderr)
+        self.assertFalse(output.exists())
 
     def test_cli_writes_once_and_refuses_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
