@@ -263,6 +263,20 @@ class PrivilegedReleaseWorkflowContractTests(unittest.TestCase):
             text,
         )
 
+    def test_verified_release_payload_is_bounded_before_upload(self) -> None:
+        text = self.release_text()
+        writer = text.index("- name: Write final release attestation")
+        validation = text.index("- name: Validate bounded release handoff before upload")
+        upload = text.index("- name: Upload verified release artifacts")
+
+        self.assertLess(writer, validation)
+        self.assertLess(validation, upload)
+        block = text[validation:upload]
+        self.assertIn("scripts/release/validate-verified-release-payload.py", block)
+        self.assertIn("--root release-output", block)
+        self.assertIn('DMG_NAME: ${{ inputs.dmg_name }}', block)
+        self.assertIn('--dmg-name "${DMG_NAME}"', block)
+
     def test_verified_release_payload_is_digest_bound_before_provenance_and_publication(self) -> None:
         text = self.release_text()
         raw_download = text.index(
