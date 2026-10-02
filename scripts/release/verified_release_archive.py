@@ -15,6 +15,7 @@ from scripts.release.atomic_directory_publish import (
 from scripts.release.release_asset_limits import (
     MAX_RELEASE_DMG_BYTES,
     MAX_RELEASE_METADATA_BYTES,
+    MAX_VERIFIED_RELEASE_ZIP_BYTES,
     release_asset_size_limit,
 )
 from scripts.release.secure_file_snapshot import (
@@ -26,7 +27,6 @@ from scripts.release.secure_file_snapshot import (
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 MAX_DMG_BYTES = MAX_RELEASE_DMG_BYTES
 MAX_METADATA_BYTES = MAX_RELEASE_METADATA_BYTES
-ZIP_CONTAINER_OVERHEAD_BYTES = 16 * 1024 * 1024
 
 
 def _sha256_file(path: Path) -> str:
@@ -75,8 +75,7 @@ def validate_and_extract_verified_release_artifact(
         f"{dmg_name}.sha256",
         "release-provenance.json",
     }
-    max_total_uncompressed_bytes = MAX_DMG_BYTES + 2 * MAX_METADATA_BYTES
-    max_zip_bytes = max_total_uncompressed_bytes + ZIP_CONTAINER_OVERHEAD_BYTES
+    max_zip_bytes = MAX_VERIFIED_RELEASE_ZIP_BYTES
 
     try:
         with snapshot_regular_file(
