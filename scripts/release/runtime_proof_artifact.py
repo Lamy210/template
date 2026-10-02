@@ -6,7 +6,10 @@ import re
 import stat
 import zipfile
 
-from scripts.release.actions_artifact import MAX_APP_ARCHIVE_BYTES
+from scripts.release.actions_artifact import (
+    MAX_APP_ARCHIVE_BYTES,
+    ZIP_CONTAINER_OVERHEAD_BYTES,
+)
 from scripts.release.secure_file_snapshot import (
     RegularFileSnapshotError,
     snapshot_regular_file,
@@ -72,6 +75,11 @@ def extract_runtime_proof_metadata(
         with snapshot_regular_file(
             archive_path,
             prefix="runtime-proof-artifact.",
+            max_bytes=(
+                max_app_archive_bytes
+                + max_metadata_bytes
+                + ZIP_CONTAINER_OVERHEAD_BYTES
+            ),
         ) as snapshot_path:
             actual_digest = _sha256_file(snapshot_path)
             if actual_digest != expected_digest:
