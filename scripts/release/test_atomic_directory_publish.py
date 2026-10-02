@@ -9,6 +9,8 @@ from unittest import mock
 
 from scripts.release.atomic_directory_publish import (
     AtomicDirectoryPublishError,
+    _darwin_publish,
+    _linux_publish,
     atomic_publish_directory_noreplace,
 )
 
@@ -94,6 +96,30 @@ class AtomicDirectoryPublishTests(unittest.TestCase):
 
         self.assertTrue(source.is_dir())
         self.assertFalse((real_parent / "destination").exists())
+
+    def test_native_primitive_does_not_replace_existing_destination(self) -> None:
+        _, source, destination = self.fixture()
+        destination.mkdir()
+        (destination / "existing").write_text("keep\n", encoding="utf-8")
+
+        if sys.platform.startswith("linux"):
+            native_publish = _linux_publish
+        elif sys.platform == "darwin":
+            native_publish = _darwin_publish
+        else:
+            self.skipTest("native no-replace primitive is not supported on this platform")
+
+        with self.assertRaisesRegex(
+            AtomicDirectoryPublishError,
+            "destination already exists",
+        ):
+            native_publish(source, destination)
+
+        self.assertTrue(source.is_dir())
+        self.assertEqual(
+            "keep\n",
+            (destination / "existing").read_text(encoding="utf-8"),
+        )
 
     def test_unsupported_platform_fails_closed(self) -> None:
         _, source, destination = self.fixture()
