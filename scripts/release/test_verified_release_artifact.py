@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import unittest
 
+from scripts.release.release_asset_limits import (
+    MAX_VERIFIED_RELEASE_ARTIFACT_ZIP_BYTES,
+)
 from scripts.release.verified_release_artifact import (
     canonical_verified_release_artifact_name,
     verify_verified_release_artifact,
@@ -14,6 +17,7 @@ PUBLISHER_RUN_ATTEMPT = 4
 PUBLISHER_SHA = "c" * 40
 REPOSITORY_ID = 1367784801
 ARTIFACT_ID = 7002
+ARTIFACT_SIZE = 455
 
 
 def artifact_name(attempt: int = PUBLISHER_RUN_ATTEMPT) -> str:
@@ -26,6 +30,7 @@ def artifact_metadata(*, name: str | None = None) -> dict[str, object]:
         "name": name or artifact_name(),
         "expired": False,
         "digest": ARTIFACT_DIGEST,
+        "size_in_bytes": ARTIFACT_SIZE,
         "workflow_run": {
             "id": PUBLISHER_RUN_ID,
             "repository_id": REPOSITORY_ID,
@@ -68,6 +73,27 @@ class VerifiedReleaseArtifactTests(unittest.TestCase):
                 document = artifact_metadata()
                 document[key] = value
                 self.assertTrue(self.verify(document))
+
+    def test_rejects_missing_malformed_or_oversized_api_size(self) -> None:
+        for value in (
+            None,
+            0,
+            -1,
+            True,
+            "455",
+            MAX_VERIFIED_RELEASE_ARTIFACT_ZIP_BYTES + 1,
+        ):
+            with self.subTest(value=value):
+                document = artifact_metadata()
+                if value is None:
+                    document.pop("size_in_bytes")
+                else:
+                    document["size_in_bytes"] = value
+                errors = self.verify(document)
+                self.assertTrue(
+                    any("size" in error for error in errors),
+                    errors,
+                )
 
     def test_binds_repository_and_publisher_sha(self) -> None:
         for key, value in (
