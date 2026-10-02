@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import re
 
+from scripts.release.release_asset_limits import (
+    MAX_VERIFIED_RELEASE_ARTIFACT_ZIP_BYTES,
+)
+
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -83,6 +87,17 @@ def verify_verified_release_artifact(
         errors.append("verified release artifact API digest is missing or malformed")
     elif metadata_digest != artifact_digest:
         errors.append("verified release artifact API digest mismatch")
+
+    metadata_size = artifact_metadata.get("size_in_bytes")
+    if not _is_positive_int(metadata_size):
+        errors.append(
+            "verified release artifact API size_in_bytes must be a positive integer"
+        )
+    elif metadata_size > MAX_VERIFIED_RELEASE_ARTIFACT_ZIP_BYTES:
+        errors.append(
+            "verified release artifact API size exceeds configured ZIP limit: "
+            f"{metadata_size} > {MAX_VERIFIED_RELEASE_ARTIFACT_ZIP_BYTES}"
+        )
 
     workflow_run = artifact_metadata.get("workflow_run")
     if not isinstance(workflow_run, dict):
