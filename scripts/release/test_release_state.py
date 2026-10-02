@@ -7,6 +7,10 @@ import sys
 import tempfile
 import unittest
 
+from scripts.release.release_asset_limits import (
+    MAX_GITHUB_RELEASE_ASSETS,
+    MAX_RELEASE_METADATA_JSON_BYTES,
+)
 from scripts.release.release_state import (
     validate_release_expectations,
     validate_release_state,
@@ -138,6 +142,22 @@ class ReleaseStateTests(unittest.TestCase):
                 )
                 self.assertTrue(any("asset set" in error for error in errors))
 
+    def test_rejects_asset_count_above_github_release_limit(self) -> None:
+        document = release_metadata()
+        document["assets"] = [
+            {"name": f"extra-{index}.zip"}
+            for index in range(MAX_GITHUB_RELEASE_ASSETS + 1)
+        ]
+
+        errors = validate_release_state(
+            document,
+            expected_tag=TAG,
+            expected_asset_names=ASSETS,
+        )
+
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("asset count exceeds GitHub release limit", errors[0])
+
     def test_rejects_malformed_expected_identity(self) -> None:
         errors = validate_release_state(
             release_metadata(),
@@ -147,6 +167,68 @@ class ReleaseStateTests(unittest.TestCase):
         self.assertTrue(any("stable SemVer" in error for error in errors))
         self.assertTrue(any("unique" in error for error in errors))
         self.assertTrue(any("unsafe" in error for error in errors))
+
+    def test_cli_rejects_oversized_metadata_before_json_parse(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata = root / "release.json"
+            with metadata.open("wb") as handle:
+                handle.truncate(MAX_RELEASE_METADATA_JSON_BYTES + 1)
+
+            command = [
+                sys.executable,
+                str(CLI),
+                "--metadata",
+                str(metadata),
+                "--tag",
+                TAG,
+            ]
+            for asset in ASSETS:
+                command.extend(["--asset", asset])
+
+            result = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("snapshot byte limit", result.stderr)
+
+    def test_cli_rejects_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            real_metadata = root / "real-release.json"
+            metadata = root / "release.json"
+            real_metadata.write_text(
+                json.dumps(release_metadata()) + "\n",
+                encoding="utf-8",
+            )
+            metadata.symlink_to(real_metadata.name)
+
+            command = [
+                sys.executable,
+                str(CLI),
+                "--metadata",
+                str(metadata),
+                "--tag",
+                TAG,
+            ]
+            for asset in ASSETS:
+                command.extend(["--asset", asset])
+
+            result = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("regular non-symlink file", result.stderr)
 
     def test_cli_rejects_release_state_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
