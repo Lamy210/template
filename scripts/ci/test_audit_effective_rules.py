@@ -330,10 +330,11 @@ class EffectiveMainRulesAuditTests(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
+            observed_read_count = count_file.read_text()
 
         self.assertEqual(1, result.returncode, result.stderr)
         self.assertIn("required_status_checks rule is required", result.stderr)
-        self.assertEqual("2", count_file.read_text())
+        self.assertEqual("2", observed_read_count)
 
     def test_live_audit_wrapper_is_read_only_and_uses_effective_rules_endpoint(self) -> None:
         text = LIVE_AUDIT.read_text(encoding="utf-8")
