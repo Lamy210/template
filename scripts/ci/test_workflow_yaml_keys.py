@@ -7,6 +7,7 @@ from scripts.ci.workflow_yaml_keys import (
     YAML_BLOCK_SCALAR_HEADER_RE,
     YAML_KEY_TOKEN,
     normalize_yaml_key,
+    strip_yaml_inline_comment,
     workflow_job_ranges,
     yaml_key_pattern,
     yaml_mapping_child_indent,
@@ -63,6 +64,28 @@ class WorkflowYamlKeyTests(unittest.TestCase):
                 self.assertIsNotNone(match)
                 assert match is not None
                 self.assertEqual(expected, normalize_yaml_key(match.group("key")))
+
+    def test_inline_comment_parser_honors_yaml_quote_escapes(self) -> None:
+        double_quoted = r'"echo \" # literal"'
+        single_quoted = "'it''s # literal'"
+        self.assertEqual(
+            double_quoted,
+            strip_yaml_inline_comment(double_quoted),
+        )
+        self.assertEqual(
+            single_quoted,
+            strip_yaml_inline_comment(single_quoted),
+        )
+
+    def test_inline_comment_parser_strips_only_unquoted_comment(self) -> None:
+        self.assertEqual(
+            "value",
+            strip_yaml_inline_comment("value # comment"),
+        )
+        self.assertEqual(
+            "",
+            strip_yaml_inline_comment("# whole-line comment"),
+        )
 
     def test_normalize_yaml_key_does_not_modify_plain_key(self) -> None:
         self.assertEqual("pull_request_target", normalize_yaml_key("pull_request_target"))
