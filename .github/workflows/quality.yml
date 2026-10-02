@@ -156,6 +156,7 @@ jobs:
             scripts.release.test_runtime_proof_artifact \
             scripts.release.test_atomic_directory_publish \
             scripts.release.test_capture_release_asset \
+            scripts.release.test_secure_release_json \
             scripts.release.test_secure_file_snapshot \
             scripts.release.test_validate_actions_artifact \
             scripts.release.test_validate_release_input \
