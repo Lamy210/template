@@ -10,6 +10,8 @@ from scripts.ci.workflow_yaml_keys import (
     normalize_yaml_key,
     workflow_job_ranges,
     yaml_key_pattern,
+    yaml_line_indent,
+    yaml_mapping_child_indent,
 )
 
 
@@ -85,7 +87,7 @@ def _permission_values(
     lines: list[str],
     *,
     index: int,
-    indent: int,
+    end: int | None = None,
 ) -> tuple[dict[str, str], str | None]:
     match = PERMISSIONS_RE.match(lines[index])
     if match is None:
@@ -97,19 +99,26 @@ def _permission_values(
             return {}, "{}"
         return {}, inline
 
+    parent_indent = yaml_line_indent(lines[index])
+    limit = len(lines) if end is None else end
+    child_indent = yaml_mapping_child_indent(
+        lines,
+        parent_index=index,
+        end=limit,
+    )
+    if child_indent is None:
+        return {}, None
+
     values: dict[str, str] = {}
-    for raw in lines[index + 1 :]:
+    for raw in lines[index + 1 : limit]:
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
-        width = len(raw) - len(raw.lstrip())
-        if width <= indent:
+        width = yaml_line_indent(raw)
+        if width <= parent_indent:
             break
 
         item = KEY_RE.match(raw)
-        if item is None:
-            continue
-        item_indent = _indent_width(item.group("indent"))
-        if item_indent != indent + 2:
+        if item is None or width != child_indent:
             continue
         values[normalize_yaml_key(item.group("key"))] = _unquote(item.group("value"))
     return values, None
@@ -120,7 +129,7 @@ def _top_level_permissions(path: Path, lines: list[str]) -> PermissionBlock | No
         match = PERMISSIONS_RE.match(raw)
         if match is None or _indent_width(match.group("indent")) != 0:
             continue
-        values, inline = _permission_values(lines, index=index, indent=0)
+        values, inline = _permission_values(lines, index=index)
         return PermissionBlock(
             path=path,
             line=index + 1,
@@ -134,12 +143,24 @@ def _top_level_permissions(path: Path, lines: list[str]) -> PermissionBlock | No
 def _job_permissions(path: Path, lines: list[str]) -> list[PermissionBlock]:
     blocks: list[PermissionBlock] = []
     for job, start, end in workflow_job_ranges(lines):
+        property_indent = yaml_mapping_child_indent(
+            lines,
+            parent_index=start,
+            end=end,
+        )
+        if property_indent is None:
+            continue
+
         for index in range(start + 1, end):
             raw = lines[index]
             match = PERMISSIONS_RE.match(raw)
-            if match is None or _indent_width(match.group("indent")) != 4:
+            if match is None or yaml_line_indent(raw) != property_indent:
                 continue
-            values, inline = _permission_values(lines, index=index, indent=4)
+            values, inline = _permission_values(
+                lines,
+                index=index,
+                end=end,
+            )
             blocks.append(
                 PermissionBlock(
                     path=path,
