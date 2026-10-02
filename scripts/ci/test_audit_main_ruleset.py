@@ -294,6 +294,92 @@ class LiveMainRulesetAuditTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("matches the Solo default-branch contract", result.stdout)
 
+    def test_live_wrapper_rejects_final_ruleset_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            detail_before = root / "ruleset-before.json"
+            detail_after = root / "ruleset-after.json"
+            count_file = root / "ruleset-count"
+
+            detail = valid_live_ruleset()
+            drifted = valid_live_ruleset()
+            drifted["name"] = "Drifted"
+            summary = {
+                "id": detail["id"],
+                "name": detail["name"],
+                "target": detail["target"],
+                "source_type": detail["source_type"],
+                "source": detail["source"],
+                "enforcement": detail["enforcement"],
+            }
+            detail_before.write_text(
+                json.dumps(detail) + "\n",
+                encoding="utf-8",
+            )
+            detail_after.write_text(
+                json.dumps(drifted) + "\n",
+                encoding="utf-8",
+            )
+
+            fake_gh.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        print(json.dumps({{
+                            "id": 101,
+                            "full_name": "example/repo",
+                            "default_branch": "main",
+                        }}))
+                        raise SystemExit(0)
+                    if "rulesets?targets=branch&includes_parents=true&per_page=100" in endpoint:
+                        print(json.dumps([[{summary!r}]]))
+                        raise SystemExit(0)
+                    if endpoint.endswith("rulesets/84?includes_parents=true"):
+                        count_file = Path(os.environ["GH_FAKE_RULESET_COUNT_FILE"])
+                        count = int(count_file.read_text() or "0") if count_file.exists() else 0
+                        count += 1
+                        count_file.write_text(str(count))
+                        detail_path = (
+                            os.environ["GH_FAKE_RULESET_BEFORE"]
+                            if count == 1
+                            else os.environ["GH_FAKE_RULESET_AFTER"]
+                        )
+                        print(Path(detail_path).read_text(), end="")
+                        raise SystemExit(0)
+                    print("unexpected endpoint: " + endpoint, file=sys.stderr)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            env["GH_FAKE_RULESET_COUNT_FILE"] = str(count_file)
+            env["GH_FAKE_RULESET_BEFORE"] = str(detail_before)
+            env["GH_FAKE_RULESET_AFTER"] = str(detail_after)
+            result = subprocess.run(
+                ["bash", str(LIVE_AUDIT), "example/repo"],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("name must equal 'Solo default branch'", result.stderr)
+        self.assertEqual("2", count_file.read_text())
+
     def test_live_wrapper_rejects_repository_snapshot_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
