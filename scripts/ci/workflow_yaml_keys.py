@@ -20,6 +20,51 @@ def yaml_key_pattern(key: str) -> str:
     return rf'(?:{escaped}|"{escaped}"|\'{escaped}\')'
 
 
+def strip_yaml_inline_comment(value: str) -> str:
+    in_single = False
+    in_double = False
+    escaped = False
+    index = 0
+
+    while index < len(value):
+        character = value[index]
+
+        if in_double:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_double = False
+            index += 1
+            continue
+
+        if in_single:
+            if (
+                character == "'"
+                and index + 1 < len(value)
+                and value[index + 1] == "'"
+            ):
+                index += 2
+                continue
+            if character == "'":
+                in_single = False
+            index += 1
+            continue
+
+        if character == '"':
+            in_double = True
+        elif character == "'":
+            in_single = True
+        elif character == "#" and (
+            index == 0 or value[index - 1].isspace()
+        ):
+            return value[:index].rstrip()
+
+        index += 1
+
+    return value.rstrip()
+
 def normalize_yaml_key(value: str) -> str:
     value = value.strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:

@@ -7,6 +7,7 @@ import re
 from scripts.ci.workflow_permission_policy import workflow_paths
 from scripts.ci.workflow_yaml_keys import (
     YAML_BLOCK_SCALAR_HEADER_RE,
+    strip_yaml_inline_comment,
     yaml_key_pattern,
     yaml_mapping_key_indent,
 )
@@ -29,20 +30,6 @@ def _indent_width(value: str) -> int:
     return len(value.replace("\t", "    "))
 
 
-def _strip_inline_comment(value: str) -> str:
-    in_single = False
-    in_double = False
-    for index, character in enumerate(value):
-        if character == "'" and not in_double:
-            in_single = not in_single
-        elif character == '"' and not in_single:
-            in_double = not in_double
-        elif character == "#" and not in_single and not in_double:
-            if index == 0 or value[index - 1].isspace():
-                return value[:index].rstrip()
-    return value.rstrip()
-
-
 def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
     lines = text.splitlines()
     violations: list[PolicyViolation] = []
@@ -56,7 +43,7 @@ def validate_workflow_text(path: Path, text: str) -> list[PolicyViolation]:
             match.group("indent"),
             match.group("item"),
         )
-        value = _strip_inline_comment(match.group("value")).strip()
+        value = strip_yaml_inline_comment(match.group("value")).strip()
 
         if value and YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(value) is None:
             if EXPRESSION_RE.search(value):

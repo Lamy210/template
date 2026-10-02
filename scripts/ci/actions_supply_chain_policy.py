@@ -8,6 +8,7 @@ from typing import Iterable, Literal
 from scripts.ci.workflow_yaml_keys import (
     YAML_KEY_TOKEN,
     normalize_yaml_key,
+    strip_yaml_inline_comment,
     yaml_key_pattern,
     yaml_line_indent,
     yaml_mapping_child_indent,
@@ -64,20 +65,6 @@ def _unquote(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
-
-
-def _strip_inline_comment(value: str) -> str:
-    in_single = False
-    in_double = False
-    for index, character in enumerate(value):
-        if character == "'" and not in_double:
-            in_single = not in_single
-        elif character == '"' and not in_single:
-            in_double = not in_double
-        elif character == "#" and not in_single and not in_double:
-            if index == 0 or value[index - 1].isspace():
-                return value[:index].rstrip()
-    return value.rstrip()
 
 
 def _step_context(
@@ -158,7 +145,7 @@ def _with_values(lines: list[str], start: int, end: int) -> dict[str, str]:
             break
         if indent == child_indent:
             values[normalize_yaml_key(match.group("key"))] = _unquote(
-                _strip_inline_comment(match.group("value"))
+                strip_yaml_inline_comment(match.group("value"))
             )
     return values
 
@@ -171,7 +158,7 @@ def parse_action_uses(path: Path, text: str) -> list[ActionUse]:
         match = USES_RE.match(raw)
         if match is None:
             continue
-        value = _unquote(_strip_inline_comment(match.group("value")))
+        value = _unquote(strip_yaml_inline_comment(match.group("value")))
         context = _step_context(lines, index)
         if context is None:
             uses.append(

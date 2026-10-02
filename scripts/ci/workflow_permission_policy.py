@@ -8,6 +8,7 @@ from typing import Iterable
 from scripts.ci.workflow_yaml_keys import (
     YAML_KEY_TOKEN,
     normalize_yaml_key,
+    strip_yaml_inline_comment,
     workflow_job_ranges,
     yaml_key_pattern,
     yaml_line_indent,
@@ -62,22 +63,8 @@ def _indent_width(value: str) -> int:
     return len(value.replace("\t", "    "))
 
 
-def _strip_inline_comment(value: str) -> str:
-    in_single = False
-    in_double = False
-    for index, character in enumerate(value):
-        if character == "'" and not in_double:
-            in_single = not in_single
-        elif character == '"' and not in_single:
-            in_double = not in_double
-        elif character == "#" and not in_single and not in_double:
-            if index == 0 or value[index - 1].isspace():
-                return value[:index].rstrip()
-    return value.rstrip()
-
-
 def _unquote(value: str) -> str:
-    value = _strip_inline_comment(value).strip()
+    value = strip_yaml_inline_comment(value).strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
