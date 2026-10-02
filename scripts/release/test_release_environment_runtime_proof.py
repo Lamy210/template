@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -285,8 +286,6 @@ class ReleaseEnvironmentRuntimeProofTests(unittest.TestCase):
                 ),
             }
             metadata = root / "contents.json"
-            import json
-
             metadata.write_text(json.dumps(document), encoding="utf-8")
 
             result = subprocess.run(
