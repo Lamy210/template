@@ -9,8 +9,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
+from scripts.release import runtime_proof_source_artifact
 from scripts.release.post_split_runtime_proof import validate_post_split_runtime_proof
 from scripts.release.runtime_proof_source_artifact import (
     verify_runtime_proof_source_artifact,
@@ -339,6 +341,43 @@ class RuntimeProofSourceArtifactByteTests(unittest.TestCase):
                 app_payload,
                 (output / "release-input/unsigned-macos-app.tar.gz").read_bytes(),
             )
+
+    def test_source_path_mutation_after_snapshot_does_not_change_verified_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            archive = root / "source-artifact.zip"
+            output = root / "source-artifact"
+            app_payload = b"snapshot-bound-unsigned-app"
+            write_source_artifact_zip(archive, app_payload=app_payload)
+            expected_artifact_digest = sha256_file(archive)
+            original_sha256_file = runtime_proof_source_artifact._sha256_file
+            mutated = False
+
+            def mutate_original_then_hash(snapshot_path: Path) -> str:
+                nonlocal mutated
+                if not mutated:
+                    archive.write_bytes(b"tampered-after-snapshot")
+                    mutated = True
+                return original_sha256_file(snapshot_path)
+
+            with mock.patch.object(
+                runtime_proof_source_artifact,
+                "_sha256_file",
+                side_effect=mutate_original_then_hash,
+            ):
+                errors = verify_runtime_proof_source_artifact(
+                    archive,
+                    output,
+                    expected_artifact_digest=expected_artifact_digest,
+                    expected_app_archive_digest=sha256_bytes(app_payload),
+                )
+
+            self.assertEqual([], errors)
+            self.assertEqual(
+                app_payload,
+                (output / "release-input/unsigned-macos-app.tar.gz").read_bytes(),
+            )
+            self.assertEqual(b"tampered-after-snapshot", archive.read_bytes())
 
     def test_rejects_source_artifact_zip_digest_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
