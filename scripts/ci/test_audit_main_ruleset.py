@@ -294,6 +294,80 @@ class LiveMainRulesetAuditTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("matches the Solo default-branch contract", result.stdout)
 
+    def test_live_wrapper_rejects_final_candidate_list_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            list_count_file = root / "list-count"
+            detail = valid_live_ruleset()
+            summary = {
+                "id": detail["id"],
+                "name": detail["name"],
+                "target": detail["target"],
+                "source_type": detail["source_type"],
+                "source": detail["source"],
+                "enforcement": detail["enforcement"],
+            }
+            duplicate = dict(summary, id=85)
+            fake_gh.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        print(json.dumps({{
+                            "id": 101,
+                            "full_name": "example/repo",
+                            "default_branch": "main",
+                        }}))
+                        raise SystemExit(0)
+                    if "rulesets?targets=branch&includes_parents=true&per_page=100" in endpoint:
+                        count_file = Path(os.environ["GH_FAKE_LIST_COUNT_FILE"])
+                        count = int(count_file.read_text() or "0") if count_file.exists() else 0
+                        count += 1
+                        count_file.write_text(str(count))
+                        payload = [{summary!r}]
+                        if count >= 2:
+                            payload.append({duplicate!r})
+                        print(json.dumps([payload]))
+                        raise SystemExit(0)
+                    if endpoint.endswith("rulesets/84?includes_parents=true"):
+                        print(json.dumps({detail!r}))
+                        raise SystemExit(0)
+                    print("unexpected endpoint: " + endpoint, file=sys.stderr)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            env["GH_FAKE_LIST_COUNT_FILE"] = str(list_count_file)
+            result = subprocess.run(
+                ["bash", str(LIVE_AUDIT), "example/repo"],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            observed_count = list_count_file.read_text()
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(
+            "Expected exactly one active repository Ruleset named "
+            "'Solo default branch'",
+            result.stderr,
+        )
+        self.assertEqual("2", observed_count)
+
     def test_live_wrapper_rejects_final_ruleset_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
