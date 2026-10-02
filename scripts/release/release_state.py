@@ -4,6 +4,8 @@ from collections import Counter
 from pathlib import Path
 import re
 
+from scripts.release.release_asset_limits import MAX_GITHUB_RELEASE_ASSETS
+
 
 TAG_RE = re.compile(r"^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
@@ -62,6 +64,12 @@ def validate_release_state(
     assets = document.get("assets")
     if not isinstance(assets, list):
         errors.append("release assets metadata must be an array")
+        return errors
+    if len(assets) > MAX_GITHUB_RELEASE_ASSETS:
+        errors.append(
+            "release asset count exceeds GitHub release limit: "
+            f"{len(assets)} > {MAX_GITHUB_RELEASE_ASSETS}"
+        )
         return errors
 
     actual_names: list[str] = []
