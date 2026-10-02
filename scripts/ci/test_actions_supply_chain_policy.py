@@ -194,6 +194,22 @@ jobs:
         uses = parse_action_uses(Path("fixture.yml"), body)
         self.assertEqual({}, uses[0].with_values)
 
+    def test_checkout_accepts_deeply_indented_with_values(self) -> None:
+        body = f"""
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@{SHA}
+        with:
+            persist-credentials: false
+"""
+        self.assertEqual([], self.validate(body))
+        uses = parse_action_uses(Path("fixture.yml"), body)
+        self.assertEqual(
+            {"persist-credentials": "false"},
+            uses[0].with_values,
+        )
+
     def test_compact_checkout_accepts_its_own_with_block(self) -> None:
         violations = self.validate(
             f"""
