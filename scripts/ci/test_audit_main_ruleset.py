@@ -190,6 +190,13 @@ class LiveMainRulesetAuditTests(unittest.TestCase):
                     import sys
 
                     endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        print(json.dumps({{
+                            "id": 101,
+                            "full_name": "example/repo",
+                            "default_branch": "main",
+                        }}))
+                        raise SystemExit(0)
                     if "rulesets?targets=branch&includes_parents=true&per_page=100" in endpoint:
                         print(json.dumps([[{summary!r}]]))
                         raise SystemExit(0)
@@ -217,6 +224,95 @@ class LiveMainRulesetAuditTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("matches the Solo default-branch contract", result.stdout)
+
+    def test_live_wrapper_rejects_repository_snapshot_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_gh = root / "gh"
+            detail = valid_live_ruleset()
+            summary = {
+                "id": detail["id"],
+                "name": detail["name"],
+                "target": detail["target"],
+                "source_type": detail["source_type"],
+                "source": detail["source"],
+                "enforcement": detail["enforcement"],
+            }
+            fake_gh.write_text(
+                textwrap.dedent(
+                    f"""\
+                    #!/usr/bin/env python3
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+
+                    endpoint = sys.argv[-1]
+                    if endpoint == "repos/example/repo":
+                        count_file = Path(os.environ["GH_FAKE_COUNT_FILE"])
+                        count = int(count_file.read_text() or "0") if count_file.exists() else 0
+                        count += 1
+                        count_file.write_text(str(count))
+                        repository_id = 101
+                        default_branch = "main"
+                        scenario = os.environ.get("GH_FAKE_SCENARIO", "success")
+                        if count >= 2 and scenario == "identity-drift":
+                            repository_id = 202
+                        if count >= 2 and scenario == "branch-drift":
+                            default_branch = "develop"
+                        print(json.dumps({{
+                            "id": repository_id,
+                            "full_name": "example/repo",
+                            "default_branch": default_branch,
+                        }}))
+                        raise SystemExit(0)
+
+                    if "rulesets?targets=branch&includes_parents=true&per_page=100" in endpoint:
+                        print(json.dumps([[{summary!r}]]))
+                        raise SystemExit(0)
+                    if endpoint.endswith("rulesets/84?includes_parents=true"):
+                        print(json.dumps({detail!r}))
+                        raise SystemExit(0)
+                    print("unexpected endpoint: " + endpoint, file=sys.stderr)
+                    raise SystemExit(9)
+                    """
+                ),
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+
+            for scenario, expected_success in (
+                ("success", True),
+                ("identity-drift", False),
+                ("branch-drift", False),
+            ):
+                with self.subTest(scenario=scenario):
+                    count_file = root / f"count-{scenario}"
+                    env = os.environ.copy()
+                    env["PATH"] = f"{root}:{env['PATH']}"
+                    env["GH_FAKE_SCENARIO"] = scenario
+                    env["GH_FAKE_COUNT_FILE"] = str(count_file)
+                    result = subprocess.run(
+                        ["bash", str(LIVE_AUDIT), "example/repo"],
+                        cwd=REPO_ROOT,
+                        env=env,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+
+                    if expected_success:
+                        self.assertEqual(0, result.returncode, result.stderr)
+                        self.assertIn(
+                            "matches the Solo default-branch contract",
+                            result.stdout,
+                        )
+                    else:
+                        self.assertNotEqual(0, result.returncode)
+                        self.assertIn(
+                            "Repository identity or default branch changed",
+                            result.stderr,
+                        )
 
     def test_live_wrapper_is_read_only_and_fetches_named_branch_ruleset(self) -> None:
         text = LIVE_AUDIT.read_text(encoding="utf-8")
