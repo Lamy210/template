@@ -448,66 +448,7 @@ else
   esac
 fi
 
-IFS=
-stage_dir="${work_root}/stage"
-if python3 "$(dirname "${BASH_SOURCE[0]}")/validate-actions-artifact.py" --archive "${archive_path}" --output "${stage_dir}"; then
-  :
-else
-  die "${EXIT_UNSAFE_ARCHIVE}" 'release artifact ZIP failed confinement validation'
-fi
-
-python3 - \
-  "${stage_dir}/source-artifact-metadata.json" \
-  "${repository}" \
-  "${workflow_id}" \
-  "${workflow_path}" \
-  "${run_id}" \
-  "${run_attempt}" \
-  "${source_sha}" \
-  "${source_tag}" \
-  "${artifact_id}" \
-  "${artifact_name}" \
-  "${artifact_digest}" <<'PY'
-import json
-import sys
-(
-    output,
-    repository,
-    workflow_id,
-    workflow_path,
-    run_id,
-    run_attempt,
-    source_sha,
-    source_tag,
-    artifact_id,
-    artifact_name,
-    artifact_digest,
-) = sys.argv[1:]
-payload = {
-    "schemaVersion": 1,
-    "repository": repository,
-    "workflowId": int(workflow_id),
-    "workflowPath": workflow_path,
-    "runId": int(run_id),
-    "runAttempt": int(run_attempt),
-    "sourceSHA": source_sha,
-    "sourceTag": source_tag,
-    "artifactId": int(artifact_id),
-    "artifactName": artifact_name,
-    "artifactDigest": artifact_digest,
-}
-with open(output, "w", encoding="utf-8") as handle:
-    json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
-    handle.write("\n")
-PY
-
-if ! python3 "${publisher}" \
-  --source "${stage_dir}" \
-  --destination "${output_dir}"; then
-  die "${EXIT_INFRA}" 'failed to publish resolved release artifact without replacement'
-fi
-printf 'resolved release artifact run=%s attempt=%s artifact=%s\n' "${run_id}" "${run_attempt}" "${artifact_id}"
-\t' read -r artifact_id artifact_digest <"${artifact_file}"
+IFS=$'\\t' read -r artifact_id artifact_digest <"${artifact_file}"
 
 artifact_metadata_json="${work_root}/artifact-metadata.json"
 api_to_file "repos/${repository}/actions/artifacts/${artifact_id}" "${artifact_metadata_json}" ||
@@ -683,5 +624,9 @@ with open(output, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 
-mv "${stage_dir}" "${output_dir}"
+if ! python3 "${publisher}" \
+  --source "${stage_dir}" \
+  --destination "${output_dir}"; then
+  die "${EXIT_INFRA}" 'failed to publish resolved release artifact without replacement'
+fi
 printf 'resolved release artifact run=%s attempt=%s artifact=%s\n' "${run_id}" "${run_attempt}" "${artifact_id}"
