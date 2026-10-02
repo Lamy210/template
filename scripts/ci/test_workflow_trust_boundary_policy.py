@@ -88,7 +88,7 @@ jobs:
             'on: "push"',
             "on: 'workflow_dispatch'",
             "on: [push, pull_request]",
-            'on: ["push", \\'workflow_dispatch\\']',
+            "on: [\"push\", 'workflow_dispatch']",
         ):
             with self.subTest(trigger=trigger):
                 violations = self.validate(
