@@ -78,6 +78,40 @@ jobs:
                     violations,
                 )
 
+    def test_rejects_job_write_with_deeper_valid_indentation(self) -> None:
+        violations = self.validate(
+            """
+on:
+    push:
+permissions:
+    contents: read
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        permissions:
+              contents: write
+"""
+        )
+        self.assertEqual(1, len(violations), violations)
+        self.assertIn("write permissions are forbidden", violations[0].message)
+        self.assertEqual("job:test", violations[0].scope)
+
+    def test_accepts_deeply_indented_read_only_permissions(self) -> None:
+        violations = self.validate(
+            """
+on:
+    push:
+permissions:
+    contents: read
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        permissions:
+              contents: none
+"""
+        )
+        self.assertEqual([], violations)
+
     def test_accepts_explicit_none_at_job_scope(self) -> None:
         violations = self.validate(
             """
