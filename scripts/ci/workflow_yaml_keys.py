@@ -20,7 +20,6 @@ def yaml_key_pattern(key: str) -> str:
     return rf'(?:{escaped}|"{escaped}"|\'{escaped}\')'
 
 
-
 def strip_yaml_inline_comment(value: str) -> str:
     in_single = False
     in_double = False
