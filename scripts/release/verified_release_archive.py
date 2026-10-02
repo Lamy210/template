@@ -8,6 +8,10 @@ import stat
 import tempfile
 import zipfile
 
+from scripts.release.atomic_directory_publish import (
+    AtomicDirectoryPublishError,
+    atomic_publish_directory_noreplace,
+)
 from scripts.release.secure_file_snapshot import (
     RegularFileSnapshotError,
     snapshot_regular_file,
@@ -172,7 +176,13 @@ def validate_and_extract_verified_release_artifact(
                                 "output directory appeared during verified release extraction: "
                                 f"{output_dir}"
                             ]
-                        stage.rename(output_dir)
+                        try:
+                            atomic_publish_directory_noreplace(stage, output_dir)
+                        except AtomicDirectoryPublishError as error:
+                            return [
+                                "unable to publish verified release output atomically: "
+                                f"{error}"
+                            ]
             except (zipfile.BadZipFile, OSError, RuntimeError) as error:
                 return [f"invalid verified release Artifact ZIP: {error}"]
     except RegularFileSnapshotError as error:
