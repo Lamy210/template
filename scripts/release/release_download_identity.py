@@ -23,7 +23,11 @@ def _validate_expected_release_asset_contract(
     names: list[str],
 ) -> list[str]:
     errors: list[str] = []
-    dmg_names = [name for name in names if isinstance(name, str) and name.endswith(".dmg")]
+    dmg_names = [
+        name
+        for name in names
+        if isinstance(name, str) and name.endswith(".dmg")
+    ]
     if len(names) != 3:
         errors.append("expected release asset set must contain exactly three assets")
     if len(dmg_names) != 1:
