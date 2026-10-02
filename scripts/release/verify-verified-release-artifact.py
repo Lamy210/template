@@ -35,10 +35,16 @@ def main() -> int:
     parser.add_argument("--publisher-run-attempt", required=True, type=int)
     parser.add_argument("--publisher-sha", required=True)
     parser.add_argument("--repository-id", required=True, type=int)
+    parser.add_argument(
+        "--print-size",
+        action="store_true",
+        help="Print validated Artifact size_in_bytes after successful verification.",
+    )
     args = parser.parse_args()
 
+    metadata = load_json(args.metadata)
     errors = verify_verified_release_artifact(
-        artifact_metadata=load_json(args.metadata),
+        artifact_metadata=metadata,
         artifact_id=args.artifact_id,
         artifact_name=args.artifact_name,
         artifact_digest=args.artifact_digest,
@@ -51,6 +57,12 @@ def main() -> int:
         for error in errors:
             print(error, file=sys.stderr)
         return 1
+
+    if args.print_size:
+        assert isinstance(metadata, dict)
+        size = metadata.get("size_in_bytes")
+        assert type(size) is int and size > 0
+        print(size)
     return 0
 
 
