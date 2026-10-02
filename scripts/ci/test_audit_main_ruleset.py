@@ -375,10 +375,11 @@ class LiveMainRulesetAuditTests(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
+            observed_read_count = count_file.read_text()
 
         self.assertEqual(1, result.returncode, result.stderr)
         self.assertIn("name must equal 'Solo default branch'", result.stderr)
-        self.assertEqual("2", count_file.read_text())
+        self.assertEqual("2", observed_read_count)
 
     def test_live_wrapper_rejects_repository_snapshot_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
