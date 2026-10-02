@@ -3,10 +3,14 @@ from __future__ import annotations
 import io
 from pathlib import Path
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
+from scripts.release import actions_artifact
 from scripts.release.actions_artifact import validate_and_extract_release_artifact
 
 
@@ -43,6 +47,103 @@ class ActionsArtifactValidationTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertEqual(b"fixture", (output / "release-input/unsigned-macos-app.tar.gz").read_bytes())
         self.assertEqual(b"fixture", (output / "release-input/build-provenance.json").read_bytes())
+
+    def test_source_mutation_after_snapshot_does_not_change_extracted_bytes(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        archive_path = root / "artifact.zip"
+        output = root / "out"
+        trusted_app = b"trusted-app"
+        trusted_provenance = b'{"trusted":true}\n'
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr(
+                "release-input/unsigned-macos-app.tar.gz",
+                trusted_app,
+            )
+            archive.writestr(
+                "release-input/build-provenance.json",
+                trusted_provenance,
+            )
+
+        original_zip_file = actions_artifact.zipfile.ZipFile
+        mutated = False
+
+        def mutate_original_then_open(path, *args, **kwargs):
+            nonlocal mutated
+            if not mutated:
+                archive_path.write_bytes(b"tampered-after-snapshot")
+                mutated = True
+            return original_zip_file(path, *args, **kwargs)
+
+        with mock.patch.object(
+            actions_artifact.zipfile,
+            "ZipFile",
+            side_effect=mutate_original_then_open,
+        ):
+            errors = validate_and_extract_release_artifact(
+                archive_path,
+                output,
+            )
+
+        self.assertEqual([], errors)
+        self.assertEqual(
+            trusted_app,
+            (output / "release-input/unsigned-macos-app.tar.gz").read_bytes(),
+        )
+        self.assertEqual(
+            trusted_provenance,
+            (output / "release-input/build-provenance.json").read_bytes(),
+        )
+        self.assertEqual(b"tampered-after-snapshot", archive_path.read_bytes())
+
+    def test_rejects_symlinked_artifact_container(self) -> None:
+        temporary_directory, archive_path = self.create_zip(
+            sorted(EXPECTED_FILES)
+        )
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        link = root / "artifact-link.zip"
+        link.symlink_to(archive_path.name)
+
+        errors = validate_and_extract_release_artifact(
+            link,
+            root / "out",
+        )
+
+        self.assertTrue(any("snapshot" in error for error in errors), errors)
+        self.assertFalse((root / "out").exists())
+
+    def test_direct_cli_runs_with_package_imports(self) -> None:
+        temporary_directory, archive_path = self.create_zip(
+            sorted(EXPECTED_FILES)
+        )
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        output = root / "cli-out"
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/release/validate-actions-artifact.py",
+                "--archive",
+                str(archive_path),
+                "--output",
+                str(output),
+            ],
+            cwd=Path(__file__).resolve().parents[2],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertTrue(
+            (output / "release-input/unsigned-macos-app.tar.gz").is_file()
+        )
+        self.assertTrue(
+            (output / "release-input/build-provenance.json").is_file()
+        )
 
     def test_rejects_path_traversal(self) -> None:
         temporary_directory, archive_path = self.create_zip(

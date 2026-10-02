@@ -4,7 +4,11 @@ import hashlib
 from pathlib import Path
 import re
 
-from scripts.release.actions_artifact import validate_and_extract_release_artifact
+from scripts.release.actions_artifact import (
+    MAX_APP_ARCHIVE_BYTES,
+    MAX_ARTIFACT_ZIP_BYTES,
+    validate_and_extract_release_artifact,
+)
 from scripts.release.secure_file_snapshot import (
     RegularFileSnapshotError,
     snapshot_regular_file,
@@ -56,6 +60,7 @@ def verify_runtime_proof_source_artifact(
         with snapshot_regular_file(
             archive_path,
             prefix="runtime-proof-source-artifact.",
+            max_bytes=MAX_ARTIFACT_ZIP_BYTES,
         ) as snapshot_path:
             actual_artifact_digest = _sha256_file(snapshot_path)
             if actual_artifact_digest != expected_artifact_digest:
@@ -81,6 +86,7 @@ def verify_runtime_proof_source_artifact(
         with snapshot_regular_file(
             app_archive_path,
             prefix="runtime-proof-source-app.",
+            max_bytes=MAX_APP_ARCHIVE_BYTES,
         ) as app_snapshot_path:
             actual_app_archive_digest = _sha256_file(app_snapshot_path)
     except RegularFileSnapshotError as error:

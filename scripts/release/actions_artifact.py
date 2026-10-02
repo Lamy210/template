@@ -7,6 +7,11 @@ import re
 import stat
 import zipfile
 
+from scripts.release.secure_file_snapshot import (
+    RegularFileSnapshotError,
+    snapshot_regular_file,
+)
+
 
 EXPECTED_RELEASE_FILES = frozenset(
     {
@@ -17,6 +22,10 @@ EXPECTED_RELEASE_FILES = frozenset(
 DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:[/\\]")
 DEFAULT_MAX_MEMBERS = 16
 DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024 + 1024 * 1024
+ZIP_CONTAINER_OVERHEAD_BYTES = 16 * 1024 * 1024
+MAX_ARTIFACT_ZIP_BYTES = (
+    DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES + ZIP_CONTAINER_OVERHEAD_BYTES
+)
 MAX_APP_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 MAX_BUILD_PROVENANCE_BYTES = 1024 * 1024
 
@@ -53,7 +62,7 @@ def _validate_member_name(name: str) -> tuple[str | None, str | None]:
     return canonical, None
 
 
-def validate_and_extract_release_artifact(
+def _validate_and_extract_snapshot(
     archive_path: Path,
     output_dir: Path,
     *,
@@ -158,3 +167,37 @@ def validate_and_extract_release_artifact(
         return [f"invalid ZIP artifact: {error}"]
 
     return []
+
+
+def validate_and_extract_release_artifact(
+    archive_path: Path,
+    output_dir: Path,
+    *,
+    max_members: int = DEFAULT_MAX_MEMBERS,
+    max_total_uncompressed_bytes: int = DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES,
+) -> list[str]:
+    if type(max_members) is not int or max_members <= 0:
+        return ["max member count must be a positive integer"]
+    if type(max_total_uncompressed_bytes) is not int or max_total_uncompressed_bytes <= 0:
+        return ["max uncompressed size must be a positive integer"]
+
+    if not archive_path.exists():
+        return [f"artifact ZIP not found: {archive_path}"]
+    if output_dir.exists():
+        return [f"output directory must not already exist: {output_dir}"]
+
+    try:
+        with snapshot_regular_file(
+            archive_path,
+            prefix="actions-artifact.",
+            max_bytes=max_total_uncompressed_bytes + ZIP_CONTAINER_OVERHEAD_BYTES,
+        ) as snapshot_path:
+            return _validate_and_extract_snapshot(
+                snapshot_path,
+                output_dir,
+                max_members=max_members,
+                max_total_uncompressed_bytes=max_total_uncompressed_bytes,
+            )
+    except RegularFileSnapshotError as error:
+        return [f"unable to snapshot artifact ZIP: {error}"]
+

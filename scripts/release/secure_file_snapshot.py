@@ -3,7 +3,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 import os
 from pathlib import Path
-import shutil
 import stat
 import tempfile
 from typing import Iterator
@@ -18,7 +17,12 @@ def snapshot_regular_file(
     path: Path,
     *,
     prefix: str,
+    max_bytes: int | None = None,
 ) -> Iterator[Path]:
+    if max_bytes is not None and (type(max_bytes) is not int or max_bytes <= 0):
+        raise RegularFileSnapshotError(
+            "snapshot byte limit must be a positive integer"
+        )
     if not hasattr(os, "O_NOFOLLOW"):
         raise RegularFileSnapshotError("platform does not provide O_NOFOLLOW")
 
@@ -39,17 +43,28 @@ def snapshot_regular_file(
             raise RegularFileSnapshotError(
                 f"input must be a regular non-symlink file: {path}"
             )
+        if max_bytes is not None and metadata.st_size > max_bytes:
+            raise RegularFileSnapshotError(
+                f"input exceeds snapshot byte limit: {metadata.st_size} > {max_bytes}"
+            )
 
         with tempfile.TemporaryDirectory(prefix=prefix) as temporary_directory:
             snapshot = Path(temporary_directory) / "snapshot"
             try:
+                copied_bytes = 0
                 with os.fdopen(descriptor, "rb", closefd=False) as source:
                     with snapshot.open("xb") as destination:
-                        shutil.copyfileobj(
-                            source,
-                            destination,
-                            length=1024 * 1024,
-                        )
+                        while True:
+                            chunk = source.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            copied_bytes += len(chunk)
+                            if max_bytes is not None and copied_bytes > max_bytes:
+                                raise RegularFileSnapshotError(
+                                    "input grew beyond snapshot byte limit: "
+                                    f"{copied_bytes} > {max_bytes}"
+                                )
+                            destination.write(chunk)
                 os.chmod(snapshot, 0o600)
             except OSError as error:
                 raise RegularFileSnapshotError(
