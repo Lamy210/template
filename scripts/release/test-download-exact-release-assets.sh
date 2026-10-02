@@ -43,12 +43,15 @@ for asset_id, name, path in payloads:
     payload = path.read_bytes()
     if scenario == "release-drift" and os.environ.get("GH_FAKE_AFTER_DOWNLOAD") == "1" and name == "release-provenance.json":
         asset_id = 104
+    size = len(payload)
+    if scenario == "oversized-metadata" and name == "release-provenance.json":
+        size = 1024 * 1024 + 1
     assets.append(
         {
             "id": asset_id,
             "name": name,
             "state": "uploaded",
-            "size": len(payload),
+            "size": size,
             "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
             "url": f"https://api.github.com/repos/{repository}/releases/assets/{asset_id}",
             "browser_download_url": (
@@ -284,6 +287,19 @@ if RM_FAKE_FAIL_ONCE=true run_downloader success "${cleanup_failure_output}" >"$
 fi
 grep -F "Failed to clean temporary release metadata before publishing verified assets." "${temp_root}/cleanup-failure.err" >/dev/null
 assert_no_output_or_staging "${cleanup_failure_output}"
+
+: >"${temp_root}/gh.log"
+oversized_output="${temp_root}/oversized"
+if run_downloader oversized-metadata "${oversized_output}" >"${temp_root}/oversized.out" 2>"${temp_root}/oversized.err"; then
+  echo "Exact release downloader accepted oversized release metadata." >&2
+  exit 1
+fi
+grep -F "release-provenance.json' exceeds size limit" "${temp_root}/oversized.err" >/dev/null
+if grep -F "releases/assets/" "${temp_root}/gh.log" >/dev/null; then
+  echo "Exact release downloader downloaded assets before enforcing metadata size limits." >&2
+  exit 1
+fi
+assert_no_output_or_staging "${oversized_output}"
 
 : >"${temp_root}/gh.log"
 mutable_output="${temp_root}/mutable"

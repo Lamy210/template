@@ -9,6 +9,8 @@ import tempfile
 import unittest
 
 from scripts.release.release_download_identity import (
+    MAX_RELEASE_DMG_BYTES,
+    MAX_RELEASE_METADATA_BYTES,
     release_download_manifest,
     validate_release_download_identity,
 )
@@ -191,6 +193,51 @@ class ReleaseDownloadIdentityTests(unittest.TestCase):
                     any(expected_error in error for error in errors),
                     errors,
                 )
+
+    def test_rejects_oversized_expected_release_assets(self) -> None:
+        cases = (
+            (ASSETS[0], MAX_RELEASE_DMG_BYTES + 1),
+            (ASSETS[1], MAX_RELEASE_METADATA_BYTES + 1),
+            (ASSETS[2], MAX_RELEASE_METADATA_BYTES + 1),
+        )
+        for name, oversized in cases:
+            with self.subTest(name=name):
+                document = release_document()
+                assets = document["assets"]
+                assert isinstance(assets, list)
+                target = next(
+                    item
+                    for item in assets
+                    if isinstance(item, dict) and item.get("name") == name
+                )
+                target["size"] = oversized
+
+                errors, identity = self.validate(document)
+
+                self.assertIsNone(identity)
+                self.assertTrue(
+                    any(
+                        name in error and "exceeds size limit" in error
+                        for error in errors
+                    ),
+                    errors,
+                )
+
+    def test_requires_exact_release_asset_roles(self) -> None:
+        errors, identity = self.validate(
+            release_document(),
+            assets=[
+                ASSETS[0],
+                "other.sha256",
+                "release-provenance.json",
+            ],
+        )
+
+        self.assertIsNone(identity)
+        self.assertTrue(
+            any("matching .sha256" in error for error in errors),
+            errors,
+        )
 
     def test_rejects_duplicate_ids_names_and_asset_set_drift(self) -> None:
         duplicate_id = release_document()

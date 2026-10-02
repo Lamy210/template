@@ -12,6 +12,11 @@ from scripts.release.atomic_directory_publish import (
     AtomicDirectoryPublishError,
     atomic_publish_directory_noreplace,
 )
+from scripts.release.release_asset_limits import (
+    MAX_RELEASE_DMG_BYTES,
+    MAX_RELEASE_METADATA_BYTES,
+    release_asset_size_limit,
+)
 from scripts.release.secure_file_snapshot import (
     RegularFileSnapshotError,
     snapshot_regular_file,
@@ -19,8 +24,8 @@ from scripts.release.secure_file_snapshot import (
 
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-MAX_DMG_BYTES = 4 * 1024 * 1024 * 1024
-MAX_METADATA_BYTES = 1024 * 1024
+MAX_DMG_BYTES = MAX_RELEASE_DMG_BYTES
+MAX_METADATA_BYTES = MAX_RELEASE_METADATA_BYTES
 ZIP_CONTAINER_OVERHEAD_BYTES = 16 * 1024 * 1024
 
 
@@ -39,9 +44,10 @@ def _unix_file_type(info: zipfile.ZipInfo) -> int:
 
 
 def _member_limit(name: str, dmg_name: str) -> int:
-    if name == dmg_name:
-        return MAX_DMG_BYTES
-    return MAX_METADATA_BYTES
+    limit = release_asset_size_limit(name, dmg_name=dmg_name)
+    if limit is None:
+        raise ValueError(f"unsupported verified release asset role: {name}")
+    return limit
 
 
 def validate_and_extract_verified_release_artifact(
