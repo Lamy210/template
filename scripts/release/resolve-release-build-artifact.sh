@@ -85,15 +85,23 @@ run_attempt_number=$((10#${run_attempt}))
 run_id="${run_id_number}"
 run_attempt="${run_attempt_number}"
 [[ -n "${output_dir}" ]] || die "${EXIT_USAGE}" '--output is required'
-[[ ! -e "${output_dir}" ]] || die "${EXIT_USAGE}" '--output must not already exist'
+[[ ! -e "${output_dir}" && ! -L "${output_dir}" ]] || die "${EXIT_USAGE}" '--output must not already exist or be a symlink'
 [[ -n "${GH_TOKEN:-}" ]] || die "${EXIT_USAGE}" 'GH_TOKEN is required'
 command -v gh >/dev/null 2>&1 || die "${EXIT_USAGE}" 'gh is required'
 command -v python3 >/dev/null 2>&1 || die "${EXIT_USAGE}" 'python3 is required'
 
 workflow_file="${workflow_path##*/}"
 artifact_name="unsigned-macos-release-${run_id}-${run_attempt}"
+artifact_capture="${script_dir}/capture_release_asset.py"
+publisher="${script_dir}/publish-directory-noreplace.py"
+[[ -f "${artifact_capture}" && ! -L "${artifact_capture}" ]] ||
+  die "${EXIT_USAGE}" 'bounded artifact capture helper is unavailable or symlinked'
+[[ -f "${publisher}" && ! -L "${publisher}" ]] ||
+  die "${EXIT_USAGE}" 'atomic output publisher is unavailable or symlinked'
 output_parent="$(dirname "${output_dir}")"
 mkdir -p "${output_parent}"
+[[ -d "${output_parent}" && ! -L "${output_parent}" ]] ||
+  die "${EXIT_USAGE}" '--output parent must be a real non-symlink directory'
 work_root="$(mktemp -d "${output_parent}/.release-build-artifact.XXXXXX")"
 trap 'rm -rf "${work_root}"' EXIT
 
@@ -440,22 +448,188 @@ else
   esac
 fi
 
-IFS=$'\t' read -r artifact_id artifact_digest <"${artifact_file}"
-archive_path="${work_root}/artifact.zip"
-api_to_file "repos/${repository}/actions/artifacts/${artifact_id}/zip" "${archive_path}" || die "${EXIT_INFRA}" 'failed to download exact release artifact'
+IFS=
+stage_dir="${work_root}/stage"
+if python3 "$(dirname "${BASH_SOURCE[0]}")/validate-actions-artifact.py" --archive "${archive_path}" --output "${stage_dir}"; then
+  :
+else
+  die "${EXIT_UNSAFE_ARCHIVE}" 'release artifact ZIP failed confinement validation'
+fi
 
-actual_digest="$(
-  python3 - "${archive_path}" <<'PY'
-import hashlib
+python3 - \
+  "${stage_dir}/source-artifact-metadata.json" \
+  "${repository}" \
+  "${workflow_id}" \
+  "${workflow_path}" \
+  "${run_id}" \
+  "${run_attempt}" \
+  "${source_sha}" \
+  "${source_tag}" \
+  "${artifact_id}" \
+  "${artifact_name}" \
+  "${artifact_digest}" <<'PY'
+import json
 import sys
-hasher = hashlib.sha256()
-with open(sys.argv[1], "rb") as handle:
-    for block in iter(lambda: handle.read(1024 * 1024), b""):
-        hasher.update(block)
-print("sha256:" + hasher.hexdigest())
+(
+    output,
+    repository,
+    workflow_id,
+    workflow_path,
+    run_id,
+    run_attempt,
+    source_sha,
+    source_tag,
+    artifact_id,
+    artifact_name,
+    artifact_digest,
+) = sys.argv[1:]
+payload = {
+    "schemaVersion": 1,
+    "repository": repository,
+    "workflowId": int(workflow_id),
+    "workflowPath": workflow_path,
+    "runId": int(run_id),
+    "runAttempt": int(run_attempt),
+    "sourceSHA": source_sha,
+    "sourceTag": source_tag,
+    "artifactId": int(artifact_id),
+    "artifactName": artifact_name,
+    "artifactDigest": artifact_digest,
+}
+with open(output, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+    handle.write("\n")
 PY
-)"
-[[ "${actual_digest}" == "${artifact_digest}" ]] || die "${EXIT_INTEGRITY}" "artifact digest mismatch: expected ${artifact_digest}, got ${actual_digest}"
+
+if ! python3 "${publisher}" \
+  --source "${stage_dir}" \
+  --destination "${output_dir}"; then
+  die "${EXIT_INFRA}" 'failed to publish resolved release artifact without replacement'
+fi
+printf 'resolved release artifact run=%s attempt=%s artifact=%s\n' "${run_id}" "${run_attempt}" "${artifact_id}"
+\t' read -r artifact_id artifact_digest <"${artifact_file}"
+
+artifact_metadata_json="${work_root}/artifact-metadata.json"
+api_to_file "repos/${repository}/actions/artifacts/${artifact_id}" "${artifact_metadata_json}" ||
+  die "${EXIT_INFRA}" 'failed to query exact release artifact metadata'
+
+artifact_size_file="${work_root}/artifact-size.txt"
+if python3 - \
+  "${artifact_metadata_json}" \
+  "${artifact_id}" \
+  "${artifact_name}" \
+  "${artifact_digest}" \
+  "${run_id}" \
+  "${source_sha}" \
+  "${artifact_size_file}" \
+  "${script_dir}" <<'PY'
+import json
+from pathlib import Path
+import re
+import sys
+
+(
+    metadata_path,
+    artifact_id_text,
+    expected_name,
+    expected_digest,
+    run_id_text,
+    source_sha,
+    size_output,
+    script_dir,
+) = sys.argv[1:]
+
+repo_root = Path(script_dir).resolve().parents[1]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+from scripts.release.actions_artifact import MAX_ARTIFACT_ZIP_BYTES
+
+expected_artifact_id = int(artifact_id_text)
+expected_run_id = int(run_id_text)
+
+try:
+    with open(metadata_path, encoding="utf-8") as handle:
+        artifact = json.load(handle)
+except (OSError, json.JSONDecodeError) as error:
+    print(f"malformed exact artifact metadata: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+if not isinstance(artifact, dict):
+    print("exact artifact metadata must be an object", file=sys.stderr)
+    raise SystemExit(1)
+
+artifact_id = artifact.get("id")
+name = artifact.get("name")
+expired = artifact.get("expired")
+digest = artifact.get("digest")
+size = artifact.get("size_in_bytes")
+workflow_run = artifact.get("workflow_run")
+
+if type(artifact_id) is not int or artifact_id <= 0:
+    print("exact artifact id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if artifact_id != expected_artifact_id:
+    print("exact artifact id changed before download", file=sys.stderr)
+    raise SystemExit(2)
+if name != expected_name:
+    print("exact artifact name changed before download", file=sys.stderr)
+    raise SystemExit(2)
+if expired is not False:
+    print("exact artifact expired before download", file=sys.stderr)
+    raise SystemExit(2)
+if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+    print("exact artifact digest is missing or invalid", file=sys.stderr)
+    raise SystemExit(3)
+if digest != expected_digest:
+    print("exact artifact digest changed before download", file=sys.stderr)
+    raise SystemExit(3)
+if type(size) is not int or size <= 0:
+    print("exact artifact size_in_bytes is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if size > MAX_ARTIFACT_ZIP_BYTES:
+    print(
+        "exact artifact size exceeds configured ZIP limit: "
+        f"{size} > {MAX_ARTIFACT_ZIP_BYTES}",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+if not isinstance(workflow_run, dict):
+    print("exact artifact workflow_run metadata is missing", file=sys.stderr)
+    raise SystemExit(2)
+workflow_run_id = workflow_run.get("id")
+if type(workflow_run_id) is not int or workflow_run_id <= 0:
+    print("exact artifact workflow_run id is missing or invalid", file=sys.stderr)
+    raise SystemExit(1)
+if workflow_run_id != expected_run_id or workflow_run.get("head_sha") != source_sha:
+    print("exact artifact is no longer bound to triggering run/SHA", file=sys.stderr)
+    raise SystemExit(2)
+
+Path(size_output).write_text(f"{size}\n", encoding="utf-8")
+PY
+then
+  :
+else
+  artifact_metadata_status=$?
+  case "${artifact_metadata_status}" in
+    2) die "${EXIT_REJECTED}" 'exact release artifact failed pre-download trust validation' ;;
+    3) die "${EXIT_INTEGRITY}" 'exact release artifact digest metadata changed before download' ;;
+    *) die "${EXIT_INFRA}" 'exact release artifact metadata was malformed' ;;
+  esac
+fi
+
+read -r artifact_size <"${artifact_size_file}"
+[[ "${artifact_size}" =~ ^[1-9][0-9]*$ ]] ||
+  die "${EXIT_INFRA}" 'exact release artifact size output was malformed'
+
+archive_path="${work_root}/artifact.zip"
+if ! gh api "repos/${repository}/actions/artifacts/${artifact_id}/zip" |
+  python3 "${artifact_capture}" \
+    --output "${archive_path}" \
+    --expected-size "${artifact_size}" \
+    --expected-digest "${artifact_digest}"; then
+  die "${EXIT_INTEGRITY}" 'failed to download or verify exact release artifact body'
+fi
 
 stage_dir="${work_root}/stage"
 if python3 "$(dirname "${BASH_SOURCE[0]}")/validate-actions-artifact.py" --archive "${archive_path}" --output "${stage_dir}"; then
