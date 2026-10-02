@@ -71,7 +71,6 @@ def prepare_verified_release_handoff(
 
             for name in expected_names:
                 os.chmod(stage / name, 0o400)
-            os.chmod(stage, 0o500)
 
             atomic_publish_directory_noreplace(stage, output_dir)
     except (RegularFileSnapshotError, AtomicDirectoryPublishError, OSError) as error:
