@@ -119,6 +119,79 @@ class VisualBaselinePolicyTests(unittest.TestCase):
             self.assertEqual(2, completed.returncode)
             self.assertIn("duplicate JSON key", completed.stderr)
 
+    def test_cli_rejects_oversized_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = root / "manifest.json"
+            output = root / "github-output.txt"
+            payload = json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "profile": "fixture",
+                    "cases": [{"id": "git-case", "baseline": "git"}],
+                }
+            )
+            manifest.write_text(
+                payload + (" " * (2 * 1024 * 1024 + 1)),
+                encoding="utf-8",
+            )
+            output.write_text("", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    "--manifest",
+                    str(manifest),
+                    "--github-output",
+                    str(output),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(2, completed.returncode)
+            self.assertIn("exceeds", completed.stderr)
+            self.assertEqual("", output.read_text(encoding="utf-8"))
+
+    def test_cli_rejects_symlinked_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "target.json"
+            manifest = root / "manifest.json"
+            output = root / "github-output.txt"
+            target.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "profile": "fixture",
+                        "cases": [{"id": "git-case", "baseline": "git"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest.symlink_to(target)
+            output.write_text("", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    "--manifest",
+                    str(manifest),
+                    "--github-output",
+                    str(output),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(2, completed.returncode)
+            self.assertIn("symlink", completed.stderr.lower())
+            self.assertEqual("", output.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
