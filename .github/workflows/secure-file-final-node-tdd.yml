@@ -1,4 +1,4 @@
-name: Secure File Final Node TDD
+name: Secure File Identity
 
 on:
   pull_request:
@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  final-node-identity:
-    name: Secure file final node identity
+  secure-file-identity:
+    name: Secure file identity regressions
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -28,6 +28,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Final-node replacement regressions
+      - name: Secure file identity regressions
         shell: bash
-        run: python3 -m unittest scripts.release.test_secure_file_final_node_identity -v
+        run: |
+          python3 -m unittest \
+            scripts.release.test_secure_file_snapshot \
+            scripts.release.test_secure_file_final_node_identity \
+            -v
