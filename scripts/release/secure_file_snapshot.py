@@ -174,16 +174,7 @@ def copy_regular_file_bounded(
             f"destination must name a file: {destination_path}"
         )
 
-    source_flags = os.O_RDONLY | os.O_NOFOLLOW
-    if hasattr(os, "O_NONBLOCK"):
-        source_flags |= os.O_NONBLOCK
-
-    try:
-        source_descriptor = os.open(source_path, source_flags)
-    except OSError as error:
-        raise RegularFileSnapshotError(
-            f"unable to open regular non-symlink file {source_path}: {error}"
-        ) from error
+    source_descriptor = _open_regular_file_nofollow(source_path)
 
     destination_parent_descriptor: int | None = None
     destination_descriptor: int | None = None
