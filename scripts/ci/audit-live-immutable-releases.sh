@@ -31,7 +31,12 @@ for command_name in gh python3 mktemp rm sed tail; do
 done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+identity_validator="${repo_root}/scripts/common/validate-repository-identity.py"
 validator="${repo_root}/scripts/ci/validate-immutable-releases-setting.py"
+[[ -f "${identity_validator}" ]] || {
+  echo "Repository identity validator is unavailable: ${identity_validator}" >&2
+  exit 2
+}
 [[ -f "${validator}" ]] || {
   echo "Immutable releases setting validator is unavailable: ${validator}" >&2
   exit 2
@@ -50,38 +55,9 @@ api_headers=(
 
 repository_identity() {
   local metadata="$1"
-  python3 - "${repository}" "${metadata}" <<'PY'
-import json
-from pathlib import Path
-import re
-import sys
-
-expected_repository, path_text = sys.argv[1:]
-try:
-    document = json.loads(Path(path_text).read_text(encoding="utf-8"))
-except (OSError, UnicodeError, json.JSONDecodeError) as error:
-    raise SystemExit(f"repository identity response is invalid JSON: {error}")
-if not isinstance(document, dict):
-    raise SystemExit("repository identity response must be a JSON object")
-
-repository_id = document.get("id")
-full_name = document.get("full_name")
-if type(repository_id) is not int or repository_id <= 0:
-    raise SystemExit("repository identity response has invalid id")
-if (
-    not isinstance(full_name, str)
-    or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", full_name) is None
-):
-    raise SystemExit("repository identity response has invalid full_name")
-if full_name.casefold() != expected_repository.casefold():
-    raise SystemExit(
-        f"repository full_name mismatch: expected {expected_repository!r}, "
-        f"got {full_name!r}"
-    )
-
-print(repository_id)
-print(full_name.casefold())
-PY
+  python3 "${identity_validator}" \
+    --metadata "${metadata}" \
+    --repository "${repository}"
 }
 
 initial_repository_json="${temp_root}/repository-before.json"
