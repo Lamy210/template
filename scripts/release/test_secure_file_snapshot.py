@@ -181,6 +181,61 @@ class SecureFileSnapshotTests(unittest.TestCase):
         self.assertTrue(raced)
         self.assertFalse((outside / "copy.bin").exists())
 
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+        "platform must provide O_NOFOLLOW/O_DIRECTORY",
+    )
+    def test_bounded_copy_source_parent_race_never_changes_copied_bytes(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        trusted_parent = root / "trusted"
+        trusted_parent.mkdir()
+        source = trusted_parent / "source.bin"
+        source.write_bytes(b"trusted-copy")
+        outside = root / "outside"
+        outside.mkdir()
+        (outside / "source.bin").write_bytes(b"untrusted-copy")
+        destination_parent = root / "destination"
+        destination_parent.mkdir()
+        destination = destination_parent / "copy.bin"
+        real_open = os.open
+        raced = False
+
+        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+            nonlocal raced
+            is_source_open = (
+                dir_fd is None and Path(path) == source
+            ) or (
+                dir_fd is not None and path == source.name
+            )
+            if not raced and is_source_open:
+                raced = True
+                trusted_parent.rename(root / "trusted.original")
+                trusted_parent.symlink_to(outside, target_is_directory=True)
+            return real_open(path, flags, mode, dir_fd=dir_fd)
+
+        copied_bytes: int | None = None
+        with mock.patch(
+            "scripts.release.secure_file_snapshot.os.open",
+            side_effect=racing_open,
+        ):
+            try:
+                copied_bytes = copy_regular_file_bounded(
+                    source,
+                    destination,
+                    max_bytes=1024,
+                )
+            except RegularFileSnapshotError:
+                pass
+
+        self.assertTrue(raced)
+        if destination.exists():
+            self.assertEqual(b"trusted-copy", destination.read_bytes())
+        if copied_bytes is not None:
+            self.assertEqual(len(b"trusted-copy"), copied_bytes)
+            self.assertEqual(b"trusted-copy", destination.read_bytes())
+
     def test_snapshots_exact_regular_file_bytes(self) -> None:
         _, source = self.fixture()
         source.write_bytes(b"trusted-bytes")
