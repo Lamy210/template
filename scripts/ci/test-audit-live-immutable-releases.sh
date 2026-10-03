@@ -33,7 +33,7 @@ if [[ "${args}" == *"repos/Example/Repo/immutable-releases"* ]]; then
   printf '%s\n' "${setting_count}" >"${GH_FAKE_STATE}"
 
   case "${GH_FAKE_SCENARIO}" in
-    enabled | repository-drift)
+    enabled | repository-drift | oversized-repository-metadata)
       printf '%s\n' '{"enabled":true,"enforced_by_owner":false}'
       exit 0
       ;;
@@ -68,6 +68,16 @@ if [[ "${args}" == *"repos/Example/Repo"* ]]; then
   if [[ "${GH_FAKE_SCENARIO}" == "repository-drift" && -f "${GH_FAKE_STATE}" ]]; then
     repository_id=999
   fi
+  if [[ "${GH_FAKE_SCENARIO}" == "oversized-repository-metadata" ]]; then
+    python3 - "${repository_id}" <<'PY'
+import sys
+
+repository_id = int(sys.argv[1])
+payload = f'{{"id":{repository_id},"full_name":"Example/Repo"}}'
+sys.stdout.write(payload + (" " * (2 * 1024 * 1024 + 1)) + "\n")
+PY
+    exit 0
+  fi
   printf '{"id":%s,"full_name":"Example/Repo"}\n' "${repository_id}"
   exit 0
 fi
@@ -95,6 +105,18 @@ grep -F "enforced_by_owner=false" <<<"${output}" >/dev/null
 [[ "$(grep -Fc "repos/Example/Repo/immutable-releases" "${temp_root}/gh.log")" -eq 2 ]]
 if grep -E -- "--method (PUT|POST|PATCH|DELETE)" "${temp_root}/gh.log" >/dev/null; then
   echo "Immutable release doctor unexpectedly attempted a mutation." >&2
+  exit 1
+fi
+
+rm -f "${temp_root}/state"
+: >"${temp_root}/gh.log"
+if run_doctor oversized-repository-metadata >"${temp_root}/oversized.out" 2>"${temp_root}/oversized.err"; then
+  echo "Immutable release doctor accepted oversized repository metadata." >&2
+  exit 1
+fi
+grep -F "exceeds JSON byte limit" "${temp_root}/oversized.err" >/dev/null
+if grep -F "repos/Example/Repo/immutable-releases" "${temp_root}/gh.log" >/dev/null; then
+  echo "Immutable release doctor queried the setting after oversized identity metadata." >&2
   exit 1
 fi
 
