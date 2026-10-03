@@ -53,6 +53,44 @@ def _open_directory_nofollow(path: Path) -> int:
         ) from error
 
 
+def _open_regular_file_nofollow(path: Path) -> int:
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise RegularFileSnapshotError(
+            "platform does not provide O_NOFOLLOW/O_DIRECTORY"
+        )
+
+    absolute = Path(os.path.abspath(path))
+    if absolute.name in {"", ".", ".."}:
+        raise RegularFileSnapshotError(
+            f"input must name a file: {path}"
+        )
+
+    try:
+        resolved_parent = absolute.parent.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise RegularFileSnapshotError(
+            f"unable to resolve input parent {path.parent}: {error}"
+        ) from error
+
+    parent_descriptor = _open_directory_nofollow(resolved_parent)
+    open_flags = os.O_RDONLY | os.O_NOFOLLOW
+    if hasattr(os, "O_NONBLOCK"):
+        open_flags |= os.O_NONBLOCK
+
+    try:
+        return os.open(
+            absolute.name,
+            open_flags,
+            dir_fd=parent_descriptor,
+        )
+    except OSError as error:
+        raise RegularFileSnapshotError(
+            f"unable to open regular non-symlink file {path}: {error}"
+        ) from error
+    finally:
+        os.close(parent_descriptor)
+
+
 def _open_destination_parent(path: Path) -> tuple[int, os.stat_result]:
     absolute = Path(os.path.abspath(path))
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -62,7 +100,7 @@ def _open_destination_parent(path: Path) -> tuple[int, os.stat_result]:
     else:
         try:
             resolved_ancestor = absolute.parent.resolve(strict=True)
-        except OSError as error:
+        except (OSError, RuntimeError) as error:
             raise RegularFileSnapshotError(
                 f"unable to resolve destination parent ancestor {path}: {error}"
             ) from error
@@ -255,19 +293,8 @@ def snapshot_regular_file(
         raise RegularFileSnapshotError(
             "snapshot byte limit must be a positive integer"
         )
-    if not hasattr(os, "O_NOFOLLOW"):
-        raise RegularFileSnapshotError("platform does not provide O_NOFOLLOW")
 
-    open_flags = os.O_RDONLY | os.O_NOFOLLOW
-    if hasattr(os, "O_NONBLOCK"):
-        open_flags |= os.O_NONBLOCK
-
-    try:
-        descriptor = os.open(path, open_flags)
-    except OSError as error:
-        raise RegularFileSnapshotError(
-            f"unable to open regular non-symlink file {path}: {error}"
-        ) from error
+    descriptor = _open_regular_file_nofollow(path)
 
     try:
         metadata = os.fstat(descriptor)

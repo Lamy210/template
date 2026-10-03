@@ -197,6 +197,56 @@ class SecureFileSnapshotTests(unittest.TestCase):
 
         self.assertFalse(snapshot.exists())
 
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+        "platform must provide O_NOFOLLOW/O_DIRECTORY",
+    )
+    def test_snapshot_source_parent_race_never_changes_snapshotted_bytes(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        trusted_parent = root / "trusted"
+        trusted_parent.mkdir()
+        source = trusted_parent / "source.bin"
+        source.write_bytes(b"trusted-bytes")
+        outside = root / "outside"
+        outside.mkdir()
+        (outside / "source.bin").write_bytes(b"untrusted-bytes")
+        real_open = os.open
+        raced = False
+
+        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+            nonlocal raced
+            is_source_open = (
+                dir_fd is None and Path(path) == source
+            ) or (
+                dir_fd is not None and path == source.name
+            )
+            if not raced and is_source_open:
+                raced = True
+                trusted_parent.rename(root / "trusted.original")
+                trusted_parent.symlink_to(outside, target_is_directory=True)
+            return real_open(path, flags, mode, dir_fd=dir_fd)
+
+        snapshotted_bytes: bytes | None = None
+        with mock.patch(
+            "scripts.release.secure_file_snapshot.os.open",
+            side_effect=racing_open,
+        ):
+            try:
+                with snapshot_regular_file(
+                    source,
+                    prefix="snapshot-test.",
+                    max_bytes=1024,
+                ) as snapshot:
+                    snapshotted_bytes = snapshot.read_bytes()
+            except RegularFileSnapshotError:
+                pass
+
+        self.assertTrue(raced)
+        if snapshotted_bytes is not None:
+            self.assertEqual(b"trusted-bytes", snapshotted_bytes)
+
     def test_rejects_symlink_and_directory_inputs(self) -> None:
         _, source = self.fixture()
         target = source.parent / "target.bin"
