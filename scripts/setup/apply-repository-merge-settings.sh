@@ -101,17 +101,24 @@ api_headers=(
 
 repository_identity() {
   local metadata="$1"
-  python3 - "${repository}" "${metadata}" <<'PY'
-import json
+  python3 - "${repo_root}" "${repository}" "${metadata}" <<'PY'
 from pathlib import Path
 import re
 import sys
 
-expected_repository, metadata_path = sys.argv[1:]
+repo_root, expected_repository, metadata_path = sys.argv[1:]
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
+from scripts.common.bounded_json import BoundedJsonError, load_bounded_json_file
+
 try:
-    document = json.loads(Path(metadata_path).read_text(encoding="utf-8"))
-except (OSError, UnicodeError, json.JSONDecodeError) as error:
-    raise SystemExit(f"repository identity response is invalid JSON: {error}")
+    document = load_bounded_json_file(
+        Path(metadata_path),
+        label="repository identity response",
+    )
+except BoundedJsonError as error:
+    raise SystemExit(str(error)) from error
 if not isinstance(document, dict):
     raise SystemExit("repository identity response must be a JSON object")
 
