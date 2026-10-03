@@ -80,6 +80,7 @@ exec "${REAL_PYTHON3}" "$@"
                     "PYTHON3_RACE_COUNTER": str(counter),
                     "PYTHON3_RACE_TEMPLATE": str(template),
                     "PYTHON3_RACE_ALTERNATE": str(alternate),
+                    "CASK_TEMPLATE_ROOT": str(root),
                     "CASK_TEMPLATE": str(template),
                     "CASK_TOKEN": "example-app",
                     "VERSION": "1.2.3",
@@ -108,6 +109,7 @@ exec "${REAL_PYTHON3}" "$@"
             self.assertNotEqual(0, result.returncode)
             self.assertFalse(output.exists())
             self.assertTrue(template.is_symlink())
+            self.assertIn("without following symlinks", result.stderr)
 
     def test_render_script_rejects_template_parent_symlink_race(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -193,6 +195,7 @@ exec "${REAL_PYTHON3}" "$@"
             self.assertNotEqual(0, result.returncode)
             self.assertFalse(output.exists())
             self.assertTrue((source_root / "templates").is_symlink())
+            self.assertIn("without following symlinks", result.stderr)
 
     def test_rejects_symlinked_output_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
