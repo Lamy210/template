@@ -49,6 +49,13 @@ if [[ "${args}" == *"--method GET repos/Example/Repo"* ]]; then
 
   printf '{"id":%s,"full_name":"%s","allow_squash_merge":%s,"allow_merge_commit":%s,"allow_rebase_merge":%s,"delete_branch_on_merge":%s}\n' \
     "${repository_id}" "${full_name}" "${allow_squash}" "${allow_merge}" "${allow_rebase}" "${delete_branch}"
+  if [[ "${scenario}" == "oversized-initial" && "${phase}" == before ]]; then
+    python3 - <<'PY'
+import sys
+
+sys.stdout.write(" " * (2 * 1024 * 1024 + 1))
+PY
+  fi
   exit 0
 fi
 
@@ -165,6 +172,15 @@ if run_apply identity-mismatch >"${temp_root}/identity-mismatch.out" 2>"${temp_r
 fi
 if grep -F -- "--method PATCH" "${temp_root}/gh-identity-mismatch.log" >/dev/null; then
   echo "Apply helper mutated repository after initial identity mismatch." >&2
+  exit 1
+fi
+
+if run_apply oversized-initial >"${temp_root}/oversized-initial.out" 2>"${temp_root}/oversized-initial.err"; then
+  echo "Apply helper accepted oversized initial repository metadata." >&2
+  exit 1
+fi
+if grep -F -- "--method PATCH" "${temp_root}/gh-oversized-initial.log" >/dev/null; then
+  echo "Apply helper mutated repository after oversized initial repository metadata." >&2
   exit 1
 fi
 
