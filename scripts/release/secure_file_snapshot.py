@@ -53,6 +53,51 @@ def _open_directory_nofollow(path: Path) -> int:
         ) from error
 
 
+def _open_resolved_directory_anchored(
+    path: Path,
+    *,
+    context: str,
+) -> int:
+    absolute = Path(os.path.abspath(path))
+    try:
+        expected = os.stat(absolute, follow_symlinks=True)
+    except OSError as error:
+        raise RegularFileSnapshotError(
+            f"unable to inspect {context} {path}: {error}"
+        ) from error
+    if not stat.S_ISDIR(expected.st_mode):
+        raise RegularFileSnapshotError(
+            f"{context} must be a directory: {path}"
+        )
+
+    try:
+        resolved = absolute.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise RegularFileSnapshotError(
+            f"unable to resolve {context} {path}: {error}"
+        ) from error
+
+    descriptor = _open_directory_nofollow(resolved)
+    try:
+        current = os.fstat(descriptor)
+    except OSError as error:
+        os.close(descriptor)
+        raise RegularFileSnapshotError(
+            f"unable to revalidate {context} {path}: {error}"
+        ) from error
+
+    if (
+        not stat.S_ISDIR(current.st_mode)
+        or current.st_dev != expected.st_dev
+        or current.st_ino != expected.st_ino
+    ):
+        os.close(descriptor)
+        raise RegularFileSnapshotError(
+            f"{context} changed during validation: {path}"
+        )
+    return descriptor
+
+
 def _open_regular_file_nofollow(path: Path) -> int:
     if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
         raise RegularFileSnapshotError(
@@ -65,14 +110,10 @@ def _open_regular_file_nofollow(path: Path) -> int:
             f"input must name a file: {path}"
         )
 
-    try:
-        resolved_parent = absolute.parent.resolve(strict=True)
-    except (OSError, RuntimeError) as error:
-        raise RegularFileSnapshotError(
-            f"unable to resolve input parent {path.parent}: {error}"
-        ) from error
-
-    parent_descriptor = _open_directory_nofollow(resolved_parent)
+    parent_descriptor = _open_resolved_directory_anchored(
+        absolute.parent,
+        context="input parent",
+    )
     open_flags = os.O_RDONLY | os.O_NOFOLLOW
     if hasattr(os, "O_NONBLOCK"):
         open_flags |= os.O_NONBLOCK
@@ -98,14 +139,10 @@ def _open_destination_parent(path: Path) -> tuple[int, os.stat_result]:
     if absolute == Path(os.sep):
         descriptor = _open_directory_nofollow(absolute)
     else:
-        try:
-            resolved_ancestor = absolute.parent.resolve(strict=True)
-        except (OSError, RuntimeError) as error:
-            raise RegularFileSnapshotError(
-                f"unable to resolve destination parent ancestor {path}: {error}"
-            ) from error
-
-        ancestor_descriptor = _open_directory_nofollow(resolved_ancestor)
+        ancestor_descriptor = _open_resolved_directory_anchored(
+            absolute.parent,
+            context="destination parent ancestor",
+        )
         try:
             descriptor = os.open(
                 absolute.name,

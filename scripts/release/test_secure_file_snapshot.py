@@ -119,6 +119,49 @@ class SecureFileSnapshotTests(unittest.TestCase):
         hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
         "platform must provide O_NOFOLLOW/O_DIRECTORY",
     )
+    def test_bounded_copy_rejects_destination_ancestor_real_directory_race(self) -> None:
+        from scripts.release import secure_file_snapshot as snapshot_module
+
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        source = root / "source.bin"
+        source.write_bytes(b"trusted-copy")
+        trusted_ancestor = root / "trusted-ancestor"
+        destination_parent = trusted_ancestor / "destination"
+        destination_parent.mkdir(parents=True)
+        destination = destination_parent / "copy.bin"
+        original_ancestor = root / "trusted-ancestor.original"
+        real_open_directory = snapshot_module._open_directory_nofollow
+        raced = False
+
+        def racing_open_directory(path: Path) -> int:
+            nonlocal raced
+            if not raced and Path(path) == trusted_ancestor:
+                raced = True
+                trusted_ancestor.rename(original_ancestor)
+                (trusted_ancestor / "destination").mkdir(parents=True)
+            return real_open_directory(path)
+
+        with mock.patch(
+            "scripts.release.secure_file_snapshot._open_directory_nofollow",
+            side_effect=racing_open_directory,
+        ):
+            with self.assertRaises(RegularFileSnapshotError):
+                copy_regular_file_bounded(
+                    source,
+                    destination,
+                    max_bytes=1024,
+                )
+
+        self.assertTrue(raced)
+        self.assertFalse((trusted_ancestor / "destination" / "copy.bin").exists())
+        self.assertFalse((original_ancestor / "destination" / "copy.bin").exists())
+
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+        "platform must provide O_NOFOLLOW/O_DIRECTORY",
+    )
     def test_bounded_copy_rejects_symlinked_destination_parent(self) -> None:
         temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(temporary_directory.cleanup)
@@ -235,6 +278,53 @@ class SecureFileSnapshotTests(unittest.TestCase):
         if copied_bytes is not None:
             self.assertEqual(len(b"trusted-copy"), copied_bytes)
             self.assertEqual(b"trusted-copy", destination.read_bytes())
+
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+        "platform must provide O_NOFOLLOW/O_DIRECTORY",
+    )
+    def test_bounded_copy_rejects_source_parent_real_directory_race(self) -> None:
+        from scripts.release import secure_file_snapshot as snapshot_module
+
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        trusted_parent = root / "trusted"
+        trusted_parent.mkdir()
+        source = trusted_parent / "source.bin"
+        source.write_bytes(b"trusted-copy")
+        replacement_bytes = b"untrusted-copy"
+        destination_parent = root / "destination"
+        destination_parent.mkdir()
+        destination = destination_parent / "copy.bin"
+        original_parent = root / "trusted.original"
+        real_open_directory = snapshot_module._open_directory_nofollow
+        raced = False
+
+        def racing_open_directory(path: Path) -> int:
+            nonlocal raced
+            if not raced and Path(path) == trusted_parent:
+                raced = True
+                trusted_parent.rename(original_parent)
+                trusted_parent.mkdir()
+                (trusted_parent / source.name).write_bytes(replacement_bytes)
+            return real_open_directory(path)
+
+        with mock.patch(
+            "scripts.release.secure_file_snapshot._open_directory_nofollow",
+            side_effect=racing_open_directory,
+        ):
+            with self.assertRaises(RegularFileSnapshotError):
+                copy_regular_file_bounded(
+                    source,
+                    destination,
+                    max_bytes=1024,
+                )
+
+        self.assertTrue(raced)
+        self.assertFalse(destination.exists())
+        self.assertEqual(b"trusted-copy", (original_parent / source.name).read_bytes())
+        self.assertEqual(replacement_bytes, (trusted_parent / source.name).read_bytes())
 
     def test_bounded_copy_rejects_source_mutation_during_copy(self) -> None:
         _, source = self.fixture()
