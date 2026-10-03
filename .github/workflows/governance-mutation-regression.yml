@@ -1,0 +1,47 @@
+name: Governance mutation regression
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/governance-mutation-regression.yml
+      - scripts/common/bounded_json.py
+      - scripts/setup/apply-main-ruleset.sh
+      - scripts/setup/apply-repository-merge-settings.sh
+      - scripts/setup/test-apply-main-ruleset.sh
+      - scripts/setup/test-apply-main-ruleset-bounded-metadata.sh
+      - scripts/setup/test-apply-repository-merge-settings.sh
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/governance-mutation-regression.yml
+      - scripts/common/bounded_json.py
+      - scripts/setup/apply-main-ruleset.sh
+      - scripts/setup/apply-repository-merge-settings.sh
+      - scripts/setup/test-apply-main-ruleset.sh
+      - scripts/setup/test-apply-main-ruleset-bounded-metadata.sh
+      - scripts/setup/test-apply-repository-merge-settings.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  governance-mutation-regression:
+    name: Governance mutation regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run mutation helper regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/setup/test-apply-repository-merge-settings.sh
+          bash scripts/setup/test-apply-main-ruleset.sh
+          bash scripts/setup/test-apply-main-ruleset-bounded-metadata.sh
