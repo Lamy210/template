@@ -13,8 +13,8 @@ set -euo pipefail
 : "${BUNDLE_ID:?BUNDLE_ID is required}"
 : "${OUTPUT_CASK:?OUTPUT_CASK is required}"
 : "${CASK_OUTPUT_ROOT:?CASK_OUTPUT_ROOT is required}"
-: "${CASK_TEMPLATE_ROOT:?CASK_TEMPLATE_ROOT is required}"
 
+CASK_TEMPLATE_ROOT="${CASK_TEMPLATE_ROOT:-.}"
 TEMPLATE_PATH="${CASK_TEMPLATE:-${CASK_TEMPLATE_ROOT}/templates/homebrew/Cask.rb.template}"
 
 if [[ ! -f "${TEMPLATE_PATH}" ]]; then
