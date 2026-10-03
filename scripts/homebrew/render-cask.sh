@@ -42,7 +42,35 @@ import sys
 source = pathlib.Path(sys.argv[1])
 target = pathlib.Path(os.path.abspath(sys.argv[2]))
 root = pathlib.Path(os.path.abspath(sys.argv[3]))
-text = source.read_text(encoding="utf-8")
+
+if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+    raise SystemExit("platform does not provide O_NOFOLLOW/O_DIRECTORY")
+
+max_template_bytes = 1024 * 1024
+try:
+    source_descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+except OSError as error:
+    raise SystemExit(f"unable to open Cask template without following symlinks: {error}") from error
+try:
+    source_metadata = os.fstat(source_descriptor)
+    if not stat.S_ISREG(source_metadata.st_mode):
+        raise SystemExit("Cask template must be a regular file")
+    if source_metadata.st_size > max_template_bytes:
+        raise SystemExit(
+            f"Cask template exceeds {max_template_bytes} byte limit"
+        )
+    with os.fdopen(source_descriptor, "rb", closefd=False) as source_handle:
+        template_bytes = source_handle.read(max_template_bytes + 1)
+    if len(template_bytes) > max_template_bytes:
+        raise SystemExit(
+            f"Cask template exceeds {max_template_bytes} byte limit while reading"
+        )
+    try:
+        text = template_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise SystemExit("Cask template must be valid UTF-8") from error
+finally:
+    os.close(source_descriptor)
 
 keys = (
     "CASK_TOKEN",
@@ -87,9 +115,6 @@ for key in keys:
 
 if "{{" in text or "}}" in text:
     raise SystemExit("Unresolved placeholder remains in rendered Cask")
-
-if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
-    raise SystemExit("platform does not provide O_NOFOLLOW/O_DIRECTORY")
 
 try:
     relative = target.relative_to(root)
