@@ -155,6 +155,31 @@ def _assert_destination_parent_identity(
         )
 
 
+def _assert_regular_file_unchanged(
+    path: Path,
+    descriptor: int,
+    expected: os.stat_result,
+) -> None:
+    try:
+        current = os.fstat(descriptor)
+    except OSError as error:
+        raise RegularFileSnapshotError(
+            f"unable to revalidate input after protected read {path}: {error}"
+        ) from error
+
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or current.st_dev != expected.st_dev
+        or current.st_ino != expected.st_ino
+        or current.st_size != expected.st_size
+        or current.st_mtime_ns != expected.st_mtime_ns
+        or current.st_ctime_ns != expected.st_ctime_ns
+    ):
+        raise RegularFileSnapshotError(
+            f"input changed during protected read: {path}"
+        )
+
+
 def copy_regular_file_bounded(
     source_path: Path,
     destination_path: Path,
@@ -250,6 +275,11 @@ def copy_regular_file_bounded(
                         )
                     destination.write(chunk)
 
+        _assert_regular_file_unchanged(
+            source_path,
+            source_descriptor,
+            metadata,
+        )
         _assert_destination_parent_identity(
             destination_path.parent,
             destination_parent_metadata,
@@ -315,6 +345,11 @@ def snapshot_regular_file(
                                     f"{copied_bytes} > {max_bytes}"
                                 )
                             destination.write(chunk)
+                _assert_regular_file_unchanged(
+                    path,
+                    descriptor,
+                    metadata,
+                )
                 os.chmod(snapshot, 0o600)
             except OSError as error:
                 raise RegularFileSnapshotError(

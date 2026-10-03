@@ -236,6 +236,40 @@ class SecureFileSnapshotTests(unittest.TestCase):
             self.assertEqual(len(b"trusted-copy"), copied_bytes)
             self.assertEqual(b"trusted-copy", destination.read_bytes())
 
+    def test_bounded_copy_rejects_source_mutation_during_copy(self) -> None:
+        _, source = self.fixture()
+        destination = source.parent / "copy.bin"
+        source.write_bytes(b"trusted-copy")
+        os.utime(source, ns=(1_000_000_000, 1_000_000_000))
+        real_fstat = os.fstat
+        mutated = False
+
+        def racing_fstat(descriptor: int):
+            nonlocal mutated
+            metadata = real_fstat(descriptor)
+            if not mutated and stat.S_ISREG(metadata.st_mode):
+                mutated = True
+                source.write_bytes(b"mutated-copy")
+            return metadata
+
+        with mock.patch(
+            "scripts.release.secure_file_snapshot.os.fstat",
+            side_effect=racing_fstat,
+        ):
+            with self.assertRaisesRegex(
+                RegularFileSnapshotError,
+                "input changed during protected read",
+            ):
+                copy_regular_file_bounded(
+                    source,
+                    destination,
+                    max_bytes=1024,
+                )
+
+        self.assertTrue(mutated)
+        self.assertEqual(len(b"trusted-copy"), len(b"mutated-copy"))
+        self.assertFalse(destination.exists())
+
     def test_snapshots_exact_regular_file_bytes(self) -> None:
         _, source = self.fixture()
         source.write_bytes(b"trusted-bytes")
@@ -301,6 +335,39 @@ class SecureFileSnapshotTests(unittest.TestCase):
         self.assertTrue(raced)
         if snapshotted_bytes is not None:
             self.assertEqual(b"trusted-bytes", snapshotted_bytes)
+
+    def test_snapshot_rejects_source_mutation_during_copy(self) -> None:
+        _, source = self.fixture()
+        source.write_bytes(b"trusted-bytes")
+        os.utime(source, ns=(1_000_000_000, 1_000_000_000))
+        real_fstat = os.fstat
+        mutated = False
+
+        def racing_fstat(descriptor: int):
+            nonlocal mutated
+            metadata = real_fstat(descriptor)
+            if not mutated and stat.S_ISREG(metadata.st_mode):
+                mutated = True
+                source.write_bytes(b"mutated-bytes")
+            return metadata
+
+        with mock.patch(
+            "scripts.release.secure_file_snapshot.os.fstat",
+            side_effect=racing_fstat,
+        ):
+            with self.assertRaisesRegex(
+                RegularFileSnapshotError,
+                "input changed during protected read",
+            ):
+                with snapshot_regular_file(
+                    source,
+                    prefix="snapshot-test.",
+                    max_bytes=1024,
+                ):
+                    self.fail("mutated source must not yield a snapshot")
+
+        self.assertTrue(mutated)
+        self.assertEqual(len(b"trusted-bytes"), len(b"mutated-bytes"))
 
     def test_rejects_symlink_and_directory_inputs(self) -> None:
         _, source = self.fixture()
