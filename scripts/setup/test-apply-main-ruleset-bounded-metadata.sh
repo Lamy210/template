@@ -26,7 +26,7 @@ PY
 }
 
 if [[ "${args}" == *"--method GET repos/Example/Repo"* &&
-      "${args}" != *"/rulesets/"* ]]; then
+  "${args}" != *"/rulesets/"* ]]; then
   printf '%s\n' '{"id":123,"full_name":"Example/Repo","default_branch":"main"}'
   if [[ "${scenario}" == "oversized-repository" ]]; then
     append_oversized_padding
@@ -63,11 +63,11 @@ run_case() {
     GH_FAKE_LOG="${log}" \
     GH_FAKE_STATE="${state}" \
     bash "${script}" \
-      --repository Example/Repo \
-      --confirm-repository Example/Repo \
-      --ruleset-id 42 \
-      --confirm-ruleset-id 42 \
-      --apply >"${temp_root}/${scenario}.out" 2>"${temp_root}/${scenario}.err" || true
+    --repository Example/Repo \
+    --confirm-repository Example/Repo \
+    --ruleset-id 42 \
+    --confirm-ruleset-id 42 \
+    --apply >"${temp_root}/${scenario}.out" 2>"${temp_root}/${scenario}.err" || true
 
   if grep -F -- "--method PUT repos/Example/Repo/rulesets/42" "${log}" >/dev/null; then
     echo "Ruleset helper reached PUT after accepting ${scenario} metadata." >&2
