@@ -63,6 +63,7 @@ if [[ ! -f "$profile" ]]; then
   exit 2
 fi
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 raw="$input"
 tmp=""
 cleanup() {
@@ -79,7 +80,7 @@ if [[ "$adapter" == "xcode" ]]; then
 fi
 
 mkdir -p "$(dirname "$output")"
-python3 - "$adapter" "$raw" "$profile" "$output" <<'PY'
+python3 - "$adapter" "$raw" "$profile" "$output" "$repo_root" <<'PY'
 from __future__ import annotations
 
 import hashlib
@@ -88,18 +89,32 @@ import sys
 from pathlib import Path
 from typing import Any
 
-adapter, raw_path, profile_path, output_path = sys.argv[1:]
+adapter, raw_path, profile_path, output_path, repo_root = sys.argv[1:]
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    DEFAULT_MAX_JSON_BYTES,
+    load_bounded_json_file,
+)
+
+COVERAGE_MAX_JSON_BYTES = 256 * 1024 * 1024
 
 
 def fail(message: str) -> None:
     raise SystemExit(f"error: {message}")
 
 
-def load(path: str) -> Any:
+def load(path: str, *, label: str, max_bytes: int) -> Any:
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        fail(f"cannot read JSON {path}: {exc}")
+        return load_bounded_json_file(
+            Path(path),
+            label=label,
+            max_bytes=max_bytes,
+        )
+    except BoundedJsonError as exc:
+        fail(str(exc))
 
 
 def counts(covered: Any, executable: Any, field: str) -> dict[str, Any]:
@@ -117,8 +132,16 @@ def counts(covered: Any, executable: Any, field: str) -> dict[str, Any]:
     }
 
 
-raw = load(raw_path)
-profile = load(profile_path)
+raw = load(
+    raw_path,
+    label="coverage JSON",
+    max_bytes=COVERAGE_MAX_JSON_BYTES,
+)
+profile = load(
+    profile_path,
+    label="coverage profile JSON",
+    max_bytes=DEFAULT_MAX_JSON_BYTES,
+)
 if not isinstance(profile, dict):
     fail("coverage profile must be a JSON object")
 
