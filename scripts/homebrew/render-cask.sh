@@ -13,8 +13,9 @@ set -euo pipefail
 : "${BUNDLE_ID:?BUNDLE_ID is required}"
 : "${OUTPUT_CASK:?OUTPUT_CASK is required}"
 : "${CASK_OUTPUT_ROOT:?CASK_OUTPUT_ROOT is required}"
+: "${CASK_TEMPLATE_ROOT:?CASK_TEMPLATE_ROOT is required}"
 
-TEMPLATE_PATH="${CASK_TEMPLATE:-templates/homebrew/Cask.rb.template}"
+TEMPLATE_PATH="${CASK_TEMPLATE:-${CASK_TEMPLATE_ROOT}/templates/homebrew/Cask.rb.template}"
 
 if [[ ! -f "${TEMPLATE_PATH}" ]]; then
   echo "Cask template not found: ${TEMPLATE_PATH}" >&2
@@ -31,7 +32,7 @@ validate_output_path
 mkdir -p "$(dirname "${OUTPUT_CASK}")"
 validate_output_path
 
-python3 - "${TEMPLATE_PATH}" "${OUTPUT_CASK}" "${CASK_OUTPUT_ROOT}" <<'PY'
+python3 - "${TEMPLATE_PATH}" "${OUTPUT_CASK}" "${CASK_OUTPUT_ROOT}" "${CASK_TEMPLATE_ROOT}" <<'PY'
 import os
 import pathlib
 import re
@@ -39,19 +40,48 @@ import secrets
 import stat
 import sys
 
-source = pathlib.Path(sys.argv[1])
+source = pathlib.Path(os.path.abspath(sys.argv[1]))
 target = pathlib.Path(os.path.abspath(sys.argv[2]))
 root = pathlib.Path(os.path.abspath(sys.argv[3]))
+template_root = pathlib.Path(os.path.abspath(sys.argv[4]))
 
 if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
     raise SystemExit("platform does not provide O_NOFOLLOW/O_DIRECTORY")
 
+try:
+    template_relative = source.relative_to(template_root)
+except ValueError as error:
+    raise SystemExit("Cask template escaped configured template root") from error
+if template_relative == pathlib.Path(".") or template_relative.name in {"", ".", ".."}:
+    raise SystemExit("Cask template must name a file below the configured template root")
+
 max_template_bytes = 1024 * 1024
+template_root_descriptor = None
+template_parent_descriptor = None
+source_descriptor = None
 try:
-    source_descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
-except OSError as error:
-    raise SystemExit(f"unable to open Cask template without following symlinks: {error}") from error
-try:
+    template_root_descriptor = os.open(
+        template_root,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+    )
+    template_parent_descriptor = template_root_descriptor
+    for part in template_relative.parent.parts:
+        if part in {"", ".", ".."}:
+            raise SystemExit("Cask template contains an invalid parent component")
+        next_descriptor = os.open(
+            part,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=template_parent_descriptor,
+        )
+        if template_parent_descriptor != template_root_descriptor:
+            os.close(template_parent_descriptor)
+        template_parent_descriptor = next_descriptor
+
+    source_descriptor = os.open(
+        template_relative.name,
+        os.O_RDONLY | os.O_NOFOLLOW,
+        dir_fd=template_parent_descriptor,
+    )
     source_metadata = os.fstat(source_descriptor)
     if not stat.S_ISREG(source_metadata.st_mode):
         raise SystemExit("Cask template must be a regular file")
@@ -69,8 +99,20 @@ try:
         text = template_bytes.decode("utf-8")
     except UnicodeDecodeError as error:
         raise SystemExit("Cask template must be valid UTF-8") from error
+except OSError as error:
+    raise SystemExit(
+        f"unable to open Cask template below trusted root without following symlinks: {error}"
+    ) from error
 finally:
-    os.close(source_descriptor)
+    if source_descriptor is not None:
+        os.close(source_descriptor)
+    if (
+        template_parent_descriptor is not None
+        and template_parent_descriptor != template_root_descriptor
+    ):
+        os.close(template_parent_descriptor)
+    if template_root_descriptor is not None:
+        os.close(template_root_descriptor)
 
 keys = (
     "CASK_TOKEN",
