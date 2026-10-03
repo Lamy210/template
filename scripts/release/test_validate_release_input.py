@@ -6,16 +6,20 @@ import io
 import json
 from pathlib import Path
 import plistlib
+import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import unittest
 
+from scripts.release.release_asset_limits import MAX_RELEASE_METADATA_BYTES
 from scripts.release.release_input import validate_release_input
 from scripts.release.test_release_provenance import SHA, valid_document
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CLI = REPO_ROOT / "scripts/release/validate-release-input.py"
 PUBLISHER_SHA = "1123456789abcdef0123456789abcdef01234567"
 PUBLISHER_RUN_ID = 99887766
 PUBLISHER_RUN_ATTEMPT = 4
@@ -163,10 +167,9 @@ class ReleaseInputValidationTests(unittest.TestCase):
             return errors, validated
 
     def test_cli_help_executes_from_repository_root(self) -> None:
-        repo_root = Path(__file__).resolve().parents[2]
         result = subprocess.run(
-            [sys.executable, "scripts/release/validate-release-input.py", "--help"],
-            cwd=repo_root,
+            [sys.executable, str(CLI), "--help"],
+            cwd=REPO_ROOT,
             text=True,
             capture_output=True,
             check=False,
@@ -174,6 +177,113 @@ class ReleaseInputValidationTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("Validate release input before privileged signing", result.stdout)
+
+    def cli_fixture(
+        self,
+        root: Path,
+        *,
+        output: Path,
+        provenance_path: Path | None = None,
+        source_metadata_path: Path | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        archive = root / "unsigned-macos-app.tar.gz"
+        archive_digest = create_app_archive(archive)
+        if provenance_path is None:
+            provenance_path = root / "build-provenance.json"
+            provenance_path.write_text(
+                json.dumps(provenance(archive_digest)) + "\n",
+                encoding="utf-8",
+            )
+        if source_metadata_path is None:
+            source_metadata_path = root / "source-artifact-metadata.json"
+            source_metadata_path.write_text(
+                json.dumps(source_metadata()) + "\n",
+                encoding="utf-8",
+            )
+
+        return subprocess.run(
+            [
+                sys.executable,
+                str(CLI),
+                "--provenance",
+                str(provenance_path),
+                "--source-metadata",
+                str(source_metadata_path),
+                "--archive",
+                str(archive),
+                "--repository",
+                "example/MyApp",
+                "--workflow-path",
+                ".github/workflows/release-build.yml",
+                "--app-basename",
+                "MyApp.app",
+                "--bundle-id",
+                "com.example.MyApp",
+                "--resolved-tag-sha",
+                SHA,
+                "--source-is-ancestor",
+                "true",
+                "--publisher-sha",
+                PUBLISHER_SHA,
+                "--publisher-run-id",
+                str(PUBLISHER_RUN_ID),
+                "--publisher-run-attempt",
+                str(PUBLISHER_RUN_ATTEMPT),
+                "--output",
+                str(output),
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def test_cli_writes_validated_metadata_once_with_mode_0600(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            output = root / "validated-release-metadata.json"
+
+            first = self.cli_fixture(root, output=output)
+            self.assertEqual(0, first.returncode, first.stderr)
+            original = output.read_bytes()
+            self.assertEqual(0o600, stat.S_IMODE(output.stat().st_mode))
+
+            second = self.cli_fixture(root, output=output)
+            self.assertEqual(1, second.returncode)
+            self.assertIn("output already exists", second.stderr)
+            self.assertEqual(original, output.read_bytes())
+
+    def test_cli_refuses_symlink_output_without_modifying_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            target = root / "target.json"
+            target.write_text("keep\n", encoding="utf-8")
+            output = root / "validated-release-metadata.json"
+            output.symlink_to(target.name)
+
+            result = self.cli_fixture(root, output=output)
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn("output already exists", result.stderr)
+            self.assertEqual("keep\n", target.read_text(encoding="utf-8"))
+
+    def test_cli_rejects_oversized_provenance_before_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            provenance_path = root / "build-provenance.json"
+            with provenance_path.open("wb") as handle:
+                handle.truncate(MAX_RELEASE_METADATA_BYTES + 1)
+            output = root / "validated-release-metadata.json"
+
+            result = self.cli_fixture(
+                root,
+                output=output,
+                provenance_path=provenance_path,
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("snapshot byte limit", result.stderr)
+            self.assertFalse(output.exists())
 
     def test_valid_release_input_returns_validator_owned_metadata(self) -> None:
         errors, validated = self.validate_fixture()
