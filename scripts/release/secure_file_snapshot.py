@@ -98,6 +98,31 @@ def _open_resolved_directory_anchored(
     return descriptor
 
 
+def _assert_regular_file_unchanged(
+    path: Path,
+    descriptor: int,
+    expected: os.stat_result,
+) -> None:
+    try:
+        current = os.fstat(descriptor)
+    except OSError as error:
+        raise RegularFileSnapshotError(
+            f"unable to revalidate input after protected read {path}: {error}"
+        ) from error
+
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or current.st_dev != expected.st_dev
+        or current.st_ino != expected.st_ino
+        or current.st_size != expected.st_size
+        or current.st_mtime_ns != expected.st_mtime_ns
+        or current.st_ctime_ns != expected.st_ctime_ns
+    ):
+        raise RegularFileSnapshotError(
+            f"input changed during protected read: {path}"
+        )
+
+
 def _open_regular_file_nofollow(path: Path) -> int:
     if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
         raise RegularFileSnapshotError(
@@ -110,6 +135,17 @@ def _open_regular_file_nofollow(path: Path) -> int:
             f"input must name a file: {path}"
         )
 
+    try:
+        expected = os.stat(absolute, follow_symlinks=False)
+    except OSError as error:
+        raise RegularFileSnapshotError(
+            f"unable to inspect input before protected open {path}: {error}"
+        ) from error
+    if not stat.S_ISREG(expected.st_mode):
+        raise RegularFileSnapshotError(
+            f"input must be a regular non-symlink file: {path}"
+        )
+
     parent_descriptor = _open_resolved_directory_anchored(
         absolute.parent,
         context="input parent",
@@ -118,13 +154,26 @@ def _open_regular_file_nofollow(path: Path) -> int:
     if hasattr(os, "O_NONBLOCK"):
         open_flags |= os.O_NONBLOCK
 
+    descriptor: int | None = None
     try:
-        return os.open(
+        descriptor = os.open(
             absolute.name,
             open_flags,
             dir_fd=parent_descriptor,
         )
+        _assert_regular_file_unchanged(
+            path,
+            descriptor,
+            expected,
+        )
+        return descriptor
+    except RegularFileSnapshotError:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise
     except OSError as error:
+        if descriptor is not None:
+            os.close(descriptor)
         raise RegularFileSnapshotError(
             f"unable to open regular non-symlink file {path}: {error}"
         ) from error
@@ -135,10 +184,22 @@ def _open_regular_file_nofollow(path: Path) -> int:
 def _open_destination_parent(path: Path) -> tuple[int, os.stat_result]:
     absolute = Path(os.path.abspath(path))
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    expected: os.stat_result | None = None
 
     if absolute == Path(os.sep):
         descriptor = _open_directory_nofollow(absolute)
     else:
+        try:
+            expected = os.stat(absolute, follow_symlinks=False)
+        except OSError as error:
+            raise RegularFileSnapshotError(
+                f"unable to inspect destination parent before protected open {path}: {error}"
+            ) from error
+        if not stat.S_ISDIR(expected.st_mode):
+            raise RegularFileSnapshotError(
+                f"destination parent must be a real directory: {path}"
+            )
+
         ancestor_descriptor = _open_resolved_directory_anchored(
             absolute.parent,
             context="destination parent ancestor",
@@ -168,6 +229,14 @@ def _open_destination_parent(path: Path) -> tuple[int, os.stat_result]:
         raise RegularFileSnapshotError(
             f"destination parent must be a directory: {path}"
         )
+    if expected is not None and (
+        metadata.st_dev != expected.st_dev
+        or metadata.st_ino != expected.st_ino
+    ):
+        os.close(descriptor)
+        raise RegularFileSnapshotError(
+            f"destination parent changed during protected open: {path}"
+        )
     return descriptor, metadata
 
 
@@ -189,31 +258,6 @@ def _assert_destination_parent_identity(
     ):
         raise RegularFileSnapshotError(
             f"destination parent changed after validation: {path}"
-        )
-
-
-def _assert_regular_file_unchanged(
-    path: Path,
-    descriptor: int,
-    expected: os.stat_result,
-) -> None:
-    try:
-        current = os.fstat(descriptor)
-    except OSError as error:
-        raise RegularFileSnapshotError(
-            f"unable to revalidate input after protected read {path}: {error}"
-        ) from error
-
-    if (
-        not stat.S_ISREG(current.st_mode)
-        or current.st_dev != expected.st_dev
-        or current.st_ino != expected.st_ino
-        or current.st_size != expected.st_size
-        or current.st_mtime_ns != expected.st_mtime_ns
-        or current.st_ctime_ns != expected.st_ctime_ns
-    ):
-        raise RegularFileSnapshotError(
-            f"input changed during protected read: {path}"
         )
 
 
