@@ -8,7 +8,12 @@ import re
 import sys
 from typing import BinaryIO
 
-from scripts.release.secure_file_snapshot import (
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.release.secure_file_snapshot import (  # noqa: E402
     RegularFileSnapshotError,
     _assert_destination_parent_identity,
     _open_destination_parent,
