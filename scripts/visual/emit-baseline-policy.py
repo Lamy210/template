@@ -4,9 +4,18 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 
 
 class InputError(ValueError):
@@ -47,14 +56,13 @@ def requires_rolling_baseline(document: object) -> bool:
 
 def load_manifest(path: Path) -> object:
     try:
-        return json.loads(
-            path.read_text(encoding="utf-8"),
+        return load_bounded_json_file(
+            path,
+            label="visual manifest",
             object_pairs_hook=_reject_duplicate_keys,
         )
-    except OSError as exc:
-        raise InputError(f"cannot read visual manifest: {exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise InputError(f"invalid visual manifest JSON: {exc}") from exc
+    except BoundedJsonError as exc:
+        raise InputError(str(exc)) from exc
 
 
 def main() -> int:
