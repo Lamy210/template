@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from scripts.release.secure_file_snapshot import (
     RegularFileSnapshotError,
@@ -83,6 +84,51 @@ class SecureFileSnapshotTests(unittest.TestCase):
             )
 
         self.assertEqual(b"existing", destination.read_bytes())
+
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+        "platform must provide O_NOFOLLOW/O_DIRECTORY",
+    )
+    def test_bounded_copy_rejects_destination_parent_symlink_race(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        source = root / "source.bin"
+        source.write_bytes(b"trusted-copy")
+        destination_parent = root / "destination"
+        destination_parent.mkdir()
+        outside = root / "outside"
+        outside.mkdir()
+        destination = destination_parent / "copy.bin"
+        real_open = os.open
+        raced = False
+
+        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+            nonlocal raced
+            if (
+                not raced
+                and dir_fd is None
+                and Path(path) == destination
+                and flags & os.O_CREAT
+            ):
+                raced = True
+                destination_parent.rename(root / "destination.trusted")
+                destination_parent.symlink_to(outside, target_is_directory=True)
+            return real_open(path, flags, mode, dir_fd=dir_fd)
+
+        with mock.patch(
+            "scripts.release.secure_file_snapshot.os.open",
+            side_effect=racing_open,
+        ):
+            with self.assertRaises(RegularFileSnapshotError):
+                copy_regular_file_bounded(
+                    source,
+                    destination,
+                    max_bytes=1024,
+                )
+
+        self.assertTrue(raced)
+        self.assertFalse((outside / "copy.bin").exists())
 
     def test_snapshots_exact_regular_file_bytes(self) -> None:
         _, source = self.fixture()
