@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
@@ -11,6 +10,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 from scripts.common.workflow_identity import validate_workflow_identity  # noqa: E402
 
 
@@ -23,9 +26,12 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        document = json.loads(args.metadata.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        print(f"failed to read workflow metadata: {error}", file=sys.stderr)
+        document = load_bounded_json_file(
+            args.metadata,
+            label="workflow metadata",
+        )
+    except BoundedJsonError as error:
+        print(error, file=sys.stderr)
         return 1
 
     errors, identity = validate_workflow_identity(
