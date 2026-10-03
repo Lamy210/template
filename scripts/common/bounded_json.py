@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ def load_bounded_json_file(
     *,
     label: str,
     max_bytes: int = DEFAULT_MAX_JSON_BYTES,
+    object_pairs_hook: Callable[[list[tuple[str, object]]], object] | None = None,
 ) -> object:
     if type(max_bytes) is not int or max_bytes <= 0:
         raise BoundedJsonError("JSON byte limit must be a positive integer")
@@ -66,7 +68,7 @@ def load_bounded_json_file(
         raise BoundedJsonError(f"failed to decode {label} {path} as UTF-8: {error}") from error
 
     try:
-        return json.loads(payload)
+        return json.loads(payload, object_pairs_hook=object_pairs_hook)
     except json.JSONDecodeError as error:
         raise BoundedJsonError(f"failed to parse {label} {path}: {error}") from error
 
