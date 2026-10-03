@@ -8,6 +8,7 @@ trap 'rm -rf "${TEMP_ROOT}"' EXIT
 template="${TEMP_ROOT}/template.rb"
 output="${TEMP_ROOT}/rendered.rb"
 sentinel="${TEMP_ROOT}/interpolated"
+export CASK_TEMPLATE_ROOT="${TEMP_ROOT}"
 
 cat >"${template}" <<'RUBY'
 version = "1.2.3"
