@@ -8,6 +8,12 @@ import re
 import sys
 from typing import BinaryIO
 
+from scripts.release.secure_file_snapshot import (
+    RegularFileSnapshotError,
+    _assert_destination_parent_identity,
+    _open_destination_parent,
+)
+
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 CHUNK_SIZE = 1024 * 1024
@@ -46,16 +52,57 @@ def capture_release_asset(
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
 
+    parent_descriptor: int | None = None
     descriptor: int | None = None
     created = False
     try:
         try:
-            descriptor = os.open(output_path, flags, 0o600)
-            created = True
-        except OSError as error:
-            raise ReleaseAssetCaptureError(
-                f"unable to create bounded asset output {output_path}: {error}"
-            ) from error
+            (
+                parent_descriptor,
+                parent_metadata,
+            ) = _open_destination_parent(output_path.parent)
+
+            try:
+                os.stat(
+                    output_path.name,
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                pass
+            except OSError as error:
+                raise ReleaseAssetCaptureError(
+                    f"unable to inspect asset output {output_path}: {error}"
+                ) from error
+            else:
+                raise ReleaseAssetCaptureError(
+                    f"output path already exists: {output_path}"
+                )
+
+            _assert_destination_parent_identity(
+                output_path.parent,
+                parent_metadata,
+            )
+
+            try:
+                descriptor = os.open(
+                    output_path.name,
+                    flags,
+                    0o600,
+                    dir_fd=parent_descriptor,
+                )
+                created = True
+            except OSError as error:
+                raise ReleaseAssetCaptureError(
+                    f"unable to create bounded asset output {output_path}: {error}"
+                ) from error
+
+            _assert_destination_parent_identity(
+                output_path.parent,
+                parent_metadata,
+            )
+        except RegularFileSnapshotError as error:
+            raise ReleaseAssetCaptureError(str(error)) from error
 
         digest = hashlib.sha256()
         copied = 0
@@ -85,16 +132,29 @@ def capture_release_asset(
                 "downloaded release asset digest mismatch: "
                 f"expected {expected_digest}, got {actual_digest}"
             )
+
+        try:
+            _assert_destination_parent_identity(
+                output_path.parent,
+                parent_metadata,
+            )
+        except RegularFileSnapshotError as error:
+            raise ReleaseAssetCaptureError(str(error)) from error
     except Exception:
-        if created:
+        if created and parent_descriptor is not None:
             try:
-                output_path.unlink(missing_ok=True)
+                os.unlink(
+                    output_path.name,
+                    dir_fd=parent_descriptor,
+                )
             except OSError:
                 pass
         raise
     finally:
         if descriptor is not None:
             os.close(descriptor)
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
 
 
 def main(argv: list[str] | None = None) -> int:
