@@ -89,6 +89,35 @@ class SecureFileSnapshotTests(unittest.TestCase):
         hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
         "platform must provide O_NOFOLLOW/O_DIRECTORY",
     )
+    def test_bounded_copy_allows_symlinked_destination_ancestor(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        source = root / "source.bin"
+        source.write_bytes(b"trusted-copy")
+        real_root = root / "real-root"
+        destination_parent = real_root / "destination"
+        destination_parent.mkdir(parents=True)
+        alias_root = root / "alias-root"
+        alias_root.symlink_to(real_root, target_is_directory=True)
+        destination = alias_root / "destination" / "copy.bin"
+
+        copied = copy_regular_file_bounded(
+            source,
+            destination,
+            max_bytes=1024,
+        )
+
+        self.assertEqual(len(b"trusted-copy"), copied)
+        self.assertEqual(
+            b"trusted-copy",
+            (destination_parent / "copy.bin").read_bytes(),
+        )
+
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+        "platform must provide O_NOFOLLOW/O_DIRECTORY",
+    )
     def test_bounded_copy_rejects_destination_parent_symlink_race(self) -> None:
         temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(temporary_directory.cleanup)
