@@ -31,14 +31,17 @@ validate_output_path
 mkdir -p "$(dirname "${OUTPUT_CASK}")"
 validate_output_path
 
-python3 - "${TEMPLATE_PATH}" "${OUTPUT_CASK}" <<'PY'
+python3 - "${TEMPLATE_PATH}" "${OUTPUT_CASK}" "${CASK_OUTPUT_ROOT}" <<'PY'
 import os
 import pathlib
 import re
+import secrets
+import stat
 import sys
 
 source = pathlib.Path(sys.argv[1])
-target = pathlib.Path(sys.argv[2])
+target = pathlib.Path(os.path.abspath(sys.argv[2]))
+root = pathlib.Path(os.path.abspath(sys.argv[3]))
 text = source.read_text(encoding="utf-8")
 
 keys = (
@@ -85,7 +88,96 @@ for key in keys:
 if "{{" in text or "}}" in text:
     raise SystemExit("Unresolved placeholder remains in rendered Cask")
 
-target.write_text(text, encoding="utf-8")
+if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+    raise SystemExit("platform does not provide O_NOFOLLOW/O_DIRECTORY")
+
+try:
+    relative = target.relative_to(root)
+except ValueError as error:
+    raise SystemExit("Cask output escaped configured output root") from error
+if relative == pathlib.Path(".") or relative.name in {"", ".", ".."}:
+    raise SystemExit("Cask output must name a file below the configured output root")
+
+parent_descriptor = os.open(
+    root,
+    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+)
+temp_name = None
+temp_descriptor = None
+try:
+    current_descriptor = parent_descriptor
+    for part in relative.parent.parts:
+        if part in {"", ".", ".."}:
+            raise SystemExit("Cask output contains an invalid parent component")
+        next_descriptor = os.open(
+            part,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=current_descriptor,
+        )
+        if current_descriptor != parent_descriptor:
+            os.close(current_descriptor)
+        current_descriptor = next_descriptor
+
+    if current_descriptor != parent_descriptor:
+        os.close(parent_descriptor)
+        parent_descriptor = current_descriptor
+
+    try:
+        existing = os.stat(
+            relative.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        existing = None
+    if existing is not None:
+        if stat.S_ISLNK(existing.st_mode):
+            raise SystemExit("Cask output became a symlink after validation")
+        if not stat.S_ISREG(existing.st_mode):
+            raise SystemExit("Existing Cask output must remain a regular file")
+
+    for _ in range(32):
+        candidate = f".{relative.name}.tmp.{secrets.token_hex(8)}"
+        try:
+            temp_descriptor = os.open(
+                candidate,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o644,
+                dir_fd=parent_descriptor,
+            )
+            temp_name = candidate
+            break
+        except FileExistsError:
+            continue
+    if temp_descriptor is None or temp_name is None:
+        raise SystemExit("unable to allocate exclusive Cask staging file")
+
+    with os.fdopen(
+        temp_descriptor,
+        "w",
+        encoding="utf-8",
+        closefd=False,
+    ) as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(temp_descriptor)
+
+    os.replace(
+        temp_name,
+        relative.name,
+        src_dir_fd=parent_descriptor,
+        dst_dir_fd=parent_descriptor,
+    )
+    temp_name = None
+finally:
+    if temp_descriptor is not None:
+        os.close(temp_descriptor)
+    if temp_name is not None:
+        try:
+            os.unlink(temp_name, dir_fd=parent_descriptor)
+        except OSError:
+            pass
+    os.close(parent_descriptor)
 PY
 
 printf 'Rendered %s\n' "${OUTPUT_CASK}"
