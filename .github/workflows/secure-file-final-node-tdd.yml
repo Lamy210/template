@@ -1,0 +1,37 @@
+name: Secure File Identity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  secure-file-identity:
+    name: Secure file identity regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Secure file identity regressions
+        shell: bash
+        run: |
+          python3 -m unittest \
+            scripts.release.test_secure_file_snapshot \
+            scripts.release.test_secure_file_final_node_identity \
+            -v

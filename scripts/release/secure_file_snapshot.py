@@ -98,7 +98,34 @@ def _open_resolved_directory_anchored(
     return descriptor
 
 
-def _open_regular_file_nofollow(path: Path) -> int:
+def _assert_regular_file_unchanged(
+    path: Path,
+    descriptor: int,
+    expected: os.stat_result,
+) -> None:
+    try:
+        current = os.fstat(descriptor)
+    except OSError as error:
+        raise RegularFileSnapshotError(
+            f"unable to revalidate input after protected read {path}: {error}"
+        ) from error
+
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or current.st_dev != expected.st_dev
+        or current.st_ino != expected.st_ino
+        or current.st_size != expected.st_size
+        or current.st_mtime_ns != expected.st_mtime_ns
+        or current.st_ctime_ns != expected.st_ctime_ns
+    ):
+        raise RegularFileSnapshotError(
+            f"input changed during protected read: {path}"
+        )
+
+
+def _open_regular_file_nofollow(
+    path: Path,
+) -> tuple[int, os.stat_result]:
     if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
         raise RegularFileSnapshotError(
             "platform does not provide O_NOFOLLOW/O_DIRECTORY"
@@ -110,6 +137,17 @@ def _open_regular_file_nofollow(path: Path) -> int:
             f"input must name a file: {path}"
         )
 
+    try:
+        expected = os.stat(absolute, follow_symlinks=False)
+    except OSError as error:
+        raise RegularFileSnapshotError(
+            f"unable to inspect input before protected open {path}: {error}"
+        ) from error
+    if not stat.S_ISREG(expected.st_mode):
+        raise RegularFileSnapshotError(
+            f"input must be a regular non-symlink file: {path}"
+        )
+
     parent_descriptor = _open_resolved_directory_anchored(
         absolute.parent,
         context="input parent",
@@ -118,13 +156,26 @@ def _open_regular_file_nofollow(path: Path) -> int:
     if hasattr(os, "O_NONBLOCK"):
         open_flags |= os.O_NONBLOCK
 
+    descriptor: int | None = None
     try:
-        return os.open(
+        descriptor = os.open(
             absolute.name,
             open_flags,
             dir_fd=parent_descriptor,
         )
+        _assert_regular_file_unchanged(
+            path,
+            descriptor,
+            expected,
+        )
+        return descriptor, expected
+    except RegularFileSnapshotError:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise
     except OSError as error:
+        if descriptor is not None:
+            os.close(descriptor)
         raise RegularFileSnapshotError(
             f"unable to open regular non-symlink file {path}: {error}"
         ) from error
@@ -135,10 +186,22 @@ def _open_regular_file_nofollow(path: Path) -> int:
 def _open_destination_parent(path: Path) -> tuple[int, os.stat_result]:
     absolute = Path(os.path.abspath(path))
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    expected: os.stat_result | None = None
 
     if absolute == Path(os.sep):
         descriptor = _open_directory_nofollow(absolute)
     else:
+        try:
+            expected = os.stat(absolute, follow_symlinks=False)
+        except OSError as error:
+            raise RegularFileSnapshotError(
+                f"unable to inspect destination parent before protected open {path}: {error}"
+            ) from error
+        if not stat.S_ISDIR(expected.st_mode):
+            raise RegularFileSnapshotError(
+                f"destination parent must be a real directory: {path}"
+            )
+
         ancestor_descriptor = _open_resolved_directory_anchored(
             absolute.parent,
             context="destination parent ancestor",
@@ -168,6 +231,14 @@ def _open_destination_parent(path: Path) -> tuple[int, os.stat_result]:
         raise RegularFileSnapshotError(
             f"destination parent must be a directory: {path}"
         )
+    if expected is not None and (
+        metadata.st_dev != expected.st_dev
+        or metadata.st_ino != expected.st_ino
+    ):
+        os.close(descriptor)
+        raise RegularFileSnapshotError(
+            f"destination parent changed during protected open: {path}"
+        )
     return descriptor, metadata
 
 
@@ -192,31 +263,6 @@ def _assert_destination_parent_identity(
         )
 
 
-def _assert_regular_file_unchanged(
-    path: Path,
-    descriptor: int,
-    expected: os.stat_result,
-) -> None:
-    try:
-        current = os.fstat(descriptor)
-    except OSError as error:
-        raise RegularFileSnapshotError(
-            f"unable to revalidate input after protected read {path}: {error}"
-        ) from error
-
-    if (
-        not stat.S_ISREG(current.st_mode)
-        or current.st_dev != expected.st_dev
-        or current.st_ino != expected.st_ino
-        or current.st_size != expected.st_size
-        or current.st_mtime_ns != expected.st_mtime_ns
-        or current.st_ctime_ns != expected.st_ctime_ns
-    ):
-        raise RegularFileSnapshotError(
-            f"input changed during protected read: {path}"
-        )
-
-
 def copy_regular_file_bounded(
     source_path: Path,
     destination_path: Path,
@@ -236,7 +282,9 @@ def copy_regular_file_bounded(
             f"destination must name a file: {destination_path}"
         )
 
-    source_descriptor = _open_regular_file_nofollow(source_path)
+    source_descriptor, source_metadata = _open_regular_file_nofollow(
+        source_path
+    )
 
     destination_parent_descriptor: int | None = None
     destination_descriptor: int | None = None
@@ -264,14 +312,9 @@ def copy_regular_file_bounded(
                 f"destination already exists: {destination_path}"
             )
 
-        metadata = os.fstat(source_descriptor)
-        if not stat.S_ISREG(metadata.st_mode):
+        if source_metadata.st_size > max_bytes:
             raise RegularFileSnapshotError(
-                f"input must be a regular non-symlink file: {source_path}"
-            )
-        if metadata.st_size > max_bytes:
-            raise RegularFileSnapshotError(
-                f"input exceeds copy byte limit: {metadata.st_size} > {max_bytes}"
+                f"input exceeds copy byte limit: {source_metadata.st_size} > {max_bytes}"
             )
 
         _assert_destination_parent_identity(
@@ -315,7 +358,7 @@ def copy_regular_file_bounded(
         _assert_regular_file_unchanged(
             source_path,
             source_descriptor,
-            metadata,
+            source_metadata,
         )
         _assert_destination_parent_identity(
             destination_path.parent,
@@ -352,14 +395,9 @@ def snapshot_regular_file(
             "snapshot byte limit must be a positive integer"
         )
 
-    descriptor = _open_regular_file_nofollow(path)
+    descriptor, metadata = _open_regular_file_nofollow(path)
 
     try:
-        metadata = os.fstat(descriptor)
-        if not stat.S_ISREG(metadata.st_mode):
-            raise RegularFileSnapshotError(
-                f"input must be a regular non-symlink file: {path}"
-            )
         if max_bytes is not None and metadata.st_size > max_bytes:
             raise RegularFileSnapshotError(
                 f"input exceeds snapshot byte limit: {metadata.st_size} > {max_bytes}"
