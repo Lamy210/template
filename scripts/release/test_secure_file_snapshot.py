@@ -100,25 +100,21 @@ class SecureFileSnapshotTests(unittest.TestCase):
         outside = root / "outside"
         outside.mkdir()
         destination = destination_parent / "copy.bin"
-        real_open = os.open
+        real_fstat = os.fstat
         raced = False
 
-        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+        def racing_fstat(descriptor: int):
             nonlocal raced
-            if (
-                not raced
-                and dir_fd is None
-                and Path(path) == destination
-                and flags & os.O_CREAT
-            ):
+            metadata = real_fstat(descriptor)
+            if not raced:
                 raced = True
                 destination_parent.rename(root / "destination.trusted")
                 destination_parent.symlink_to(outside, target_is_directory=True)
-            return real_open(path, flags, mode, dir_fd=dir_fd)
+            return metadata
 
         with mock.patch(
-            "scripts.release.secure_file_snapshot.os.open",
-            side_effect=racing_open,
+            "scripts.release.secure_file_snapshot.os.fstat",
+            side_effect=racing_fstat,
         ):
             with self.assertRaises(RegularFileSnapshotError):
                 copy_regular_file_bounded(
