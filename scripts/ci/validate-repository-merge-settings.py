@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
@@ -13,6 +12,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts.ci.repository_merge_settings import (  # noqa: E402
     validate_repository_merge_settings,
+)
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
 )
 
 
@@ -25,9 +28,12 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        document = json.loads(args.metadata.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        print(f"failed to read repository metadata: {error}", file=sys.stderr)
+        document = load_bounded_json_file(
+            args.metadata,
+            label="repository merge settings metadata",
+        )
+    except BoundedJsonError as error:
+        print(error, file=sys.stderr)
         return 1
 
     errors, settings = validate_repository_merge_settings(
