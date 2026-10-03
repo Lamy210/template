@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 
+from scripts.common.bounded_json import DEFAULT_MAX_JSON_BYTES
 from scripts.homebrew.tap_repository_identity import (
     validate_tap_repository_identity,
 )
@@ -24,6 +25,21 @@ def repository_document() -> dict[str, object]:
         "clone_url": "https://github.com/Example/homebrew-tap.git",
         "ssh_url": "git@github.com:Example/homebrew-tap.git",
     }
+
+
+def cli_args(metadata: Path) -> list[str]:
+    return [
+        sys.executable,
+        str(SCRIPT),
+        "--metadata",
+        str(metadata),
+        "--repository",
+        "example/homebrew-tap",
+        "--default-branch",
+        "main",
+        "--repository-id",
+        "123",
+    ]
 
 
 class TapRepositoryIdentityTests(unittest.TestCase):
@@ -178,18 +194,7 @@ class TapRepositoryIdentityTests(unittest.TestCase):
                 encoding="utf-8",
             )
             result = subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPT),
-                    "--metadata",
-                    str(metadata),
-                    "--repository",
-                    "example/homebrew-tap",
-                    "--default-branch",
-                    "main",
-                    "--repository-id",
-                    "123",
-                ],
+                cli_args(metadata),
                 cwd=REPO_ROOT,
                 text=True,
                 capture_output=True,
@@ -207,6 +212,37 @@ class TapRepositoryIdentityTests(unittest.TestCase):
             ],
             result.stdout.splitlines(),
         )
+
+    def test_cli_rejects_oversized_and_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            oversized = root / "oversized.json"
+            with oversized.open("wb") as handle:
+                handle.truncate(DEFAULT_MAX_JSON_BYTES + 1)
+
+            oversized_result = subprocess.run(
+                cli_args(oversized),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, oversized_result.returncode)
+            self.assertIn("JSON byte limit", oversized_result.stderr)
+
+            real = root / "real.json"
+            real.write_text(json.dumps(repository_document()), encoding="utf-8")
+            symlink = root / "symlink.json"
+            symlink.symlink_to(real.name)
+            symlink_result = subprocess.run(
+                cli_args(symlink),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, symlink_result.returncode)
+            self.assertIn("regular non-symlink file", symlink_result.stderr)
 
 
 if __name__ == "__main__":
