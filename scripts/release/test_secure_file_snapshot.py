@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import stat
 import tempfile
 import unittest
 from unittest import mock
@@ -118,6 +119,31 @@ class SecureFileSnapshotTests(unittest.TestCase):
         hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
         "platform must provide O_NOFOLLOW/O_DIRECTORY",
     )
+    def test_bounded_copy_rejects_symlinked_destination_parent(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        source = root / "source.bin"
+        source.write_bytes(b"trusted-copy")
+        real_parent = root / "real-parent"
+        real_parent.mkdir()
+        destination_parent = root / "destination"
+        destination_parent.symlink_to(real_parent, target_is_directory=True)
+        destination = destination_parent / "copy.bin"
+
+        with self.assertRaises(RegularFileSnapshotError):
+            copy_regular_file_bounded(
+                source,
+                destination,
+                max_bytes=1024,
+            )
+
+        self.assertFalse((real_parent / "copy.bin").exists())
+
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+        "platform must provide O_NOFOLLOW/O_DIRECTORY",
+    )
     def test_bounded_copy_rejects_destination_parent_symlink_race(self) -> None:
         temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(temporary_directory.cleanup)
@@ -135,7 +161,7 @@ class SecureFileSnapshotTests(unittest.TestCase):
         def racing_fstat(descriptor: int):
             nonlocal raced
             metadata = real_fstat(descriptor)
-            if not raced:
+            if not raced and stat.S_ISREG(metadata.st_mode):
                 raced = True
                 destination_parent.rename(root / "destination.trusted")
                 destination_parent.symlink_to(outside, target_is_directory=True)
