@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 
 from scripts.homebrew.cask_output_path import validate_cask_output_path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RENDER_SCRIPT = REPO_ROOT / "scripts/homebrew/render-cask.sh"
 
 
 class CaskOutputPathTests(unittest.TestCase):
@@ -23,6 +30,84 @@ class CaskOutputPathTests(unittest.TestCase):
             output = casks / "example.rb"
             output.write_text("cask \"example\"\n", encoding="utf-8")
             self.assertEqual([], validate_cask_output_path(root=root, output=output))
+
+    def test_render_script_rejects_template_symlink_race(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            template = root / "template.rb"
+            alternate = root / "alternate.rb"
+            output = root / "rendered.rb"
+            counter = root / "python-count"
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+
+            template.write_text(
+                'version = "{{VERSION}}"\nputs "{{DESCRIPTION}}"\n',
+                encoding="utf-8",
+            )
+            alternate.write_text(
+                'version = "{{VERSION}}"\nputs "UNTRUSTED {{DESCRIPTION}}"\n',
+                encoding="utf-8",
+            )
+
+            real_python = shutil.which("python3")
+            self.assertIsNotNone(real_python)
+            wrapper = fake_bin / "python3"
+            wrapper.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+count=0
+if [[ -f "${PYTHON3_RACE_COUNTER}" ]]; then
+  read -r count <"${PYTHON3_RACE_COUNTER}"
+fi
+count=$((count + 1))
+printf '%s\\n' "${count}" >"${PYTHON3_RACE_COUNTER}"
+if [[ "${count}" -eq 3 ]]; then
+  rm -f "${PYTHON3_RACE_TEMPLATE}"
+  ln -s "${PYTHON3_RACE_ALTERNATE}" "${PYTHON3_RACE_TEMPLATE}"
+fi
+exec "${REAL_PYTHON3}" "$@"
+""",
+                encoding="utf-8",
+            )
+            wrapper.chmod(0o755)
+
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "PATH": f"{fake_bin}:{environment['PATH']}",
+                    "REAL_PYTHON3": real_python or "",
+                    "PYTHON3_RACE_COUNTER": str(counter),
+                    "PYTHON3_RACE_TEMPLATE": str(template),
+                    "PYTHON3_RACE_ALTERNATE": str(alternate),
+                    "CASK_TEMPLATE": str(template),
+                    "CASK_TOKEN": "example-app",
+                    "VERSION": "1.2.3",
+                    "SHA256": "0123456789abcdef" * 4,
+                    "GITHUB_OWNER": "example",
+                    "GITHUB_REPO": "example-app",
+                    "DMG_BASENAME": "ExampleApp-v#{version}.dmg",
+                    "APP_NAME": "ExampleApp",
+                    "DESCRIPTION": "safe description",
+                    "HOMEPAGE": "https://example.com",
+                    "BUNDLE_ID": "com.example.ExampleApp",
+                    "CASK_OUTPUT_ROOT": str(root),
+                    "OUTPUT_CASK": str(output),
+                }
+            )
+
+            result = subprocess.run(
+                ["bash", str(RENDER_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertFalse(output.exists())
+            self.assertTrue(template.is_symlink())
 
     def test_rejects_symlinked_output_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
