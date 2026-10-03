@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 from scripts.release.artifact_identity import normalize_uploaded_artifact_identity
 
 
@@ -129,7 +133,10 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        metadata = json.loads(args.metadata.read_text(encoding="utf-8"))
+        metadata = load_bounded_json_file(
+            args.metadata,
+            label="current-run artifact metadata",
+        )
         result = validate_current_run_artifact(
             metadata,
             expected_artifact_id=args.artifact_id,
@@ -140,7 +147,7 @@ def main() -> int:
             expected_head_repository_id=args.head_repository_id,
             expected_source_sha=args.source_sha,
         )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValidationError) as error:
+    except (BoundedJsonError, ValidationError) as error:
         print(error, file=sys.stderr)
         return 1
 
