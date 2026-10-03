@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 
+from scripts.common.bounded_json import DEFAULT_MAX_JSON_BYTES
 from scripts.common.workflow_identity import (
     WorkflowIdentity,
     is_safe_workflow_filename,
@@ -117,6 +118,51 @@ class WorkflowIdentityTests(unittest.TestCase):
             ["358957647", ".github/workflows/tests.yml"],
             result.stdout.splitlines(),
         )
+
+    def test_cli_rejects_oversized_and_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            oversized = root / "oversized.json"
+            with oversized.open("wb") as handle:
+                handle.truncate(DEFAULT_MAX_JSON_BYTES + 1)
+
+            oversized_result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLI),
+                    "--metadata",
+                    str(oversized),
+                    "--workflow",
+                    "tests.yml",
+                ],
+                cwd=temporary_directory,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, oversized_result.returncode)
+            self.assertIn("JSON byte limit", oversized_result.stderr)
+
+            real = root / "real.json"
+            real.write_text(json.dumps(valid_metadata()) + "\n", encoding="utf-8")
+            symlink = root / "symlink.json"
+            symlink.symlink_to(real.name)
+            symlink_result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLI),
+                    "--metadata",
+                    str(symlink),
+                    "--workflow",
+                    "tests.yml",
+                ],
+                cwd=temporary_directory,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, symlink_result.returncode)
+            self.assertIn("regular non-symlink file", symlink_result.stderr)
 
 
 if __name__ == "__main__":
