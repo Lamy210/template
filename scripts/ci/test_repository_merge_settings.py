@@ -11,6 +11,7 @@ from scripts.ci.repository_merge_settings import (
     RepositoryMergeSettings,
     validate_repository_merge_settings,
 )
+from scripts.common.bounded_json import DEFAULT_MAX_JSON_BYTES
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +32,17 @@ def valid_metadata() -> dict[str, object]:
         "allow_rebase_merge": False,
         "delete_branch_on_merge": True,
     }
+
+
+def cli_args(metadata: Path) -> list[str]:
+    return [
+        sys.executable,
+        str(CLI),
+        "--metadata",
+        str(metadata),
+        "--repository",
+        "Lamy210/template",
+    ]
 
 
 class RepositoryMergeSettingsTests(unittest.TestCase):
@@ -128,14 +140,7 @@ class RepositoryMergeSettingsTests(unittest.TestCase):
                 encoding="utf-8",
             )
             result = subprocess.run(
-                [
-                    sys.executable,
-                    str(CLI),
-                    "--metadata",
-                    str(metadata),
-                    "--repository",
-                    "Lamy210/template",
-                ],
+                cli_args(metadata),
                 cwd=REPO_ROOT,
                 text=True,
                 capture_output=True,
@@ -154,6 +159,36 @@ class RepositoryMergeSettingsTests(unittest.TestCase):
             ],
             result.stdout.splitlines(),
         )
+
+    def test_cli_rejects_oversized_and_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            oversized = root / "oversized.json"
+            with oversized.open("wb") as handle:
+                handle.truncate(DEFAULT_MAX_JSON_BYTES + 1)
+            oversized_result = subprocess.run(
+                cli_args(oversized),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, oversized_result.returncode)
+            self.assertIn("JSON byte limit", oversized_result.stderr)
+
+            real = root / "real.json"
+            real.write_text(json.dumps(valid_metadata()), encoding="utf-8")
+            symlink = root / "symlink.json"
+            symlink.symlink_to(real.name)
+            symlink_result = subprocess.run(
+                cli_args(symlink),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, symlink_result.returncode)
+            self.assertIn("regular non-symlink file", symlink_result.stderr)
 
     def test_documentation_matches_merge_policy_contract(self) -> None:
         expected_lines = (

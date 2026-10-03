@@ -11,12 +11,22 @@ from scripts.ci.immutable_releases_setting import (
     ImmutableReleasesSetting,
     validate_immutable_releases_setting,
 )
+from scripts.common.bounded_json import DEFAULT_MAX_JSON_BYTES
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/ci/validate-immutable-releases-setting.py"
 DOCTOR = REPO_ROOT / "scripts/ci/audit-live-immutable-releases.sh"
 QUALITY = REPO_ROOT / ".github/workflows/quality.yml"
+
+
+def cli_args(metadata: Path) -> list[str]:
+    return [
+        sys.executable,
+        str(CLI),
+        "--metadata",
+        str(metadata),
+    ]
 
 
 class ImmutableReleasesSettingTests(unittest.TestCase):
@@ -102,12 +112,7 @@ class ImmutableReleasesSettingTests(unittest.TestCase):
                 encoding="utf-8",
             )
             result = subprocess.run(
-                [
-                    sys.executable,
-                    str(CLI),
-                    "--metadata",
-                    str(metadata),
-                ],
+                cli_args(metadata),
                 cwd=REPO_ROOT,
                 text=True,
                 capture_output=True,
@@ -119,6 +124,39 @@ class ImmutableReleasesSettingTests(unittest.TestCase):
             ["enabled=true", "enforced_by_owner=true"],
             result.stdout.splitlines(),
         )
+
+    def test_cli_rejects_oversized_and_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            oversized = root / "oversized.json"
+            with oversized.open("wb") as handle:
+                handle.truncate(DEFAULT_MAX_JSON_BYTES + 1)
+            oversized_result = subprocess.run(
+                cli_args(oversized),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, oversized_result.returncode)
+            self.assertIn("JSON byte limit", oversized_result.stderr)
+
+            real = root / "real.json"
+            real.write_text(
+                json.dumps({"enabled": True, "enforced_by_owner": False}),
+                encoding="utf-8",
+            )
+            symlink = root / "symlink.json"
+            symlink.symlink_to(real.name)
+            symlink_result = subprocess.run(
+                cli_args(symlink),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, symlink_result.returncode)
+            self.assertIn("regular non-symlink file", symlink_result.stderr)
 
 
 if __name__ == "__main__":
