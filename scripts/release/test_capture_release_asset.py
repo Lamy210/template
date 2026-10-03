@@ -4,6 +4,8 @@ from io import BytesIO
 import hashlib
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -12,6 +14,9 @@ from scripts.release.capture_release_asset import (
     ReleaseAssetCaptureError,
     capture_release_asset,
 )
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def digest(payload: bytes) -> str:
@@ -24,6 +29,20 @@ class ReleaseAssetCaptureTests(unittest.TestCase):
         self.addCleanup(temporary_directory.cleanup)
         output = Path(temporary_directory.name) / "asset.bin"
         return temporary_directory, output
+
+    def test_direct_cli_is_package_safe_from_repository_root(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/release/capture_release_asset.py"),
+                "--help",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
 
     def test_captures_exact_size_and_digest(self) -> None:
         _, output = self.fixture()
