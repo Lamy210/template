@@ -12,6 +12,47 @@ class RegularFileSnapshotError(RuntimeError):
     pass
 
 
+def _open_directory_nofollow(path: Path) -> int:
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise RegularFileSnapshotError(
+            "platform does not provide O_NOFOLLOW/O_DIRECTORY"
+        )
+
+    absolute = Path(os.path.abspath(path))
+    if absolute.anchor != os.sep:
+        raise RegularFileSnapshotError(
+            f"directory path must resolve to an absolute POSIX path: {path}"
+        )
+
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(os.sep, flags)
+        for component in absolute.parts[1:]:
+            if component in {"", ".", ".."}:
+                raise RegularFileSnapshotError(
+                    f"directory path contains an unsafe component: {path}"
+                )
+            next_descriptor = os.open(
+                component,
+                flags,
+                dir_fd=descriptor,
+            )
+            os.close(descriptor)
+            descriptor = next_descriptor
+        return descriptor
+    except RegularFileSnapshotError:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise
+    except OSError as error:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise RegularFileSnapshotError(
+            f"unable to open directory without following symlinks {path}: {error}"
+        ) from error
+
+
 def copy_regular_file_bounded(
     source_path: Path,
     destination_path: Path,
@@ -22,15 +63,13 @@ def copy_regular_file_bounded(
         raise RegularFileSnapshotError(
             "copy byte limit must be a positive integer"
         )
-    if not hasattr(os, "O_NOFOLLOW"):
-        raise RegularFileSnapshotError("platform does not provide O_NOFOLLOW")
-    if not destination_path.parent.is_dir() or destination_path.parent.is_symlink():
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
         raise RegularFileSnapshotError(
-            f"destination parent must be a real directory: {destination_path.parent}"
+            "platform does not provide O_NOFOLLOW/O_DIRECTORY"
         )
-    if destination_path.exists() or destination_path.is_symlink():
+    if destination_path.name in {"", ".", ".."}:
         raise RegularFileSnapshotError(
-            f"destination already exists: {destination_path}"
+            f"destination must name a file: {destination_path}"
         )
 
     source_flags = os.O_RDONLY | os.O_NOFOLLOW
@@ -44,6 +83,7 @@ def copy_regular_file_bounded(
             f"unable to open regular non-symlink file {source_path}: {error}"
         ) from error
 
+    destination_parent_descriptor: int | None = None
     destination_descriptor: int | None = None
     created = False
     try:
@@ -57,14 +97,33 @@ def copy_regular_file_bounded(
                 f"input exceeds copy byte limit: {metadata.st_size} > {max_bytes}"
             )
 
-        destination_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        if hasattr(os, "O_NOFOLLOW"):
-            destination_flags |= os.O_NOFOLLOW
+        destination_parent_descriptor = _open_directory_nofollow(
+            destination_path.parent
+        )
+        try:
+            os.stat(
+                destination_path.name,
+                dir_fd=destination_parent_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            raise RegularFileSnapshotError(
+                f"unable to inspect destination {destination_path}: {error}"
+            ) from error
+        else:
+            raise RegularFileSnapshotError(
+                f"destination already exists: {destination_path}"
+            )
+
+        destination_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
         try:
             destination_descriptor = os.open(
-                destination_path,
+                destination_path.name,
                 destination_flags,
                 0o600,
+                dir_fd=destination_parent_descriptor,
             )
             created = True
         except OSError as error:
@@ -93,15 +152,20 @@ def copy_regular_file_bounded(
 
         return copied_bytes
     except Exception:
-        if created:
+        if created and destination_parent_descriptor is not None:
             try:
-                destination_path.unlink(missing_ok=True)
+                os.unlink(
+                    destination_path.name,
+                    dir_fd=destination_parent_descriptor,
+                )
             except OSError:
                 pass
         raise
     finally:
         if destination_descriptor is not None:
             os.close(destination_descriptor)
+        if destination_parent_descriptor is not None:
+            os.close(destination_parent_descriptor)
         os.close(source_descriptor)
 
 
