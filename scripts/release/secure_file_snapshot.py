@@ -53,6 +53,70 @@ def _open_directory_nofollow(path: Path) -> int:
         ) from error
 
 
+def _open_destination_parent(path: Path) -> tuple[int, os.stat_result]:
+    absolute = Path(os.path.abspath(path))
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+    if absolute == Path(os.sep):
+        descriptor = _open_directory_nofollow(absolute)
+    else:
+        try:
+            resolved_ancestor = absolute.parent.resolve(strict=True)
+        except OSError as error:
+            raise RegularFileSnapshotError(
+                f"unable to resolve destination parent ancestor {path}: {error}"
+            ) from error
+
+        ancestor_descriptor = _open_directory_nofollow(resolved_ancestor)
+        try:
+            descriptor = os.open(
+                absolute.name,
+                flags,
+                dir_fd=ancestor_descriptor,
+            )
+        except OSError as error:
+            raise RegularFileSnapshotError(
+                f"destination parent must be a real directory: {path}: {error}"
+            ) from error
+        finally:
+            os.close(ancestor_descriptor)
+
+    try:
+        metadata = os.fstat(descriptor)
+    except OSError as error:
+        os.close(descriptor)
+        raise RegularFileSnapshotError(
+            f"unable to inspect destination parent {path}: {error}"
+        ) from error
+    if not stat.S_ISDIR(metadata.st_mode):
+        os.close(descriptor)
+        raise RegularFileSnapshotError(
+            f"destination parent must be a directory: {path}"
+        )
+    return descriptor, metadata
+
+
+def _assert_destination_parent_identity(
+    path: Path,
+    expected: os.stat_result,
+) -> None:
+    try:
+        current = os.stat(path, follow_symlinks=False)
+    except OSError as error:
+        raise RegularFileSnapshotError(
+            f"destination parent changed after validation: {path}: {error}"
+        ) from error
+
+    if (
+        not stat.S_ISDIR(current.st_mode)
+        or current.st_dev != expected.st_dev
+        or current.st_ino != expected.st_ino
+    ):
+        raise RegularFileSnapshotError(
+            f"destination parent changed after validation: {path}"
+        )
+
+
 def copy_regular_file_bounded(
     source_path: Path,
     destination_path: Path,
@@ -87,19 +151,11 @@ def copy_regular_file_bounded(
     destination_descriptor: int | None = None
     created = False
     try:
-        metadata = os.fstat(source_descriptor)
-        if not stat.S_ISREG(metadata.st_mode):
-            raise RegularFileSnapshotError(
-                f"input must be a regular non-symlink file: {source_path}"
-            )
-        if metadata.st_size > max_bytes:
-            raise RegularFileSnapshotError(
-                f"input exceeds copy byte limit: {metadata.st_size} > {max_bytes}"
-            )
+        (
+            destination_parent_descriptor,
+            destination_parent_metadata,
+        ) = _open_destination_parent(destination_path.parent)
 
-        destination_parent_descriptor = _open_directory_nofollow(
-            destination_path.parent
-        )
         try:
             os.stat(
                 destination_path.name,
@@ -116,6 +172,21 @@ def copy_regular_file_bounded(
             raise RegularFileSnapshotError(
                 f"destination already exists: {destination_path}"
             )
+
+        metadata = os.fstat(source_descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise RegularFileSnapshotError(
+                f"input must be a regular non-symlink file: {source_path}"
+            )
+        if metadata.st_size > max_bytes:
+            raise RegularFileSnapshotError(
+                f"input exceeds copy byte limit: {metadata.st_size} > {max_bytes}"
+            )
+
+        _assert_destination_parent_identity(
+            destination_path.parent,
+            destination_parent_metadata,
+        )
 
         destination_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
         try:
@@ -150,6 +221,10 @@ def copy_regular_file_bounded(
                         )
                     destination.write(chunk)
 
+        _assert_destination_parent_identity(
+            destination_path.parent,
+            destination_parent_metadata,
+        )
         return copied_bytes
     except Exception:
         if created and destination_parent_descriptor is not None:
