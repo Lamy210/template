@@ -15,6 +15,7 @@ from scripts.ci.current_run_artifact_identity import (
     ValidationError,
     validate_current_run_artifact,
 )
+from scripts.common.bounded_json import DEFAULT_MAX_JSON_BYTES
 
 
 CLI = ROOT / "scripts/ci/current_run_artifact_identity.py"
@@ -36,6 +37,29 @@ def artifact() -> dict[str, object]:
             "head_sha": SHA,
         },
     }
+
+
+def cli_args(metadata_path: Path) -> list[str]:
+    return [
+        sys.executable,
+        str(CLI),
+        "--metadata",
+        str(metadata_path),
+        "--artifact-id",
+        "7001",
+        "--artifact-name",
+        "macos-e2e-visual-12345-2",
+        "--artifact-digest",
+        DIGEST.removeprefix("sha256:"),
+        "--run-id",
+        "12345",
+        "--repository-id",
+        "1367784801",
+        "--head-repository-id",
+        "1367784801",
+        "--source-sha",
+        SHA,
+    ]
 
 
 class CurrentRunArtifactIdentityTests(unittest.TestCase):
@@ -135,32 +159,41 @@ class CurrentRunArtifactIdentityTests(unittest.TestCase):
             metadata_path = root / "artifact.json"
             metadata_path.write_text(json.dumps(artifact()), encoding="utf-8")
             completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(CLI),
-                    "--metadata",
-                    str(metadata_path),
-                    "--artifact-id",
-                    "7001",
-                    "--artifact-name",
-                    "macos-e2e-visual-12345-2",
-                    "--artifact-digest",
-                    DIGEST.removeprefix("sha256:"),
-                    "--run-id",
-                    "12345",
-                    "--repository-id",
-                    "1367784801",
-                    "--head-repository-id",
-                    "1367784801",
-                    "--source-sha",
-                    SHA,
-                ],
+                cli_args(metadata_path),
                 text=True,
                 capture_output=True,
                 check=False,
             )
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertEqual(7001, json.loads(completed.stdout)["artifactId"])
+
+    def test_cli_rejects_oversized_and_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            oversized = root / "oversized.json"
+            with oversized.open("wb") as handle:
+                handle.truncate(DEFAULT_MAX_JSON_BYTES + 1)
+            oversized_result = subprocess.run(
+                cli_args(oversized),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, oversized_result.returncode)
+            self.assertIn("JSON byte limit", oversized_result.stderr)
+
+            real = root / "real.json"
+            real.write_text(json.dumps(artifact()), encoding="utf-8")
+            symlink = root / "symlink.json"
+            symlink.symlink_to(real.name)
+            symlink_result = subprocess.run(
+                cli_args(symlink),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, symlink_result.returncode)
+            self.assertIn("regular non-symlink file", symlink_result.stderr)
 
 
 if __name__ == "__main__":
