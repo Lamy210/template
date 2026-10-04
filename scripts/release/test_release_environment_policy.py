@@ -12,6 +12,8 @@ from scripts.release.release_environment import validate_release_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LIVE_AUDIT = REPO_ROOT / "scripts/release/audit-release-environment.sh"
+AUDIT_CLI = REPO_ROOT / "scripts/release/audit-release-environment.py"
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def valid_environment() -> dict:
@@ -39,7 +41,36 @@ def valid_policies() -> dict:
     }
 
 
+def write_oversized_json(path: Path, payload: object) -> None:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+
 class ReleaseEnvironmentPolicyTests(unittest.TestCase):
+    def run_cli(
+        self,
+        environment_path: Path,
+        policies_path: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(AUDIT_CLI),
+                "--environment",
+                str(environment_path),
+                "--policies",
+                str(policies_path),
+                "--default-branch",
+                "main",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
     def test_accepts_default_branch_only_custom_policy(self) -> None:
         self.assertEqual(
             [],
@@ -111,25 +142,70 @@ class ReleaseEnvironmentPolicyTests(unittest.TestCase):
             environment_path.write_text(json.dumps(valid_environment()), encoding="utf-8")
             policies_path.write_text(json.dumps([valid_policies()]), encoding="utf-8")
 
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "scripts/release/audit-release-environment.py",
-                    "--environment",
-                    str(environment_path),
-                    "--policies",
-                    str(policies_path),
-                    "--default-branch",
-                    "main",
-                ],
-                cwd=REPO_ROOT,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            result = self.run_cli(environment_path, policies_path)
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("release Environment matches", result.stdout)
+
+    def test_cli_rejects_oversized_json_inputs(self) -> None:
+        for oversized_input in ("environment", "policies"):
+            with self.subTest(oversized_input=oversized_input):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    root = Path(temporary_directory)
+                    environment_path = root / "environment.json"
+                    policies_path = root / "policies.json"
+                    environment_path.write_text(
+                        json.dumps(valid_environment()),
+                        encoding="utf-8",
+                    )
+                    policies_path.write_text(
+                        json.dumps([valid_policies()]),
+                        encoding="utf-8",
+                    )
+                    if oversized_input == "environment":
+                        write_oversized_json(environment_path, valid_environment())
+                    else:
+                        write_oversized_json(policies_path, [valid_policies()])
+
+                    result = self.run_cli(environment_path, policies_path)
+
+                self.assertEqual(2, result.returncode)
+                self.assertIn("JSON byte limit", result.stderr)
+
+    def test_cli_rejects_symlinked_json_inputs(self) -> None:
+        for symlinked_input in ("environment", "policies"):
+            with self.subTest(symlinked_input=symlinked_input):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    root = Path(temporary_directory)
+                    environment_path = root / "environment.json"
+                    policies_path = root / "policies.json"
+                    environment_target = root / "environment-target.json"
+                    policies_target = root / "policies-target.json"
+                    environment_target.write_text(
+                        json.dumps(valid_environment()),
+                        encoding="utf-8",
+                    )
+                    policies_target.write_text(
+                        json.dumps([valid_policies()]),
+                        encoding="utf-8",
+                    )
+                    if symlinked_input == "environment":
+                        environment_path.symlink_to(environment_target)
+                        policies_path.write_text(
+                            json.dumps([valid_policies()]),
+                            encoding="utf-8",
+                        )
+                    else:
+                        environment_path.write_text(
+                            json.dumps(valid_environment()),
+                            encoding="utf-8",
+                        )
+                        policies_path.symlink_to(policies_target)
+
+                    result = self.run_cli(environment_path, policies_path)
+
+                self.assertEqual(2, result.returncode)
+                self.assertIn("non-symlink", result.stderr)
 
     def test_live_wrapper_is_read_only(self) -> None:
         text = LIVE_AUDIT.read_text(encoding="utf-8")
