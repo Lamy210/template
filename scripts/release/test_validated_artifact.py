@@ -4,6 +4,8 @@ import importlib.util
 import inspect
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -19,6 +21,7 @@ REPOSITORY_ID = 1367784801
 SOURCE_RUN_ID = 123456789
 SOURCE_RUN_ATTEMPT = 2
 ARTIFACT_ID = 7001
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def artifact_name(publisher_attempt: int = PUBLISHER_RUN_ATTEMPT) -> str:
@@ -41,6 +44,13 @@ def artifact_metadata(*, name: str | None = None) -> dict[str, object]:
             "head_sha": PUBLISHER_SHA,
         },
     }
+
+
+def write_oversized_json(path: Path, payload: object) -> None:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
 
 
 class ValidatedArtifactTests(unittest.TestCase):
@@ -67,6 +77,38 @@ class ValidatedArtifactTests(unittest.TestCase):
             repository_id=REPOSITORY_ID,
             source_run_id=SOURCE_RUN_ID,
             source_run_attempt=SOURCE_RUN_ATTEMPT,
+        )
+
+    def run_cli(self, metadata_path: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(CLI_PATH),
+                "--metadata",
+                str(metadata_path),
+                "--artifact-id",
+                str(ARTIFACT_ID),
+                "--artifact-name",
+                artifact_name(),
+                "--artifact-digest",
+                ARTIFACT_DIGEST,
+                "--publisher-run-id",
+                str(PUBLISHER_RUN_ID),
+                "--publisher-run-attempt",
+                str(PUBLISHER_RUN_ATTEMPT),
+                "--publisher-sha",
+                PUBLISHER_SHA,
+                "--repository-id",
+                str(REPOSITORY_ID),
+                "--source-run-id",
+                str(SOURCE_RUN_ID),
+                "--source-run-attempt",
+                str(SOURCE_RUN_ATTEMPT),
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
         )
 
     def test_accepts_exact_current_publisher_attempt_artifact(self) -> None:
@@ -150,6 +192,30 @@ class ValidatedArtifactTests(unittest.TestCase):
             source_run_attempt=SOURCE_RUN_ATTEMPT,
         )
         self.assertTrue(errors)
+
+    def test_cli_rejects_oversized_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata = root / "artifact.json"
+            write_oversized_json(metadata, artifact_metadata())
+
+            result = self.run_cli(metadata)
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("JSON byte limit", result.stderr)
+
+    def test_cli_rejects_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata = root / "artifact.json"
+            target = root / "artifact-target.json"
+            target.write_text(json.dumps(artifact_metadata()), encoding="utf-8")
+            metadata.symlink_to(target)
+
+            result = self.run_cli(metadata)
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("non-symlink", result.stderr)
 
 
 if __name__ == "__main__":
