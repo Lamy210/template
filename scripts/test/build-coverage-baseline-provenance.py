@@ -11,6 +11,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 from scripts.test.coverage_baseline_provenance import (  # noqa: E402
     ValidationError,
     build_coverage_baseline_provenance,
@@ -33,7 +37,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        summary = json.loads(args.summary.read_text(encoding="utf-8"))
+        summary = load_bounded_json_file(args.summary, label="coverage summary")
         payload = build_coverage_baseline_provenance(
             summary,
             repository=args.repository,
@@ -44,7 +48,7 @@ def main() -> int:
             source_sha=args.source_sha,
             artifact_name=args.artifact_name,
         )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValidationError) as error:
+    except (BoundedJsonError, ValidationError) as error:
         print(error, file=sys.stderr)
         return 1
 
