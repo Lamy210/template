@@ -10,6 +10,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
+
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
 GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
 ALLOWED_TRUSTED_EVENTS = {"push", "schedule"}
@@ -17,8 +26,8 @@ ALLOWED_TRUSTED_EVENTS = {"push", "schedule"}
 
 def _load_object(path: Path, label: str) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = load_bounded_json_file(path, label=label)
+    except BoundedJsonError as exc:
         raise ValueError(f"cannot read {label}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{label} must be a JSON object")

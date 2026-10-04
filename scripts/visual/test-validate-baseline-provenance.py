@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts/visual/validate-baseline-provenance.py"
 SOURCE_SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def load_validator():
@@ -17,6 +20,13 @@ def load_validator():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def write_oversized_json(path: Path, payload: object) -> None:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
 
 
 class BaselineProvenanceTests(unittest.TestCase):
@@ -146,6 +156,40 @@ class BaselineProvenanceTests(unittest.TestCase):
         self.write_payloads()
         with self.assertRaisesRegex(ValueError, "artifact"):
             self.validate()
+
+    def test_rejects_oversized_resolver_metadata(self):
+        write_oversized_json(self.resolver, self.resolver_payload)
+        with self.assertRaisesRegex(ValueError, "JSON byte limit"):
+            self.validate()
+
+    def test_rejects_oversized_bundle_manifest(self):
+        write_oversized_json(self.bundle, self.bundle_payload)
+        with self.assertRaisesRegex(ValueError, "JSON byte limit"):
+            self.validate()
+
+    def test_rejects_symlinked_resolver_metadata(self):
+        target = self.resolver.with_name("resolver-target.json")
+        self.resolver.replace(target)
+        self.resolver.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "non-symlink"):
+            self.validate()
+
+    def test_rejects_symlinked_bundle_manifest(self):
+        target = self.bundle.with_name("bundle-target.json")
+        self.bundle.replace(target)
+        self.bundle.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "non-symlink"):
+            self.validate()
+
+    def test_direct_cli_remains_package_safe(self):
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--help"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
 
 
 if __name__ == "__main__":
