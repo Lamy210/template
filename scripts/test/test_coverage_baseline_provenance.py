@@ -77,6 +77,42 @@ def write_oversized_json(path: Path, payload: object) -> None:
 
 
 class CoverageBaselineBuilderTests(unittest.TestCase):
+    def run_builder_cli(
+        self,
+        summary_path: Path,
+        output_path: Path,
+        *,
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(BUILD_CLI),
+                "--summary",
+                str(summary_path),
+                "--output",
+                str(output_path),
+                "--repository",
+                "Lamy210/template",
+                "--repository-id",
+                "1367784801",
+                "--workflow",
+                "tests.yml",
+                "--run-id",
+                "12345",
+                "--run-attempt",
+                "2",
+                "--source-sha",
+                SHA,
+                "--artifact-name",
+                "coverage-baseline",
+            ],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
     def test_builds_exact_attempt_bound_provenance(self) -> None:
         payload = build_coverage_baseline_provenance(
             summary(),
@@ -111,37 +147,57 @@ class CoverageBaselineBuilderTests(unittest.TestCase):
             output_path = root / "provenance.json"
             summary_path.write_text(json.dumps(summary()), encoding="utf-8")
 
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(BUILD_CLI),
-                    "--summary",
-                    str(summary_path),
-                    "--output",
-                    str(output_path),
-                    "--repository",
-                    "Lamy210/template",
-                    "--repository-id",
-                    "1367784801",
-                    "--workflow",
-                    "tests.yml",
-                    "--run-id",
-                    "12345",
-                    "--run-attempt",
-                    "2",
-                    "--source-sha",
-                    SHA,
-                    "--artifact-name",
-                    "coverage-baseline",
-                ],
-                cwd=temporary_directory,
-                text=True,
-                capture_output=True,
-                check=False,
+            completed = self.run_builder_cli(
+                summary_path,
+                output_path,
+                cwd=root,
             )
 
             self.assertEqual(0, completed.returncode, completed.stderr)
-            self.assertEqual(provenance(), json.loads(output_path.read_text(encoding="utf-8")))
+            self.assertEqual(
+                provenance(),
+                json.loads(output_path.read_text(encoding="utf-8")),
+            )
+
+    def test_builder_cli_rejects_oversized_summary_without_writing_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            summary_path = root / "summary.json"
+            output_path = root / "provenance.json"
+            sentinel = b"existing-provenance\n"
+            output_path.write_bytes(sentinel)
+            write_oversized_json(summary_path, summary())
+
+            completed = self.run_builder_cli(
+                summary_path,
+                output_path,
+                cwd=root,
+            )
+
+            self.assertEqual(1, completed.returncode)
+            self.assertIn("JSON byte limit", completed.stderr)
+            self.assertEqual(sentinel, output_path.read_bytes())
+
+    def test_builder_cli_rejects_symlinked_summary_without_writing_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            summary_path = root / "summary.json"
+            target_path = root / "summary-target.json"
+            output_path = root / "provenance.json"
+            sentinel = b"existing-provenance\n"
+            output_path.write_bytes(sentinel)
+            target_path.write_text(json.dumps(summary()), encoding="utf-8")
+            summary_path.symlink_to(target_path)
+
+            completed = self.run_builder_cli(
+                summary_path,
+                output_path,
+                cwd=root,
+            )
+
+            self.assertEqual(1, completed.returncode)
+            self.assertIn("non-symlink", completed.stderr)
+            self.assertEqual(sentinel, output_path.read_bytes())
 
 
 class CoverageBaselineProvenanceTests(unittest.TestCase):
