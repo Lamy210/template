@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
@@ -12,7 +11,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.release.post_split_proof_evidence import validate_evidence_document
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
+from scripts.release.post_split_proof_evidence import (  # noqa: E402
+    validate_evidence_document,
+)
 
 
 def main() -> int:
@@ -21,9 +26,11 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        with args.evidence.open("r", encoding="utf-8") as handle:
-            document = json.load(handle)
-    except (OSError, json.JSONDecodeError) as error:
+        document = load_bounded_json_file(
+            args.evidence,
+            label="post-split proof evidence",
+        )
+    except BoundedJsonError as error:
         print(f"unable to read proof evidence: {error}", file=sys.stderr)
         return 2
 
