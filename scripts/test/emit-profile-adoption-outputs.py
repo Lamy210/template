@@ -4,10 +4,19 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 
 
 RESOLVED_KEYS = {
@@ -44,8 +53,8 @@ class InputError(ValueError):
 
 def _load(path: Path, label: str) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = load_bounded_json_file(path, label=label)
+    except BoundedJsonError as exc:
         raise InputError(f"cannot read {label}: {exc}") from exc
     if not isinstance(payload, dict):
         raise InputError(f"{label} must be a JSON object")
