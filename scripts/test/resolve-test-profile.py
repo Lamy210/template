@@ -11,6 +11,16 @@ import sys
 from typing import Any
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
+
+
 EXIT_OK = 0
 EXIT_CONFIGURATION_ERROR = 2
 PROFILE_NAMES = {"minimal", "standard", "macos-app", "macos-ui-strict"}
@@ -102,8 +112,8 @@ def parse_optional_bool(value: object, field: str) -> bool | None:
 
 def load_input(path: Path) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = load_bounded_json_file(path, label="profile input")
+    except BoundedJsonError as exc:
         raise InputError(f"cannot read profile input: {exc}") from exc
     if not isinstance(payload, dict):
         raise InputError("profile input must be an object")
