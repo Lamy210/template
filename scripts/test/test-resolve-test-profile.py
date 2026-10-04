@@ -5,12 +5,16 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
+RESOLVER = ROOT / "scripts/test/resolve-test-profile.py"
+MAX_JSON_BYTES = 2 * 1024 * 1024
+SENTINEL_OUTPUT = "sentinel=keep\n"
 
 
 def load_script(name: str, relative_path: str):
@@ -54,6 +58,13 @@ def payload(
     }
 
 
+def write_oversized_json(path: Path, value: object) -> None:
+    encoded = json.dumps(value, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+
 POLICY_FIELDS = (
     "integrationEnabled",
     "integrationRequired",
@@ -74,6 +85,22 @@ EXPECTED = {
 
 
 class TestProfileResolverTests(unittest.TestCase):
+    def run_cli(self, root: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(RESOLVER),
+                "--input",
+                str(root / "input.json"),
+                "--output",
+                str(root / "output.json"),
+            ],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
     def test_named_profile_defaults_are_deterministic(self) -> None:
         for profile, expected in EXPECTED.items():
             with self.subTest(profile=profile):
@@ -202,19 +229,7 @@ class TestProfileResolverTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            completed = subprocess.run(
-                [
-                    "python3",
-                    str(ROOT / "scripts/test/resolve-test-profile.py"),
-                    "--input",
-                    str(input_path),
-                    "--output",
-                    str(output_path),
-                ],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            completed = self.run_cli(root)
 
             self.assertEqual(0, completed.returncode, completed.stderr)
             raw = output_path.read_text(encoding="utf-8")
@@ -222,6 +237,48 @@ class TestProfileResolverTests(unittest.TestCase):
             self.assertEqual(
                 resolver.resolve(payload(profile="standard", adapter="swiftpm")),
                 json.loads(raw),
+            )
+
+    def test_cli_rejects_oversized_json_input_without_writing_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            input_path = root / "input.json"
+            output_path = root / "output.json"
+            write_oversized_json(
+                input_path,
+                payload(profile="standard", adapter="swiftpm"),
+            )
+            output_path.write_text(SENTINEL_OUTPUT, encoding="utf-8")
+
+            completed = self.run_cli(root)
+
+            self.assertEqual(2, completed.returncode)
+            self.assertIn("JSON byte limit", completed.stderr)
+            self.assertEqual(
+                SENTINEL_OUTPUT,
+                output_path.read_text(encoding="utf-8"),
+            )
+
+    def test_cli_rejects_symlinked_json_input_without_writing_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            input_path = root / "input.json"
+            target_path = root / "input-target.json"
+            output_path = root / "output.json"
+            target_path.write_text(
+                json.dumps(payload(profile="standard", adapter="swiftpm")),
+                encoding="utf-8",
+            )
+            input_path.symlink_to(target_path)
+            output_path.write_text(SENTINEL_OUTPUT, encoding="utf-8")
+
+            completed = self.run_cli(root)
+
+            self.assertEqual(2, completed.returncode)
+            self.assertIn("non-symlink", completed.stderr)
+            self.assertEqual(
+                SENTINEL_OUTPUT,
+                output_path.read_text(encoding="utf-8"),
             )
 
 
