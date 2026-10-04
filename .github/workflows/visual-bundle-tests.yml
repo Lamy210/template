@@ -5,6 +5,7 @@ on:
     paths:
       - "scripts/visual/build-baseline-bundle.py"
       - "scripts/visual/test-build-baseline-bundle.py"
+      - "scripts/visual/test-build-baseline-bundle-input-boundary.py"
       - "scripts/visual/validate-baseline-provenance.py"
       - "scripts/visual/test-validate-baseline-provenance.py"
       - ".github/workflows/visual-bundle-tests.yml"
@@ -14,6 +15,7 @@ on:
     paths:
       - "scripts/visual/build-baseline-bundle.py"
       - "scripts/visual/test-build-baseline-bundle.py"
+      - "scripts/visual/test-build-baseline-bundle-input-boundary.py"
       - "scripts/visual/validate-baseline-provenance.py"
       - "scripts/visual/test-validate-baseline-provenance.py"
       - ".github/workflows/visual-bundle-tests.yml"
@@ -38,6 +40,9 @@ jobs:
 
       - name: Baseline bundle tests
         run: python3 scripts/visual/test-build-baseline-bundle.py -v
+
+      - name: Baseline bundle input boundary tests
+        run: python3 scripts/visual/test-build-baseline-bundle-input-boundary.py -v
 
       - name: Baseline provenance tests
         run: python3 scripts/visual/test-validate-baseline-provenance.py -v
