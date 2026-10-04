@@ -11,6 +11,17 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
+
+
 FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 CONSISTENCY_TOLERANCE = Decimal("0.000001")
 EXIT_PASSED = 0
@@ -33,9 +44,12 @@ def parse_args() -> argparse.Namespace:
 
 def load_json(path: Path) -> Any:
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle, parse_float=Decimal)
-    except (OSError, json.JSONDecodeError) as exc:
+        return load_bounded_json_file(
+            path,
+            label="coverage summary",
+            parse_float=Decimal,
+        )
+    except BoundedJsonError as exc:
         raise ValidationError(f"cannot read {path}: {exc}") from exc
 
 

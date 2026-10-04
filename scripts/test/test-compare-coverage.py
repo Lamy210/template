@@ -11,6 +11,7 @@ COMPARE = ROOT / "scripts/test/compare-coverage.py"
 EXPORT = ROOT / "scripts/test/export-coverage.sh"
 PROFILE = "sha256:" + "a" * 64
 OTHER_PROFILE = "sha256:" + "b" * 64
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def summary(*, profile=PROFILE, covered=800, executable=1000, targets=None):
@@ -27,7 +28,33 @@ def summary(*, profile=PROFILE, covered=800, executable=1000, targets=None):
     }
 
 
+def write_oversized_json(path: Path, payload: object) -> None:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+
 class CompareCoverageTests(unittest.TestCase):
+    def run_compare_paths(self, baseline_path, current_path, max_regression="0.001"):
+        completed = subprocess.run(
+            [
+                "python3",
+                str(COMPARE),
+                "--baseline",
+                str(baseline_path),
+                "--current",
+                str(current_path),
+                "--max-regression",
+                max_regression,
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        payload = json.loads(completed.stdout) if completed.stdout.strip() else None
+        return completed, payload
+
     def run_compare(self, baseline, current, max_regression="0.001"):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
@@ -35,23 +62,11 @@ class CompareCoverageTests(unittest.TestCase):
             current_path = td / "current.json"
             baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
             current_path.write_text(json.dumps(current), encoding="utf-8")
-            completed = subprocess.run(
-                [
-                    "python3",
-                    str(COMPARE),
-                    "--baseline",
-                    str(baseline_path),
-                    "--current",
-                    str(current_path),
-                    "--max-regression",
-                    max_regression,
-                ],
-                text=True,
-                capture_output=True,
-                check=False,
+            return self.run_compare_paths(
+                baseline_path,
+                current_path,
+                max_regression=max_regression,
             )
-            payload = json.loads(completed.stdout) if completed.stdout.strip() else None
-            return completed, payload
 
     def test_equal_coverage_passes(self):
         completed, payload = self.run_compare(summary(), summary())
@@ -124,6 +139,66 @@ class CompareCoverageTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2)
         self.assertEqual(payload["status"], "invalid")
         self.assertIn("coveredLines", payload["error"])
+
+    def test_rejects_oversized_baseline(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            baseline_path = root / "baseline.json"
+            current_path = root / "current.json"
+            write_oversized_json(baseline_path, summary())
+            current_path.write_text(json.dumps(summary()), encoding="utf-8")
+
+            completed, payload = self.run_compare_paths(baseline_path, current_path)
+
+            self.assertEqual(2, completed.returncode)
+            self.assertEqual("invalid", payload["status"])
+            self.assertIn("JSON byte limit", payload["error"])
+
+    def test_rejects_oversized_current(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            baseline_path = root / "baseline.json"
+            current_path = root / "current.json"
+            baseline_path.write_text(json.dumps(summary()), encoding="utf-8")
+            write_oversized_json(current_path, summary())
+
+            completed, payload = self.run_compare_paths(baseline_path, current_path)
+
+            self.assertEqual(2, completed.returncode)
+            self.assertEqual("invalid", payload["status"])
+            self.assertIn("JSON byte limit", payload["error"])
+
+    def test_rejects_symlinked_baseline(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            baseline_path = root / "baseline.json"
+            baseline_target = root / "baseline-target.json"
+            current_path = root / "current.json"
+            baseline_target.write_text(json.dumps(summary()), encoding="utf-8")
+            baseline_path.symlink_to(baseline_target)
+            current_path.write_text(json.dumps(summary()), encoding="utf-8")
+
+            completed, payload = self.run_compare_paths(baseline_path, current_path)
+
+            self.assertEqual(2, completed.returncode)
+            self.assertEqual("invalid", payload["status"])
+            self.assertIn("non-symlink", payload["error"])
+
+    def test_rejects_symlinked_current(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            baseline_path = root / "baseline.json"
+            current_path = root / "current.json"
+            current_target = root / "current-target.json"
+            baseline_path.write_text(json.dumps(summary()), encoding="utf-8")
+            current_target.write_text(json.dumps(summary()), encoding="utf-8")
+            current_path.symlink_to(current_target)
+
+            completed, payload = self.run_compare_paths(baseline_path, current_path)
+
+            self.assertEqual(2, completed.returncode)
+            self.assertEqual("invalid", payload["status"])
+            self.assertIn("non-symlink", payload["error"])
 
 
 class ExportCoverageTests(unittest.TestCase):
