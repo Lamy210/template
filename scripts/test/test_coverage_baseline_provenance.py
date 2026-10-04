@@ -20,6 +20,7 @@ BUILD_CLI = ROOT / "scripts/test/build-coverage-baseline-provenance.py"
 SHA = "0123456789abcdef0123456789abcdef01234567"
 FINGERPRINT = "sha256:" + "a" * 64
 ARTIFACT_DIGEST = "sha256:" + "b" * 64
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def resolver_metadata() -> dict[str, object]:
@@ -66,6 +67,13 @@ def summary() -> dict[str, object]:
         },
         "targets": {},
     }
+
+
+def write_oversized_json(path: Path, payload: object) -> None:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
 
 
 class CoverageBaselineBuilderTests(unittest.TestCase):
@@ -147,6 +155,40 @@ class CoverageBaselineProvenanceTests(unittest.TestCase):
             expected_artifact="coverage-baseline",
         )
 
+    def run_validate_cli(self, root: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(VALIDATE_CLI),
+                "--resolver-metadata",
+                str(root / "resolver.json"),
+                "--baseline-provenance",
+                str(root / "provenance.json"),
+                "--baseline-summary",
+                str(root / "summary.json"),
+                "--expected-repository",
+                "Lamy210/template",
+                "--expected-workflow",
+                "tests.yml",
+                "--expected-artifact",
+                "coverage-baseline",
+            ],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def write_cli_inputs(self, root: Path) -> dict[str, tuple[Path, dict[str, object]]]:
+        inputs = {
+            "resolver metadata": (root / "resolver.json", resolver_metadata()),
+            "coverage baseline provenance": (root / "provenance.json", provenance()),
+            "coverage baseline summary": (root / "summary.json", summary()),
+        }
+        for path, payload in inputs.values():
+            path.write_text(json.dumps(payload), encoding="utf-8")
+        return inputs
+
     def test_accepts_exact_attempt_bound_provenance(self) -> None:
         result = self.validate()
 
@@ -222,39 +264,40 @@ class CoverageBaselineProvenanceTests(unittest.TestCase):
     def test_cli_accepts_exact_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            resolver_path = root / "resolver.json"
-            provenance_path = root / "provenance.json"
-            summary_path = root / "summary.json"
-            resolver_path.write_text(json.dumps(resolver_metadata()), encoding="utf-8")
-            provenance_path.write_text(json.dumps(provenance()), encoding="utf-8")
-            summary_path.write_text(json.dumps(summary()), encoding="utf-8")
-
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(VALIDATE_CLI),
-                    "--resolver-metadata",
-                    str(resolver_path),
-                    "--baseline-provenance",
-                    str(provenance_path),
-                    "--baseline-summary",
-                    str(summary_path),
-                    "--expected-repository",
-                    "Lamy210/template",
-                    "--expected-workflow",
-                    "tests.yml",
-                    "--expected-artifact",
-                    "coverage-baseline",
-                ],
-                cwd=temporary_directory,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            self.write_cli_inputs(root)
+            completed = self.run_validate_cli(root)
 
         self.assertEqual(0, completed.returncode, completed.stderr)
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["runAttempt"], 2)
+
+    def test_cli_rejects_oversized_json_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            inputs = self.write_cli_inputs(root)
+
+            for label, (path, payload) in inputs.items():
+                with self.subTest(label=label):
+                    self.write_cli_inputs(root)
+                    write_oversized_json(path, payload)
+                    completed = self.run_validate_cli(root)
+                    self.assertEqual(1, completed.returncode)
+                    self.assertIn("JSON byte limit", completed.stderr)
+
+    def test_cli_rejects_symlinked_json_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            inputs = self.write_cli_inputs(root)
+
+            for label, (path, _payload) in inputs.items():
+                with self.subTest(label=label):
+                    self.write_cli_inputs(root)
+                    target = path.with_name(path.stem + "-target.json")
+                    path.replace(target)
+                    path.symlink_to(target)
+                    completed = self.run_validate_cli(root)
+                    self.assertEqual(1, completed.returncode)
+                    self.assertIn("non-symlink", completed.stderr)
 
 
 if __name__ == "__main__":
