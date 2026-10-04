@@ -11,6 +11,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 from scripts.test.coverage_baseline_provenance import (  # noqa: E402
     ValidationError,
     validate_coverage_baseline_provenance,
@@ -19,8 +23,8 @@ from scripts.test.coverage_baseline_provenance import (  # noqa: E402
 
 def load_json(path: Path, label: str):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        return load_bounded_json_file(path, label=label)
+    except BoundedJsonError as error:
         raise ValidationError(f"failed to read {label}: {error}") from error
 
 
