@@ -2,16 +2,24 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
-from release_environment import validate_release_environment
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
+from scripts.release.release_environment import (  # noqa: E402
+    validate_release_environment,
+)
 
 
 def _load_json(path: Path) -> object:
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    return load_bounded_json_file(path, label="release Environment audit input")
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,7 +37,7 @@ def main() -> int:
     try:
         environment = _load_json(args.environment)
         policies = _load_json(args.policies)
-    except (OSError, json.JSONDecodeError) as error:
+    except BoundedJsonError as error:
         print(f"unable to read release Environment audit input: {error}", file=sys.stderr)
         return 2
 
