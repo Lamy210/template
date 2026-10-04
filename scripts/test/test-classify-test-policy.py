@@ -1,41 +1,75 @@
 import json
 import os
+from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CLASSIFIER = ROOT / "scripts/test/classify-test-policy.py"
+MAX_JSON_BYTES = 2 * 1024 * 1024
+
+
+def policy_payload(**overrides):
+    payload = {
+        "adapter": "",
+        "integrationEnabled": False,
+        "integrationRequired": False,
+        "coverageEnabled": False,
+        "coverageRequired": False,
+        "e2eEnabled": False,
+        "e2eRequired": False,
+        "visualEnabled": False,
+        "visualRequired": False,
+        "visualBootstrap": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def write_oversized_json(path: Path, payload: object) -> None:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+
+def read_github_output(path: Path) -> dict[str, str]:
+    return dict(
+        line.split("=", 1)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line
+    )
 
 
 class TestPolicyClassifierTests(unittest.TestCase):
-    def run_classifier(self, **overrides):
-        payload = {
-            "adapter": "",
-            "integrationEnabled": False,
-            "integrationRequired": False,
-            "coverageEnabled": False,
-            "coverageRequired": False,
-            "e2eEnabled": False,
-            "e2eRequired": False,
-            "visualEnabled": False,
-            "visualRequired": False,
-            "visualBootstrap": False,
-        }
-        payload.update(overrides)
+    def run_classifier_path(
+        self,
+        input_path: Path,
+        *,
+        github_output: Path | None = None,
+    ):
+        command = [sys.executable, str(CLASSIFIER), "--input", str(input_path)]
+        if github_output is not None:
+            command.extend(["--github-output", str(github_output)])
+        completed = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        output = json.loads(completed.stdout) if completed.stdout.strip() else None
+        return completed, output
 
+    def run_classifier(self, **overrides):
         with tempfile.TemporaryDirectory() as temporary:
             input_path = Path(temporary) / "input.json"
-            input_path.write_text(json.dumps(payload), encoding="utf-8")
-            completed = subprocess.run(
-                ["python3", str(CLASSIFIER), "--input", str(input_path)],
-                text=True,
-                capture_output=True,
-                check=False,
+            input_path.write_text(
+                json.dumps(policy_payload(**overrides)),
+                encoding="utf-8",
             )
-            output = json.loads(completed.stdout) if completed.stdout.strip() else None
-            return completed, output
+            return self.run_classifier_path(input_path)
 
     def run_classifier_from_env(self, **overrides):
         env = os.environ.copy()
@@ -56,7 +90,7 @@ class TestPolicyClassifierTests(unittest.TestCase):
         env.update(overrides)
 
         completed = subprocess.run(
-            ["python3", str(CLASSIFIER), "--from-env"],
+            [sys.executable, str(CLASSIFIER), "--from-env"],
             text=True,
             capture_output=True,
             check=False,
@@ -64,6 +98,24 @@ class TestPolicyClassifierTests(unittest.TestCase):
         )
         output = json.loads(completed.stdout) if completed.stdout.strip() else None
         return completed, output
+
+    def assert_fail_closed_github_output(self, path: Path) -> None:
+        values = read_github_output(path)
+        self.assertEqual("false", values["configured"])
+        self.assertEqual("true", values["configuration_error"])
+        for name in (
+            "integration_enabled",
+            "integration_required",
+            "coverage_enabled",
+            "coverage_required",
+            "e2e_enabled",
+            "e2e_required",
+            "visual_enabled",
+            "visual_required",
+            "visual_bootstrap",
+        ):
+            with self.subTest(output=name):
+                self.assertEqual("false", values[name])
 
     def test_unconfigured_template_is_explicit(self):
         completed, output = self.run_classifier()
@@ -185,6 +237,58 @@ class TestPolicyClassifierTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2)
         self.assertTrue(output["configurationError"])
         self.assertIn("adapter must be xcode, swiftpm, or empty", output["errors"])
+
+    def test_cli_rejects_oversized_input_and_publishes_fail_closed_outputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            input_path = root / "input.json"
+            github_output = root / "github-output.txt"
+            write_oversized_json(
+                input_path,
+                policy_payload(
+                    adapter="xcode",
+                    coverageEnabled=True,
+                    coverageRequired=True,
+                ),
+            )
+
+            completed, output = self.run_classifier_path(
+                input_path,
+                github_output=github_output,
+            )
+
+            self.assertEqual(2, completed.returncode)
+            self.assertTrue(output["configurationError"])
+            self.assertIn("JSON byte limit", output["errors"][0])
+            self.assert_fail_closed_github_output(github_output)
+
+    def test_cli_rejects_symlinked_input_and_publishes_fail_closed_outputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            input_path = root / "input.json"
+            target_path = root / "input-target.json"
+            github_output = root / "github-output.txt"
+            target_path.write_text(
+                json.dumps(
+                    policy_payload(
+                        adapter="xcode",
+                        coverageEnabled=True,
+                        coverageRequired=True,
+                    )
+                ),
+                encoding="utf-8",
+            )
+            input_path.symlink_to(target_path)
+
+            completed, output = self.run_classifier_path(
+                input_path,
+                github_output=github_output,
+            )
+
+            self.assertEqual(2, completed.returncode)
+            self.assertTrue(output["configurationError"])
+            self.assertIn("non-symlink", output["errors"][0])
+            self.assert_fail_closed_github_output(github_output)
 
 
 if __name__ == "__main__":
