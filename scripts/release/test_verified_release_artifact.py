@@ -23,6 +23,7 @@ ARTIFACT_ID = 7002
 ARTIFACT_SIZE = 4096
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts/release/verify-verified-release-artifact.py"
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def artifact_name(attempt: int = PUBLISHER_RUN_ATTEMPT) -> str:
@@ -45,6 +46,13 @@ def artifact_metadata(*, name: str | None = None) -> dict[str, object]:
     }
 
 
+def write_oversized_json(path: Path, payload: object) -> None:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+
 class VerifiedReleaseArtifactTests(unittest.TestCase):
     def verify(self, document: object, *, name: str | None = None) -> list[str]:
         return verify_verified_release_artifact(
@@ -58,8 +66,60 @@ class VerifiedReleaseArtifactTests(unittest.TestCase):
             repository_id=REPOSITORY_ID,
         )
 
+    def run_metadata_cli(self, metadata_path: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(CLI),
+                "--metadata",
+                str(metadata_path),
+                "--artifact-id",
+                str(ARTIFACT_ID),
+                "--artifact-name",
+                artifact_name(),
+                "--artifact-digest",
+                ARTIFACT_DIGEST,
+                "--publisher-run-id",
+                str(PUBLISHER_RUN_ID),
+                "--publisher-run-attempt",
+                str(PUBLISHER_RUN_ATTEMPT),
+                "--publisher-sha",
+                PUBLISHER_SHA,
+                "--repository-id",
+                str(REPOSITORY_ID),
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
     def test_accepts_exact_current_publisher_attempt_artifact(self) -> None:
         self.assertEqual([], self.verify(artifact_metadata()))
+
+    def test_cli_rejects_oversized_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata_path = root / "artifact.json"
+            write_oversized_json(metadata_path, artifact_metadata())
+
+            result = self.run_metadata_cli(metadata_path)
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("JSON byte limit", result.stderr)
+
+    def test_cli_rejects_symlinked_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata_path = root / "artifact.json"
+            target_path = root / "artifact-target.json"
+            target_path.write_text(json.dumps(artifact_metadata()), encoding="utf-8")
+            metadata_path.symlink_to(target_path)
+
+            result = self.run_metadata_cli(metadata_path)
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("non-symlink", result.stderr)
 
     def test_rejects_previous_attempt_name(self) -> None:
         previous = artifact_name(PUBLISHER_RUN_ATTEMPT - 1)
