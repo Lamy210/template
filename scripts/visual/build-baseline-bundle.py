@@ -13,6 +13,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
+
 CONTROLLED_KEYS = {
     "runnerFamily",
     "architecture",
@@ -38,8 +47,8 @@ CASE_ID_RE = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}")
 
 def _load_json(path: Path, label: str) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = load_bounded_json_file(path, label=label)
+    except BoundedJsonError as exc:
         raise ValueError(f"cannot read {label}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{label} must be a JSON object")
@@ -230,8 +239,8 @@ def build_bundle(
     previous_baseline_reference: str | None,
 ) -> None:
     repo_root = repo_root.resolve()
-    manifest_path = manifest_path.resolve()
-    current_profile_path = current_profile_path.resolve()
+    manifest_path = manifest_path.absolute()
+    current_profile_path = current_profile_path.absolute()
     if output_root.is_symlink():
         raise ValueError("output directory must not be a symlink")
     output_root = output_root.resolve()
