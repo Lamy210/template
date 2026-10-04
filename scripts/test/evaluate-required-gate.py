@@ -9,6 +9,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
+
+
 EXPECTED_SUBSYSTEMS = ("Unit", "Integration", "E2E", "Visual", "Coverage")
 VALID_STATUSES = {"success", "failure", "not-applicable", "disabled"}
 VALID_CLASSIFICATIONS = {"applicable", "not-applicable"}
@@ -30,8 +41,8 @@ def parse_args() -> argparse.Namespace:
 
 def load_payload(path: Path) -> Any:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        return load_bounded_json_file(path, label="input")
+    except BoundedJsonError as exc:
         raise InputError(f"cannot read input: {exc}") from exc
 
 
