@@ -274,28 +274,42 @@ class CoverageBaselineProvenanceTests(unittest.TestCase):
     def test_cli_rejects_oversized_json_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            inputs = self.write_cli_inputs(root)
+            labels = (
+                "resolver metadata",
+                "coverage baseline provenance",
+                "coverage baseline summary",
+            )
 
-            for label, (path, payload) in inputs.items():
+            for index, label in enumerate(labels):
                 with self.subTest(label=label):
-                    self.write_cli_inputs(root)
+                    case_root = root / f"case-{index}"
+                    case_root.mkdir()
+                    inputs = self.write_cli_inputs(case_root)
+                    path, payload = inputs[label]
                     write_oversized_json(path, payload)
-                    completed = self.run_validate_cli(root)
+                    completed = self.run_validate_cli(case_root)
                     self.assertEqual(1, completed.returncode)
                     self.assertIn("JSON byte limit", completed.stderr)
 
     def test_cli_rejects_symlinked_json_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            inputs = self.write_cli_inputs(root)
+            labels = (
+                "resolver metadata",
+                "coverage baseline provenance",
+                "coverage baseline summary",
+            )
 
-            for label, (path, _payload) in inputs.items():
+            for index, label in enumerate(labels):
                 with self.subTest(label=label):
-                    self.write_cli_inputs(root)
+                    case_root = root / f"case-{index}"
+                    case_root.mkdir()
+                    inputs = self.write_cli_inputs(case_root)
+                    path, _payload = inputs[label]
                     target = path.with_name(path.stem + "-target.json")
                     path.replace(target)
                     path.symlink_to(target)
-                    completed = self.run_validate_cli(root)
+                    completed = self.run_validate_cli(case_root)
                     self.assertEqual(1, completed.returncode)
                     self.assertIn("non-symlink", completed.stderr)
 
