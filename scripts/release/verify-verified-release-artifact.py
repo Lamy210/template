@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from pathlib import Path
 import sys
@@ -11,7 +10,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.release.verified_release_artifact import verify_verified_release_artifact
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
+from scripts.release.verified_release_artifact import (  # noqa: E402
+    verify_verified_release_artifact,
+)
 
 
 def write_positive_integer_output(path: Path, value: int) -> None:
@@ -42,9 +47,8 @@ def write_positive_integer_output(path: Path, value: int) -> None:
 
 def load_json(path: Path) -> object:
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except (OSError, json.JSONDecodeError) as error:
+        return load_bounded_json_file(path, label="verified release artifact metadata")
+    except BoundedJsonError as error:
         raise SystemExit(
             f"failed to read verified release artifact metadata {path}: {error}"
         ) from error
