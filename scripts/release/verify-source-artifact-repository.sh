@@ -130,10 +130,10 @@ artifact_size="$(wc -c <"${artifact_json}")"
 if ((artifact_size > MAX_ARTIFACT_API_JSON_BYTES)); then
   die "${EXIT_INFRA}" 'source Artifact API metadata is malformed'
 fi
-if ((${capture_status[0]} != 0)); then
+if ((capture_status[0] != 0)); then
   die "${EXIT_INFRA}" 'failed to query exact source Artifact metadata'
 fi
-if ((${capture_status[1]} != 0)); then
+if ((capture_status[1] != 0)); then
   die "${EXIT_INFRA}" 'failed to capture source Artifact API metadata'
 fi
 
