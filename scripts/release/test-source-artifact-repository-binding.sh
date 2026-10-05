@@ -34,6 +34,29 @@ case "${scenario}" in
 esac
 
 if [[ "${args}" == "api repos/Lamy210/template/actions/artifacts/7001" ]]; then
+  if [[ "${scenario}" == "oversized-api-response" ]]; then
+    python3 - "${artifact_id}" "${run_id}" "${sha}" "${repository_id}" "${head_repository_id}" <<'PY'
+import json
+import sys
+
+artifact_id, run_id, sha, repository_id, head_repository_id = sys.argv[1:]
+payload = {
+    "id": int(artifact_id),
+    "workflow_run": {
+        "id": int(run_id),
+        "head_sha": sha,
+        "repository_id": int(repository_id),
+        "head_repository_id": int(head_repository_id),
+    },
+}
+encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+limit = 2 * 1024 * 1024
+if len(encoded) > limit:
+    raise SystemExit("artifact API fixture unexpectedly exceeds JSON byte limit")
+sys.stdout.buffer.write(encoded + b" " * (limit + 1 - len(encoded)))
+PY
+    exit 0
+  fi
   printf '{"id":%s,"workflow_run":{"id":%s,"head_sha":"%s","repository_id":%s,"head_repository_id":%s}}' \
     "${artifact_id}" "${run_id}" "${sha}" "${repository_id}" "${head_repository_id}"
   exit 0
@@ -109,5 +132,10 @@ if ((boundary_failures > 0)); then
   printf 'source artifact metadata boundary regressions failed: %s\n' "${boundary_failures}" >&2
   exit 1
 fi
+
+if ! assert_status oversized-api-response 3; then
+  exit 1
+fi
+grep -Fq 'source Artifact API metadata is malformed' "${TEMP_ROOT}/oversized-api-response.stderr"
 
 printf 'source artifact repository binding tests passed\n'
