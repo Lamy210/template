@@ -47,6 +47,7 @@ chmod +x "${STUB_BIN}/gh"
 assert_status() {
   local scenario="$1"
   local expected_status="$2"
+  local metadata_path="${3:-${source_metadata}}"
   set +e
   PATH="${STUB_BIN}:${PATH}" \
     GH_STUB_SCENARIO="${scenario}" \
@@ -54,7 +55,7 @@ assert_status() {
     bash "${VERIFIER}" \
     --repository Lamy210/template \
     --repository-id 1367784801 \
-    --source-metadata "${source_metadata}" \
+    --source-metadata "${metadata_path}" \
     >"${TEMP_ROOT}/${scenario}.stdout" \
     2>"${TEMP_ROOT}/${scenario}.stderr"
   local status=$?
@@ -66,6 +67,13 @@ assert_status() {
   fi
 }
 
+assert_boundary_rejected() {
+  local scenario="$1"
+  local metadata_path="$2"
+  assert_status "${scenario}" 3 "${metadata_path}" &&
+    grep -Fq 'source artifact metadata is malformed' "${TEMP_ROOT}/${scenario}.stderr"
+}
+
 assert_status success 0
 assert_status wrong-artifact-id 4
 assert_status wrong-run-id 4
@@ -74,4 +82,32 @@ assert_status wrong-repository-id 4
 assert_status wrong-head-repository-id 4
 assert_status boolean-repository-id 3
 assert_status boolean-head-repository-id 3
+
+oversized_metadata="${TEMP_ROOT}/source-artifact-metadata-oversized.json"
+python3 - "${source_metadata}" "${oversized_metadata}" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_bytes()
+limit = 2 * 1024 * 1024
+if len(source) > limit:
+    raise SystemExit("source metadata fixture unexpectedly exceeds JSON byte limit")
+Path(sys.argv[2]).write_bytes(source + b" " * (limit + 1 - len(source)))
+PY
+
+symlinked_metadata="${TEMP_ROOT}/source-artifact-metadata-symlink.json"
+ln -s "${source_metadata}" "${symlinked_metadata}"
+
+boundary_failures=0
+if ! assert_boundary_rejected oversized-source-metadata "${oversized_metadata}"; then
+  ((boundary_failures += 1))
+fi
+if ! assert_boundary_rejected symlinked-source-metadata "${symlinked_metadata}"; then
+  ((boundary_failures += 1))
+fi
+if ((boundary_failures > 0)); then
+  printf 'source artifact metadata boundary regressions failed: %s\n' "${boundary_failures}" >&2
+  exit 1
+fi
+
 printf 'source artifact repository binding tests passed\n'
