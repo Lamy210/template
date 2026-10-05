@@ -9,6 +9,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.ci.validate_rulesets import validate_main_solo
+from scripts.common.bounded_json import BoundedJsonError, load_bounded_json_file
 from scripts.common.repository_name import is_canonical_repository_name
 
 
@@ -85,14 +86,12 @@ def _load_json(path: str) -> object:
             ) from error
 
     try:
-        with Path(path).open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except OSError as error:
+        return load_bounded_json_file(
+            Path(path),
+            label="live main Ruleset JSON",
+        )
+    except BoundedJsonError as error:
         raise SystemExit(f"failed to read {path}: {error}") from error
-    except json.JSONDecodeError as error:
-        raise SystemExit(
-            f"{path}: invalid JSON: {error.msg} at line {error.lineno} column {error.colno}"
-        ) from error
 
 
 def main(argv: list[str] | None = None) -> int:
