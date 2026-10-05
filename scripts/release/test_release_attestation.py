@@ -22,6 +22,7 @@ SOURCE_SHA = "0123456789abcdef0123456789abcdef01234567"
 PUBLISHER_SHA = "1123456789abcdef0123456789abcdef01234567"
 SOURCE_ARTIFACT_DIGEST = "sha256:" + "a" * 64
 ARCHIVE_SHA256 = "sha256:" + "b" * 64
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def expected_release(dmg_path: Path) -> ExpectedRelease:
@@ -38,6 +39,37 @@ def expected_release(dmg_path: Path) -> ExpectedRelease:
         publisher_sha=PUBLISHER_SHA,
         dmg_path=dmg_path,
     )
+
+
+def verifier_command(metadata: Path, dmg: Path) -> list[str]:
+    return [
+        sys.executable,
+        str(VERIFY_CLI),
+        "--metadata",
+        str(metadata),
+        "--dmg",
+        str(dmg),
+        "--repository",
+        "example/MyApp",
+        "--source-run-id",
+        "123456789",
+        "--source-run-attempt",
+        "2",
+        "--source-sha",
+        SOURCE_SHA,
+        "--source-tag",
+        "v1.2.3",
+        "--source-artifact-id",
+        "7001",
+        "--source-artifact-digest",
+        SOURCE_ARTIFACT_DIGEST,
+        "--archive-sha256",
+        ARCHIVE_SHA256,
+        "--publisher-run-id",
+        "99887766",
+        "--publisher-sha",
+        PUBLISHER_SHA,
+    ]
 
 
 class ReleaseAttestationTests(unittest.TestCase):
@@ -145,34 +177,7 @@ class ReleaseAttestationTests(unittest.TestCase):
             )
 
             result = subprocess.run(
-                [
-                    sys.executable,
-                    str(VERIFY_CLI),
-                    "--metadata",
-                    str(metadata),
-                    "--dmg",
-                    str(dmg),
-                    "--repository",
-                    "example/MyApp",
-                    "--source-run-id",
-                    "123456789",
-                    "--source-run-attempt",
-                    "2",
-                    "--source-sha",
-                    SOURCE_SHA,
-                    "--source-tag",
-                    "v1.2.3",
-                    "--source-artifact-id",
-                    "7001",
-                    "--source-artifact-digest",
-                    SOURCE_ARTIFACT_DIGEST,
-                    "--archive-sha256",
-                    ARCHIVE_SHA256,
-                    "--publisher-run-id",
-                    "99887766",
-                    "--publisher-sha",
-                    PUBLISHER_SHA,
-                ],
+                verifier_command(metadata, dmg),
                 cwd=REPO_ROOT,
                 text=True,
                 capture_output=True,
@@ -181,6 +186,53 @@ class ReleaseAttestationTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertIn("publisherSHA", result.stdout)
+
+    def test_verifier_cli_rejects_oversized_final_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            dmg = root / "MyApp-v1.2.3.dmg"
+            metadata = root / "release-provenance.json"
+            dmg.write_bytes(b"stable-final-dmg\n")
+            document = build_release_attestation(expected_release(dmg))
+            encoded = json.dumps(document, separators=(",", ":")).encode("utf-8")
+            self.assertLess(len(encoded), MAX_JSON_BYTES)
+            metadata.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+            result = subprocess.run(
+                verifier_command(metadata, dmg),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("JSON byte limit", result.stderr)
+
+    def test_verifier_cli_rejects_symlinked_final_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            dmg = root / "MyApp-v1.2.3.dmg"
+            target = root / "release-provenance-target.json"
+            metadata = root / "release-provenance.json"
+            dmg.write_bytes(b"stable-final-dmg\n")
+            document = build_release_attestation(expected_release(dmg))
+            target.write_text(
+                json.dumps(document, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            metadata.symlink_to(target)
+
+            result = subprocess.run(
+                verifier_command(metadata, dmg),
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("non-symlink", result.stderr)
 
     def test_writer_is_deterministic_for_same_release_facts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
