@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import Callable
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 
 RUNTIME_ONLY_FIELDS = {
     "id",
@@ -62,7 +70,6 @@ BRANCH_ONLY_RELEASE_TAG_RULES = {
     "pull_request",
     "required_status_checks",
 }
-REPO_ROOT = Path(__file__).resolve().parents[2]
 CANONICAL_PROFILES = (
     (REPO_ROOT / "rulesets/main-solo.json", "main-solo"),
     (REPO_ROOT / "rulesets/release-tags.json", "release-tags"),
@@ -351,10 +358,9 @@ def validate_file(path: Path, profile: str) -> list[str]:
         return [f"{path}: file not found"]
 
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            document = json.load(handle)
-    except json.JSONDecodeError as error:
-        return [f"{path}: invalid JSON: {error.msg} at line {error.lineno} column {error.colno}"]
+        document = load_bounded_json_file(path, label="ruleset JSON")
+    except BoundedJsonError as error:
+        return [f"{path}: invalid JSON input: {error}"]
 
     validators: dict[str, Callable[[dict], list[str]]] = {
         "main-solo": validate_main_solo,
