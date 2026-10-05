@@ -20,6 +20,7 @@ SOURCE_ARTIFACT_ID = 7001
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VERIFY_CLI = REPO_ROOT / "scripts/release/verify-validated-release-metadata.py"
 ARTIFACT_DIGEST = "sha256:" + "b" * 64
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def expected(archive_digest: str) -> ExpectedValidatedRelease:
@@ -71,6 +72,55 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
         archive.write_bytes(payload)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
         return archive, digest
+
+    def run_cli(
+        self,
+        archive: Path,
+        digest: str,
+        metadata_path: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(VERIFY_CLI),
+                "--metadata",
+                str(metadata_path),
+                "--archive",
+                str(archive),
+                "--repository",
+                "example/MyApp",
+                "--source-run-id",
+                "123456789",
+                "--source-run-attempt",
+                "2",
+                "--source-artifact-id",
+                str(SOURCE_ARTIFACT_ID),
+                "--source-artifact-digest",
+                ARTIFACT_DIGEST,
+                "--source-sha",
+                SOURCE_SHA,
+                "--source-tag",
+                "v1.2.3",
+                "--source-version",
+                "1.2.3",
+                "--publisher-sha",
+                PUBLISHER_SHA,
+                "--publisher-run-id",
+                str(PUBLISHER_RUN_ID),
+                "--publisher-run-attempt",
+                str(PUBLISHER_RUN_ATTEMPT),
+                "--archive-sha256",
+                digest,
+                "--app-basename",
+                "MyApp.app",
+                "--bundle-id",
+                "com.example.MyApp",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
     def test_valid_metadata_and_archive_have_no_errors(self) -> None:
         archive, digest = self.fixture()
@@ -171,51 +221,37 @@ class ValidatedReleaseMetadataTests(unittest.TestCase):
                 json.dumps(metadata(digest)) + "\n",
                 encoding="utf-8",
             )
-
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(VERIFY_CLI),
-                    "--metadata",
-                    str(metadata_path),
-                    "--archive",
-                    str(archive),
-                    "--repository",
-                    "example/MyApp",
-                    "--source-run-id",
-                    "123456789",
-                    "--source-run-attempt",
-                    "2",
-                    "--source-artifact-id",
-                    str(SOURCE_ARTIFACT_ID),
-                    "--source-artifact-digest",
-                    ARTIFACT_DIGEST,
-                    "--source-sha",
-                    SOURCE_SHA,
-                    "--source-tag",
-                    "v1.2.3",
-                    "--source-version",
-                    "1.2.3",
-                    "--publisher-sha",
-                    PUBLISHER_SHA,
-                    "--publisher-run-id",
-                    str(PUBLISHER_RUN_ID),
-                    "--publisher-run-attempt",
-                    str(PUBLISHER_RUN_ATTEMPT),
-                    "--archive-sha256",
-                    digest,
-                    "--app-basename",
-                    "MyApp.app",
-                    "--bundle-id",
-                    "com.example.MyApp",
-                ],
-                cwd=REPO_ROOT,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            result = self.run_cli(archive, digest, metadata_path)
 
         self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_verifier_cli_rejects_oversized_metadata(self) -> None:
+        archive, digest = self.fixture()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            metadata_path = root / "validated-release-metadata.json"
+            encoded = json.dumps(metadata(digest), separators=(",", ":")).encode("utf-8")
+            self.assertLess(len(encoded), MAX_JSON_BYTES)
+            metadata_path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+            result = self.run_cli(archive, digest, metadata_path)
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("failed to read validated release metadata", result.stderr)
+
+    def test_verifier_cli_rejects_symlinked_metadata(self) -> None:
+        archive, digest = self.fixture()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            target = root / "validated-release-metadata-target.json"
+            target.write_text(json.dumps(metadata(digest)) + "\n", encoding="utf-8")
+            metadata_path = root / "validated-release-metadata.json"
+            metadata_path.symlink_to(target)
+
+            result = self.run_cli(archive, digest, metadata_path)
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("failed to read validated release metadata", result.stderr)
 
     def test_rejects_source_artifact_identity_drift(self) -> None:
         archive, digest = self.fixture()
