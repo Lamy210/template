@@ -14,6 +14,9 @@ from scripts.ci.validate_rulesets import (
 )
 
 
+MAX_JSON_BYTES = 2 * 1024 * 1024
+
+
 def valid_main_solo() -> dict:
     return {
         "name": "Solo default branch",
@@ -286,6 +289,29 @@ class FileValidationTests(unittest.TestCase):
             errors = validate_file(path, "main-solo")
 
         self.assertTrue(any("invalid JSON" in error for error in errors))
+
+    def test_oversized_json_returns_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "ruleset.json"
+            encoded = json.dumps(valid_main_solo(), separators=(",", ":")).encode("utf-8")
+            self.assertLess(len(encoded), MAX_JSON_BYTES)
+            path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+            errors = validate_file(path, "main-solo")
+
+        self.assertTrue(any("JSON byte limit" in error for error in errors), errors)
+
+    def test_symlinked_json_returns_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            target = root / "ruleset-target.json"
+            target.write_text(json.dumps(valid_main_solo()), encoding="utf-8")
+            path = root / "ruleset.json"
+            path.symlink_to(target)
+
+            errors = validate_file(path, "main-solo")
+
+        self.assertTrue(any("non-symlink" in error for error in errors), errors)
 
     def test_unknown_profile_returns_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
