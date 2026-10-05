@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import sys
 
@@ -11,6 +10,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 from scripts.release.validated_release_metadata import (  # noqa: E402
     ExpectedValidatedRelease,
     verify_validated_release_metadata,
@@ -19,9 +22,8 @@ from scripts.release.validated_release_metadata import (  # noqa: E402
 
 def load_json(path: Path) -> object:
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except (OSError, json.JSONDecodeError) as error:
+        return load_bounded_json_file(path, label="validated release metadata")
+    except BoundedJsonError as error:
         raise SystemExit(f"failed to read validated release metadata {path}: {error}") from error
 
 
