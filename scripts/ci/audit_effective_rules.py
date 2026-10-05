@@ -2,9 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
+import sys
 from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.bounded_json import (  # noqa: E402
+    BoundedJsonError,
+    load_bounded_json_file,
+)
 
 
 CANONICAL_CHECKS = {
@@ -173,8 +183,10 @@ def _flatten_payload(payload: object) -> object:
 def _load_payload(path: str) -> object:
     if path == "-":
         return json.load(sys.stdin)
-    with Path(path).open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    return load_bounded_json_file(
+        Path(path),
+        label="effective rules JSON",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -191,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         payload = _flatten_payload(_load_payload(args.path))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, json.JSONDecodeError, BoundedJsonError) as error:
         print(f"unable to read effective rules JSON: {error}", file=sys.stderr)
         return 2
 
