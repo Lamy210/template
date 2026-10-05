@@ -9,6 +9,7 @@ source "${script_dir}/../common/repository-name.sh"
 readonly EXIT_USAGE=2
 readonly EXIT_INFRA=3
 readonly EXIT_REJECTED=4
+readonly MAX_ARTIFACT_API_JSON_BYTES=$((2 * 1024 * 1024))
 
 usage() {
   cat >&2 <<'EOF'
@@ -66,7 +67,9 @@ repository_id="${repository_id_number}"
 [[ -f "${source_metadata}" ]] || die "${EXIT_USAGE}" '--source-metadata must be an existing file'
 [[ -n "${GH_TOKEN:-}" ]] || die "${EXIT_USAGE}" 'GH_TOKEN is required'
 command -v gh >/dev/null 2>&1 || die "${EXIT_USAGE}" 'gh is required'
+command -v head >/dev/null 2>&1 || die "${EXIT_USAGE}" 'head is required'
 command -v python3 >/dev/null 2>&1 || die "${EXIT_USAGE}" 'python3 is required'
+command -v wc >/dev/null 2>&1 || die "${EXIT_USAGE}" 'wc is required'
 
 if identity="$(
   python3 - "${source_metadata}" "${repo_root}" <<'PY'
@@ -117,24 +120,45 @@ IFS=$'\t' read -r artifact_id run_id source_sha <<<"${identity}"
 work_root="$(mktemp -d)"
 trap 'rm -rf "${work_root}"' EXIT
 artifact_json="${work_root}/artifact.json"
-if ! gh api "repos/${repository}/actions/artifacts/${artifact_id}" >"${artifact_json}"; then
+set +e
+gh api "repos/${repository}/actions/artifacts/${artifact_id}" |
+  head -c "$((MAX_ARTIFACT_API_JSON_BYTES + 1))" >"${artifact_json}"
+capture_status=("${PIPESTATUS[@]}")
+set -e
+
+artifact_size="$(wc -c <"${artifact_json}")"
+if ((artifact_size > MAX_ARTIFACT_API_JSON_BYTES)); then
+  die "${EXIT_INFRA}" 'source Artifact API metadata is malformed'
+fi
+if ((${capture_status[0]} != 0)); then
   die "${EXIT_INFRA}" 'failed to query exact source Artifact metadata'
 fi
+if ((${capture_status[1]} != 0)); then
+  die "${EXIT_INFRA}" 'failed to capture source Artifact API metadata'
+fi
 
-if python3 - "${artifact_json}" "${artifact_id}" "${run_id}" "${source_sha}" "${repository_id}" <<'PY'
-import json
+if python3 - "${artifact_json}" "${artifact_id}" "${run_id}" "${source_sha}" "${repository_id}" "${repo_root}" <<'PY'
+from pathlib import Path
 import re
 import sys
 
-path, artifact_id_text, run_id_text, expected_sha, repository_id_text = sys.argv[1:]
+path, artifact_id_text, run_id_text, expected_sha, repository_id_text, repo_root_text = sys.argv[1:]
+repo_root = Path(repo_root_text)
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+from scripts.common.bounded_json import BoundedJsonError, load_bounded_json_file
+
 expected_artifact_id = int(artifact_id_text)
 expected_run_id = int(run_id_text)
 expected_repository_id = int(repository_id_text)
 
 try:
-    with open(path, encoding="utf-8") as handle:
-        artifact = json.load(handle)
-except (OSError, json.JSONDecodeError) as error:
+    artifact = load_bounded_json_file(
+        Path(path),
+        label="source Artifact API metadata",
+    )
+except BoundedJsonError as error:
     print(f"Artifact API response is unreadable: {error}", file=sys.stderr)
     raise SystemExit(1)
 
