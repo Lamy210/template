@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/../.." && pwd)"
 # shellcheck source=scripts/common/repository-name.sh
 source "${script_dir}/../common/repository-name.sh"
 
@@ -68,15 +69,23 @@ command -v gh >/dev/null 2>&1 || die "${EXIT_USAGE}" 'gh is required'
 command -v python3 >/dev/null 2>&1 || die "${EXIT_USAGE}" 'python3 is required'
 
 if identity="$(
-  python3 - "${source_metadata}" <<'PY'
-import json
+  python3 - "${source_metadata}" "${repo_root}" <<'PY'
+from pathlib import Path
 import re
 import sys
 
+repo_root = Path(sys.argv[2])
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+from scripts.common.bounded_json import BoundedJsonError, load_bounded_json_file
+
 try:
-    with open(sys.argv[1], encoding="utf-8") as handle:
-        metadata = json.load(handle)
-except (OSError, json.JSONDecodeError) as error:
+    metadata = load_bounded_json_file(
+        Path(sys.argv[1]),
+        label="source artifact metadata",
+    )
+except BoundedJsonError as error:
     print(f"source metadata is unreadable: {error}", file=sys.stderr)
     raise SystemExit(1)
 
