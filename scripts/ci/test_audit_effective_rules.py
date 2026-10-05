@@ -14,6 +14,7 @@ from scripts.ci.audit_effective_rules import validate_effective_main_rules
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LIVE_AUDIT = REPO_ROOT / "scripts/ci/audit-live-main-rules.sh"
+MAX_JSON_BYTES = 2 * 1024 * 1024
 
 
 def desired_rules() -> list[dict]:
@@ -68,6 +69,13 @@ def desired_rules() -> list[dict]:
             },
         },
     ]
+
+
+def write_oversized_json(path: Path, payload: object) -> None:
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > MAX_JSON_BYTES:
+        raise AssertionError("fixture unexpectedly exceeds JSON limit before padding")
+    path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
 
 
 class EffectiveMainRulesAuditTests(unittest.TestCase):
@@ -167,6 +175,47 @@ class EffectiveMainRulesAuditTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("match the Solo governance contract", result.stdout)
+
+    def test_cli_rejects_oversized_file_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            payload = Path(temporary_directory) / "effective-rules.json"
+            write_oversized_json(payload, [desired_rules()])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/ci/audit_effective_rules.py",
+                    str(payload),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("JSON byte limit", result.stderr)
+
+    def test_cli_rejects_symlinked_file_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            target = root / "effective-rules-target.json"
+            payload = root / "effective-rules.json"
+            target.write_text(json.dumps([desired_rules()]) + "\n", encoding="utf-8")
+            payload.symlink_to(target)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/ci/audit_effective_rules.py",
+                    str(payload),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("non-symlink", result.stderr)
 
     def test_live_audit_wrapper_binds_repository_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
