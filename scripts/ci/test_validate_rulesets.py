@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.ci.audit_main_ruleset import main as audit_main_ruleset_main
 from scripts.ci.validate_rulesets import (
     main,
     validate_file,
@@ -79,6 +80,19 @@ def valid_release_tags() -> dict:
             {"type": "deletion"},
         ],
     }
+
+
+def valid_live_main_ruleset() -> dict:
+    document = copy.deepcopy(valid_main_solo())
+    document.update(
+        {
+            "id": 84,
+            "source_type": "Repository",
+            "source": "example/repo",
+            "current_user_can_bypass": "never",
+        }
+    )
+    return document
 
 
 class MainSoloRulesetTests(unittest.TestCase):
@@ -333,6 +347,34 @@ class FileValidationTests(unittest.TestCase):
             [],
             validate_file(root / "rulesets/release-tags.json", "release-tags"),
         )
+
+
+class LiveMainRulesetFileBoundaryTests(unittest.TestCase):
+    def assert_live_file_rejected(self, path: Path) -> None:
+        with self.assertRaises(SystemExit) as context:
+            audit_main_ruleset_main([str(path), "example/repo"])
+        self.assertIn("failed to read", str(context.exception))
+
+    def test_live_main_audit_rejects_oversized_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "live-main-ruleset.json"
+            encoded = json.dumps(valid_live_main_ruleset(), separators=(",", ":")).encode(
+                "utf-8"
+            )
+            self.assertLess(len(encoded), MAX_JSON_BYTES)
+            path.write_bytes(encoded + b" " * (MAX_JSON_BYTES + 1 - len(encoded)))
+
+            self.assert_live_file_rejected(path)
+
+    def test_live_main_audit_rejects_symlinked_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            target = root / "live-main-ruleset-target.json"
+            target.write_text(json.dumps(valid_live_main_ruleset()) + "\n", encoding="utf-8")
+            path = root / "live-main-ruleset.json"
+            path.symlink_to(target)
+
+            self.assert_live_file_rejected(path)
 
 
 if __name__ == "__main__":
